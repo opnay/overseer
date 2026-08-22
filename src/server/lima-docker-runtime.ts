@@ -1,21 +1,28 @@
 import type {
   ContainerSummary,
+  CreateNamedResourceInput,
   DashboardSnapshot,
   ImageSummary,
+  NetworkSummary,
   PullImageInput,
   RunContainerInput,
   RuntimeSnapshot,
+  VolumeSummary,
 } from "../shared/contracts.ts";
 import { ExpectedError } from "./errors.ts";
 import { CommandError, parseJsonLines, runCommand } from "./process.ts";
 
 export interface RuntimeController {
   containerAction(id: string, action: "restart" | "start" | "stop"): Promise<void>;
+  createNetwork(input: CreateNamedResourceInput): Promise<void>;
+  createVolume(input: CreateNamedResourceInput): Promise<void>;
   getContainerLogs(id: string): Promise<string>;
   getDashboard(): Promise<DashboardSnapshot>;
   pullImage(input: PullImageInput): Promise<void>;
   removeContainer(id: string): Promise<void>;
   removeImage(id: string): Promise<void>;
+  removeNetwork(name: string): Promise<void>;
+  removeVolume(name: string): Promise<void>;
   runContainer(input: RunContainerInput): Promise<void>;
   startRuntime(): Promise<RuntimeSnapshot>;
   stopRuntime(): Promise<RuntimeSnapshot>;
@@ -43,10 +50,32 @@ interface DockerImageRow {
   Tag: string;
 }
 
+interface DockerVolumeRow {
+  Driver: string;
+  Labels: string;
+  Name: string;
+  Scope: string;
+}
+
+interface DockerNetworkRow {
+  CreatedAt: string;
+  Driver: string;
+  ID: string;
+  IPv4: string;
+  IPv6: string;
+  Internal: string;
+  Labels: string;
+  Name: string;
+  Scope: string;
+}
+
 const LIMA_INSTANCE = process.env.OVERSEER_LIMA_INSTANCE ?? "overseer";
 const LIMA_ROW_FORMAT = "{{.Name}}\t{{.Status}}\t{{.Dir}}";
 const CONTAINER_ROW_FORMAT = "{{json .}}";
 const IMAGE_ROW_FORMAT = "{{json .}}";
+const VOLUME_ROW_FORMAT = "{{json .}}";
+const NETWORK_ROW_FORMAT = "{{json .}}";
+const BUILT_IN_NETWORKS = new Set(["bridge", "host", "none"]);
 
 export class LimaDockerRuntime implements RuntimeController {
   private transition?: Promise<RuntimeSnapshot>;
@@ -54,11 +83,16 @@ export class LimaDockerRuntime implements RuntimeController {
   async getDashboard(): Promise<DashboardSnapshot> {
     const runtime = await this.getRuntimeSnapshot();
     if (runtime.phase !== "running") {
-      return { containers: [], images: [], runtime };
+      return { containers: [], images: [], networks: [], runtime, volumes: [] };
     }
 
-    const [containers, images] = await Promise.all([this.listContainers(), this.listImages()]);
-    return { containers, images, runtime };
+    const [containers, images, volumes, networks] = await Promise.all([
+      this.listContainers(),
+      this.listImages(),
+      this.listVolumes(),
+      this.listNetworks(),
+    ]);
+    return { containers, images, networks, runtime, volumes };
   }
 
   startRuntime(): Promise<RuntimeSnapshot> {
@@ -112,6 +146,29 @@ export class LimaDockerRuntime implements RuntimeController {
 
   async removeImage(id: string): Promise<void> {
     await this.docker(["image", "rm", id], 120_000);
+  }
+
+  async createVolume(input: CreateNamedResourceInput): Promise<void> {
+    await this.docker(["volume", "create", input.name]);
+  }
+
+  async removeVolume(name: string): Promise<void> {
+    await this.docker(["volume", "rm", name]);
+  }
+
+  async createNetwork(input: CreateNamedResourceInput): Promise<void> {
+    await this.docker(["network", "create", input.name]);
+  }
+
+  async removeNetwork(name: string): Promise<void> {
+    if (BUILT_IN_NETWORKS.has(name)) {
+      throw new ExpectedError(
+        "built_in_network",
+        "기본 Docker 네트워크는 삭제할 수 없습니다.",
+        409,
+      );
+    }
+    await this.docker(["network", "rm", name]);
   }
 
   private async startRuntimeOnce(): Promise<RuntimeSnapshot> {
@@ -244,12 +301,42 @@ export class LimaDockerRuntime implements RuntimeController {
     }));
   }
 
+  private async listVolumes(): Promise<VolumeSummary[]> {
+    const result = await this.docker(["volume", "ls", "--format", VOLUME_ROW_FORMAT]);
+    return parseJsonLines<DockerVolumeRow>(result.stdout).map((row) => ({
+      driver: row.Driver,
+      labels: row.Labels,
+      name: row.Name,
+      scope: row.Scope,
+    }));
+  }
+
+  private async listNetworks(): Promise<NetworkSummary[]> {
+    const result = await this.docker(["network", "ls", "--format", NETWORK_ROW_FORMAT]);
+    return parseJsonLines<DockerNetworkRow>(result.stdout).map((row) => ({
+      builtIn: BUILT_IN_NETWORKS.has(row.Name),
+      createdAt: row.CreatedAt,
+      driver: row.Driver,
+      id: row.ID,
+      internal: row.Internal === "true",
+      ipv4: row.IPv4 === "true",
+      ipv6: row.IPv6 === "true",
+      labels: row.Labels,
+      name: row.Name,
+      scope: row.Scope,
+    }));
+  }
+
   private dockerMessage(error: CommandError): string {
     const detail = error.stderr.trim();
     if (detail.includes("No such container")) return "컨테이너를 찾을 수 없습니다.";
     if (detail.includes("is already in use by container")) return "이미 사용 중인 이름입니다.";
     if (detail.includes("No such image")) return "이미지를 찾을 수 없습니다.";
+    if (detail.includes("No such volume")) return "볼륨을 찾을 수 없습니다.";
+    if (detail.includes("No such network")) return "네트워크를 찾을 수 없습니다.";
     if (detail.includes("is being used by")) return "사용 중인 리소스는 삭제할 수 없습니다.";
+    if (detail.includes("active endpoints"))
+      return "연결된 컨테이너가 있는 네트워크는 삭제할 수 없습니다.";
     return detail || "Docker 명령을 완료하지 못했습니다.";
   }
 

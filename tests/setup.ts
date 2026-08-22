@@ -55,6 +55,7 @@ Object.defineProperty(window, "matchMedia", {
 
 afterEach(() => {
   cleanup();
+  window.history.replaceState(null, "", "/");
   window.localStorage.clear();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

@@ -30,6 +30,17 @@ export function optionalContainerName(value: unknown): string | undefined {
   return value;
 }
 
+export function requireResourceName(value: unknown): string {
+  if (typeof value !== "string" || !CONTAINER_NAME.test(value)) {
+    throw new ExpectedError(
+      "invalid_name",
+      "이름은 영문·숫자로 시작하고 영문·숫자·점·밑줄·하이픈만 사용할 수 있습니다.",
+      400,
+    );
+  }
+  return value;
+}
+
 export function optionalPort(value: unknown): number | undefined {
   if (value === undefined || value === "") return undefined;
   if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 65_535) {

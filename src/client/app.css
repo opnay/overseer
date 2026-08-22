@@ -265,7 +265,7 @@
 
   .overseer-stat-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
     gap: var(--city-space-3);
   }
 
@@ -432,9 +432,24 @@
   }
 
   @media (max-width: 42rem) {
-    .overseer-sidebar nav,
     .overseer-topbar > div:first-child > span {
       display: none;
+    }
+
+    .overseer-sidebar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .overseer-sidebar nav {
+      display: flex;
+      width: 100%;
+      margin-left: 0;
+      overflow-x: auto;
+    }
+
+    .overseer-sidebar nav a {
+      flex: none;
     }
 
     .overseer-main {

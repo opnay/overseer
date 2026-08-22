@@ -5,6 +5,7 @@ import {
   optionalPort,
   requireContainerReference,
   requireImageReference,
+  requireResourceName,
 } from "../src/server/validation.ts";
 
 describe("command input validation", () => {
@@ -13,12 +14,14 @@ describe("command input validation", () => {
     expect(requireContainerReference("overseer-web_1")).toBe("overseer-web_1");
     expect(optionalContainerName("api-1")).toBe("api-1");
     expect(optionalPort(8080)).toBe(8080);
+    expect(requireResourceName("app-data")).toBe("app-data");
   });
 
   it("rejects shell syntax and invalid ports", () => {
     expect(() => requireImageReference("alpine; rm -rf /")).toThrow("유효한 이미지");
     expect(() => optionalContainerName("api $(whoami)")).toThrow("컨테이너 이름");
     expect(() => optionalPort(0)).toThrow("1–65535");
+    expect(() => requireResourceName("app/data")).toThrow("이름은");
   });
 });
 

@@ -24,10 +24,32 @@ export interface ImageSummary {
   tag: string;
 }
 
+export interface VolumeSummary {
+  driver: string;
+  labels: string;
+  name: string;
+  scope: string;
+}
+
+export interface NetworkSummary {
+  builtIn: boolean;
+  createdAt: string;
+  driver: string;
+  id: string;
+  internal: boolean;
+  ipv4: boolean;
+  ipv6: boolean;
+  labels: string;
+  name: string;
+  scope: string;
+}
+
 export interface DashboardSnapshot {
   containers: ContainerSummary[];
   images: ImageSummary[];
+  networks: NetworkSummary[];
   runtime: RuntimeSnapshot;
+  volumes: VolumeSummary[];
 }
 
 export interface RunContainerInput {
@@ -38,6 +60,10 @@ export interface RunContainerInput {
 
 export interface PullImageInput {
   image: string;
+}
+
+export interface CreateNamedResourceInput {
+  name: string;
 }
 
 export interface ApiFailure {

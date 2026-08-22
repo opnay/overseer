@@ -19,6 +19,13 @@ pnpm dev
 
 기본 주소는 `http://overseer.localhost:1355`입니다. Portless가 실제 앱에 비어 있는 포트를 자동 배정합니다. Portless를 통하지 않으려면 `pnpm dev:direct`를 사용하십시오.
 
+리소스는 독립 URL에서 관리합니다.
+
+- `/containers`: 실행·중지·재시작·로그·삭제
+- `/images`: pull·삭제
+- `/volumes`: 생성·삭제
+- `/networks`: 생성·삭제, 기본 네트워크 보호
+
 첫 화면에서 **Lima 환경 만들기**를 실행하면 `overseer` 인스턴스를 공식 `template:docker`로 생성합니다. Docker CLI에서 같은 런타임을 사용하려면 다음 환경 변수를 설정하십시오.
 
 ```bash

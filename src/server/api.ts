@@ -8,6 +8,7 @@ import {
   optionalPort,
   requireContainerReference,
   requireImageReference,
+  requireResourceName,
 } from "./validation.ts";
 
 async function readObject(context: { req: { json: () => Promise<unknown> } }) {
@@ -80,6 +81,28 @@ export function createApi(controller: RuntimeController) {
 
   app.delete("/images/:id", async (context) => {
     await controller.removeImage(requireContainerReference(context.req.param("id")));
+    return context.json({ ok: true });
+  });
+
+  app.post("/volumes", async (context) => {
+    const body = await readObject(context);
+    await controller.createVolume({ name: requireResourceName(body.name) });
+    return context.json({ ok: true }, 201);
+  });
+
+  app.delete("/volumes/:name", async (context) => {
+    await controller.removeVolume(requireResourceName(context.req.param("name")));
+    return context.json({ ok: true });
+  });
+
+  app.post("/networks", async (context) => {
+    const body = await readObject(context);
+    await controller.createNetwork({ name: requireResourceName(body.name) });
+    return context.json({ ok: true }, 201);
+  });
+
+  app.delete("/networks/:name", async (context) => {
+    await controller.removeNetwork(requireResourceName(context.req.param("name")));
     return context.json({ ok: true });
   });
 
