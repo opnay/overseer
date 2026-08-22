@@ -1,0 +1,271 @@
+import type {
+  ContainerSummary,
+  DashboardSnapshot,
+  ImageSummary,
+  PullImageInput,
+  RunContainerInput,
+  RuntimeSnapshot,
+} from "../shared/contracts.ts";
+import { ExpectedError } from "./errors.ts";
+import { CommandError, parseJsonLines, runCommand } from "./process.ts";
+
+export interface RuntimeController {
+  containerAction(id: string, action: "restart" | "start" | "stop"): Promise<void>;
+  getContainerLogs(id: string): Promise<string>;
+  getDashboard(): Promise<DashboardSnapshot>;
+  pullImage(input: PullImageInput): Promise<void>;
+  removeContainer(id: string): Promise<void>;
+  removeImage(id: string): Promise<void>;
+  runContainer(input: RunContainerInput): Promise<void>;
+  startRuntime(): Promise<RuntimeSnapshot>;
+  stopRuntime(): Promise<RuntimeSnapshot>;
+}
+
+interface LimaInstance {
+  directory: string;
+  status: string;
+}
+
+interface DockerContainerRow {
+  ID: string;
+  Image: string;
+  Names: string;
+  Ports: string;
+  State: string;
+  Status: string;
+}
+
+interface DockerImageRow {
+  CreatedSince: string;
+  ID: string;
+  Repository: string;
+  Size: string;
+  Tag: string;
+}
+
+const LIMA_INSTANCE = process.env.OVERSEER_LIMA_INSTANCE ?? "overseer";
+const LIMA_ROW_FORMAT = "{{.Name}}\t{{.Status}}\t{{.Dir}}";
+const CONTAINER_ROW_FORMAT = "{{json .}}";
+const IMAGE_ROW_FORMAT = "{{json .}}";
+
+export class LimaDockerRuntime implements RuntimeController {
+  private transition?: Promise<RuntimeSnapshot>;
+
+  async getDashboard(): Promise<DashboardSnapshot> {
+    const runtime = await this.getRuntimeSnapshot();
+    if (runtime.phase !== "running") {
+      return { containers: [], images: [], runtime };
+    }
+
+    const [containers, images] = await Promise.all([this.listContainers(), this.listImages()]);
+    return { containers, images, runtime };
+  }
+
+  startRuntime(): Promise<RuntimeSnapshot> {
+    if (this.transition) return this.transition;
+
+    this.transition = this.startRuntimeOnce().finally(() => {
+      this.transition = undefined;
+    });
+    return this.transition;
+  }
+
+  async stopRuntime(): Promise<RuntimeSnapshot> {
+    if (this.transition) {
+      throw new ExpectedError("runtime_busy", "다른 런타임 작업이 진행 중입니다.", 409);
+    }
+
+    const instance = await this.getInstance();
+    if (!instance) return this.missingSnapshot();
+    if (instance.status.toLowerCase() === "stopped") return this.stoppedSnapshot();
+
+    await runCommand("limactl", ["stop", LIMA_INSTANCE], { timeoutMs: 120_000 });
+    return this.stoppedSnapshot();
+  }
+
+  async runContainer(input: RunContainerInput): Promise<void> {
+    const args = ["run", "--detach"];
+    if (input.name) args.push("--name", input.name);
+    if (input.containerPort) {
+      args.push("--publish", `127.0.0.1::${input.containerPort}`);
+    }
+    args.push(input.image);
+    await this.docker(args, 10 * 60_000);
+  }
+
+  async containerAction(id: string, action: "restart" | "start" | "stop"): Promise<void> {
+    await this.docker([action, id], 120_000);
+  }
+
+  async removeContainer(id: string): Promise<void> {
+    await this.docker(["container", "rm", id]);
+  }
+
+  async getContainerLogs(id: string): Promise<string> {
+    const result = await this.docker(["logs", "--tail", "300", "--timestamps", id]);
+    return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+  }
+
+  async pullImage(input: PullImageInput): Promise<void> {
+    await this.docker(["image", "pull", input.image], 10 * 60_000);
+  }
+
+  async removeImage(id: string): Promise<void> {
+    await this.docker(["image", "rm", id], 120_000);
+  }
+
+  private async startRuntimeOnce(): Promise<RuntimeSnapshot> {
+    const instance = await this.getInstance();
+    if (!instance) {
+      await runCommand(
+        "limactl",
+        ["start", `--name=${LIMA_INSTANCE}`, "template:docker", "--tty=false", "--progress"],
+        { timeoutMs: 20 * 60_000 },
+      );
+    } else if (instance.status.toLowerCase() !== "running") {
+      await runCommand("limactl", ["start", LIMA_INSTANCE, "--tty=false", "--progress"], {
+        timeoutMs: 10 * 60_000,
+      });
+    }
+
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const runtime = await this.getRuntimeSnapshot();
+      if (runtime.phase === "running") return runtime;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+
+    throw new ExpectedError(
+      "docker_not_ready",
+      "Lima는 실행 중이지만 Docker가 준비되지 않았습니다. 잠시 후 다시 시도하십시오.",
+      503,
+    );
+  }
+
+  private async getRuntimeSnapshot(): Promise<RuntimeSnapshot> {
+    let instance: LimaInstance | undefined;
+    try {
+      instance = await this.getInstance();
+    } catch (error) {
+      if (error instanceof CommandError && error.message.includes("executable file not found")) {
+        return {
+          instance: LIMA_INSTANCE,
+          message: "Lima 실행 파일을 찾을 수 없습니다.",
+          phase: "error",
+        };
+      }
+      throw error;
+    }
+
+    if (!instance) return this.missingSnapshot();
+    if (instance.status.toLowerCase() !== "running") return this.stoppedSnapshot();
+
+    try {
+      const result = await this.docker(["version", "--format", "{{.Server.Version}}"]);
+      return {
+        dockerVersion: result.stdout.trim(),
+        instance: LIMA_INSTANCE,
+        message: "Lima와 Docker가 정상적으로 실행 중입니다.",
+        phase: "running",
+      };
+    } catch {
+      return {
+        instance: LIMA_INSTANCE,
+        message: "Lima는 실행 중이며 Docker socket을 준비하고 있습니다.",
+        phase: "starting",
+      };
+    }
+  }
+
+  private async getInstance(): Promise<LimaInstance | undefined> {
+    let result;
+    try {
+      result = await runCommand("limactl", ["list", LIMA_INSTANCE, "--format", LIMA_ROW_FORMAT]);
+    } catch (error) {
+      if (
+        error instanceof CommandError &&
+        (error.stderr.includes("No instance matching") ||
+          error.stderr.includes("unmatched instances"))
+      ) {
+        return undefined;
+      }
+      throw error;
+    }
+    const row = result.stdout.trim();
+    if (!row) return undefined;
+
+    const [name, status, directory] = row.split("\t");
+    if (name !== LIMA_INSTANCE || !status || !directory) return undefined;
+    return { directory, status };
+  }
+
+  private async docker(args: readonly string[], timeoutMs?: number) {
+    const instance = await this.getInstance();
+    if (!instance || instance.status.toLowerCase() !== "running") {
+      throw new ExpectedError("runtime_unavailable", "Lima 런타임이 실행 중이 아닙니다.", 503);
+    }
+
+    const host = `unix://${instance.directory}/sock/docker.sock`;
+    try {
+      return await runCommand("docker", ["--host", host, ...args], { timeoutMs });
+    } catch (error) {
+      if (error instanceof CommandError) {
+        throw new ExpectedError("docker_command_failed", this.dockerMessage(error), 503);
+      }
+      throw error;
+    }
+  }
+
+  private async listContainers(): Promise<ContainerSummary[]> {
+    const result = await this.docker([
+      "container",
+      "ls",
+      "--all",
+      "--format",
+      CONTAINER_ROW_FORMAT,
+    ]);
+    return parseJsonLines<DockerContainerRow>(result.stdout).map((row) => ({
+      id: row.ID,
+      image: row.Image,
+      name: row.Names,
+      ports: row.Ports,
+      state: row.State,
+      status: row.Status,
+    }));
+  }
+
+  private async listImages(): Promise<ImageSummary[]> {
+    const result = await this.docker(["image", "ls", "--format", IMAGE_ROW_FORMAT]);
+    return parseJsonLines<DockerImageRow>(result.stdout).map((row) => ({
+      createdSince: row.CreatedSince,
+      id: row.ID,
+      repository: row.Repository,
+      size: row.Size,
+      tag: row.Tag,
+    }));
+  }
+
+  private dockerMessage(error: CommandError): string {
+    const detail = error.stderr.trim();
+    if (detail.includes("No such container")) return "컨테이너를 찾을 수 없습니다.";
+    if (detail.includes("is already in use by container")) return "이미 사용 중인 이름입니다.";
+    if (detail.includes("No such image")) return "이미지를 찾을 수 없습니다.";
+    if (detail.includes("is being used by")) return "사용 중인 리소스는 삭제할 수 없습니다.";
+    return detail || "Docker 명령을 완료하지 못했습니다.";
+  }
+
+  private missingSnapshot(): RuntimeSnapshot {
+    return {
+      instance: LIMA_INSTANCE,
+      message: "전용 Lima 인스턴스가 아직 없습니다.",
+      phase: "missing",
+    };
+  }
+
+  private stoppedSnapshot(): RuntimeSnapshot {
+    return {
+      instance: LIMA_INSTANCE,
+      message: "Lima 인스턴스가 중지되어 있습니다.",
+      phase: "stopped",
+    };
+  }
+}

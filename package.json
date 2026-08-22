@@ -1,0 +1,49 @@
+{
+  "name": "@opnay/overseer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "PORTLESS_PORT=1355 PORTLESS_HTTPS=0 PORTLESS_SYNC_HOSTS=0 portless run --name overseer vite",
+    "dev:direct": "vite",
+    "build": "vite build",
+    "start": "node src/server/start.ts",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint src tests vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:ci": "vitest run",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:ci && pnpm build"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@opnay/city-ds-react": "file:vendor/opnay-city-ds-react-0.1.0.tgz",
+    "hono": "4.13.3",
+    "lucide-react": "1.26.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@hono/vite-dev-server": "0.26.1",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.6",
+    "@types/node": "26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.1.0",
+    "jsdom": "30.0.1",
+    "oxfmt": "0.64.0",
+    "oxlint": "1.79.0",
+    "portless": "0.15.5",
+    "typescript": "6.0.3",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  },
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=11 <12"
+  },
+  "packageManager": "pnpm@11.8.0"
+}
