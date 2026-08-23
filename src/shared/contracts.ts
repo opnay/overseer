@@ -18,6 +18,65 @@ export interface ContainerSummary {
   status: string;
 }
 
+export type ContainerPullPolicy = "always" | "missing" | "never";
+export type ContainerPortProtocol = "tcp" | "udp";
+export type ContainerRestartMode = "always" | "no" | "on-failure" | "unless-stopped";
+
+export interface ContainerKeyValue {
+  key: string;
+  value: string;
+}
+
+export interface ContainerPortMapping {
+  containerPort: number;
+  hostPort?: number;
+  protocol: ContainerPortProtocol;
+}
+
+export interface ContainerVolumeMount {
+  containerPath: string;
+  readOnly: boolean;
+  volume: string;
+}
+
+export interface ContainerRestartPolicy {
+  maximumRetryCount?: number;
+  mode: ContainerRestartMode;
+}
+
+export interface ContainerResourceLimits {
+  cpus?: number;
+  memoryMiB?: number;
+}
+
+export interface ContainerSpecInput {
+  command: string[];
+  environment: ContainerKeyValue[];
+  hostname?: string;
+  image: string;
+  labels: ContainerKeyValue[];
+  name?: string;
+  networks: string[];
+  ports: ContainerPortMapping[];
+  pullPolicy: ContainerPullPolicy;
+  resources: ContainerResourceLimits;
+  restartPolicy: ContainerRestartPolicy;
+  volumes: ContainerVolumeMount[];
+}
+
+export interface ContainerDetail {
+  configHash: string;
+  id: string;
+  replacementBlockers: string[];
+  running: boolean;
+  spec: ContainerSpecInput;
+}
+
+export interface UpdateContainerInput {
+  expectedConfigHash: string;
+  spec: ContainerSpecInput;
+}
+
 export interface ComposeProjectSummary {
   configFiles: string[];
   name: string;
@@ -78,11 +137,7 @@ export interface DashboardSnapshot {
   volumes: VolumeSummary[];
 }
 
-export interface RunContainerInput {
-  containerPort?: number;
-  image: string;
-  name?: string;
-}
+export type RunContainerInput = ContainerSpecInput;
 
 export interface PullImageInput {
   image: string;
@@ -97,4 +152,59 @@ export interface ApiFailure {
     code: string;
     message: string;
   };
+}
+
+export type OperationStatus = "cancelled" | "failed" | "queued" | "running" | "succeeded";
+
+export type OperationKind =
+  | "compose.down"
+  | "compose.restart"
+  | "compose.stop"
+  | "compose.up"
+  | "container.create"
+  | "container.remove"
+  | "container.restart"
+  | "container.start"
+  | "container.stop"
+  | "container.update"
+  | "image.pull"
+  | "image.remove"
+  | "network.create"
+  | "network.remove"
+  | "runtime.start"
+  | "runtime.stop"
+  | "volume.create"
+  | "volume.remove";
+
+export type OperationResource =
+  | "compose"
+  | "container"
+  | "image"
+  | "network"
+  | "runtime"
+  | "volume";
+
+export interface OperationTarget {
+  id?: string;
+  name: string;
+  resource: OperationResource;
+}
+
+export interface OperationSnapshot {
+  createdAt: string;
+  error?: ApiFailure["error"];
+  finishedAt?: string;
+  id: string;
+  kind: OperationKind;
+  output: string[];
+  startedAt?: string;
+  status: OperationStatus;
+  step: string;
+  successMessage: string;
+  target: OperationTarget;
+  title: string;
+}
+
+export interface OperationAccepted {
+  operation: OperationSnapshot;
 }

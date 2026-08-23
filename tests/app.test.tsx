@@ -2,13 +2,28 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../src/client/app.tsx";
-import type { DashboardSnapshot } from "../src/shared/contracts.ts";
+import { emptyContainerSpec } from "../src/shared/container-spec.ts";
+import type { DashboardSnapshot, OperationSnapshot } from "../src/shared/contracts.ts";
 
 function jsonResponse(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
     headers: { "content-type": "application/json" },
     status,
   });
+}
+
+function operation(status: OperationSnapshot["status"] = "queued"): OperationSnapshot {
+  return {
+    createdAt: "2026-08-23T10:00:00.000Z",
+    id: "operation-id",
+    kind: "volume.create",
+    output: [],
+    status,
+    step: status === "succeeded" ? "완료됨" : "대기 중",
+    successMessage: "app-data 볼륨을 만들었습니다.",
+    target: { name: "app-data", resource: "volume" },
+    title: "볼륨 만들기",
+  };
 }
 
 describe("App", () => {
@@ -72,13 +87,158 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("컨테이너가 없습니다.")).toBeInTheDocument();
-    const primaryAction = screen.getByRole("button", { name: "컨테이너 실행" });
+    const primaryAction = await screen.findByRole("button", { name: "컨테이너 실행" });
     const pageHeader = screen
       .getByRole("heading", { name: "컨테이너", level: 1 })
       .closest(".overseer-page-header");
     expect(primaryAction).toBeEnabled();
     expect(pageHeader).toContainElement(primaryAction);
     expect(screen.getByText(/Docker 29\.7\.2/)).toBeInTheDocument();
+  });
+
+  it("shows the expanded City DS container configuration sections", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [
+        { createdSince: "today", id: "image-id", repository: "nginx", size: "20MB", tag: "alpine" },
+      ],
+      networks: [
+        {
+          builtIn: true,
+          createdAt: "today",
+          driver: "bridge",
+          id: "network-id",
+          internal: false,
+          ipv4: true,
+          ipv6: false,
+          labels: "",
+          name: "bridge",
+          scope: "local",
+        },
+      ],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [{ driver: "local", labels: "", name: "app-data", scope: "local" }],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/api/operations")
+          ? jsonResponse({ operations: [] })
+          : jsonResponse(dashboard),
+      ),
+    );
+    render(<App />);
+    await screen.findByText("컨테이너가 없습니다.");
+
+    await user.click(await screen.findByRole("button", { name: "컨테이너 실행" }));
+    const dialog = await screen.findByRole("dialog", { name: "컨테이너 실행" });
+    expect(dialog).toHaveTextContent("기본 설정");
+    expect(dialog).toHaveTextContent("실행 정책과 리소스");
+    expect(dialog).toHaveTextContent("메타데이터");
+    await user.click(screen.getByRole("button", { name: "포트 추가" }));
+    expect(screen.getByLabelText("컨테이너 포트 1")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "환경 변수 추가" }));
+    expect(screen.getByRole("textbox", { name: "환경 변수 이름 1" })).toBeInTheDocument();
+    expect(screen.getByLabelText("CPU 수")).toBeInTheDocument();
+  });
+
+  it("keeps immutable fields read-only for an unmanaged container", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [
+        {
+          id: "container-id",
+          image: "nginx:alpine",
+          name: "web",
+          ports: "",
+          state: "running",
+          status: "Up",
+        },
+      ],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith("/api/containers/container-id")) {
+          return jsonResponse({
+            container: {
+              configHash: "a".repeat(64),
+              id: "container-id",
+              replacementBlockers: ["Overseer에서 만든 컨테이너가 아닙니다."],
+              running: true,
+              spec: { ...emptyContainerSpec(), image: "nginx:alpine", name: "web" },
+            },
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("row", { name: /web/ });
+
+    await user.click(screen.getByRole("button", { name: "설정" }));
+    expect(await screen.findByRole("dialog", { name: "web 설정" })).toBeInTheDocument();
+    expect(screen.getByText("일부 설정은 읽기 전용입니다.")).toBeInTheDocument();
+    expect(screen.getByLabelText("이미지")).toBeDisabled();
+    expect(screen.getByLabelText("이름")).toBeEnabled();
+  });
+
+  it("shows queued work in the City DS operation drawer and cancels it", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/api/operations/operation-id") && init?.method === "DELETE") {
+          return jsonResponse({
+            operation: { ...operation("cancelled"), finishedAt: "2026-08-23T10:00:01.000Z" },
+          });
+        }
+        if (String(input).endsWith("/api/operations")) {
+          return jsonResponse({ operations: [operation()] });
+        }
+        return jsonResponse(dashboard);
+      }),
+    );
+    render(<App />);
+    await screen.findByText("컨테이너가 없습니다.");
+
+    await user.click(screen.getByRole("button", { name: /^작업/ }));
+    expect(await screen.findByRole("heading", { name: "작업" })).toBeInTheDocument();
+    expect(screen.getByText("볼륨 만들기")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "대기 작업 취소" }));
+    expect(await screen.findByText("취소됨")).toBeInTheDocument();
   });
 
   it("renders container logs in the terminal viewer", async () => {
@@ -308,7 +468,9 @@ describe("App", () => {
     expect(
       screen.queryByText("영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오."),
     ).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const calls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit?]>;
+    expect(calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
   it("reports successful resource creation with a City DS toast", async () => {
@@ -326,11 +488,19 @@ describe("App", () => {
       },
       volumes: [],
     };
+    let submitted = false;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
-        init?.method === "POST" ? jsonResponse({ ok: true }, 201) : jsonResponse(dashboard),
-      ),
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/api/operations")) {
+          return jsonResponse({ operations: submitted ? [operation("succeeded")] : [] });
+        }
+        if (init?.method === "POST") {
+          submitted = true;
+          return jsonResponse({ operation: operation() }, 202);
+        }
+        return jsonResponse(dashboard);
+      }),
     );
     window.history.replaceState(null, "", "/volumes");
     render(<App />);
@@ -340,8 +510,15 @@ describe("App", () => {
     await user.type(screen.getByRole("textbox", { name: "이름" }), "app-data");
     await user.click(screen.getByRole("button", { name: "볼륨 만들기" }));
 
-    expect(await screen.findByRole("dialog", { name: "작업을 완료했습니다." })).toHaveTextContent(
-      "app-data 볼륨을 만들었습니다.",
+    expect(await screen.findByRole("dialog", { name: "작업을 시작했습니다." })).toHaveTextContent(
+      "볼륨 만들기",
+    );
+    await waitFor(
+      () =>
+        expect(screen.getByRole("dialog", { name: "작업을 완료했습니다." })).toHaveTextContent(
+          "app-data 볼륨을 만들었습니다.",
+        ),
+      { timeout: 2_500 },
     );
   });
 

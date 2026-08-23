@@ -7,7 +7,6 @@ import { Dialog } from "@opnay/city-ds-react/dialog";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Field } from "@opnay/city-ds-react/field";
 import { Input } from "@opnay/city-ds-react/input";
-import { NumberField } from "@opnay/city-ds-react/number-field";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
 import { Toolbar } from "@opnay/city-ds-react/toolbar";
@@ -33,13 +32,15 @@ import {
   Radio,
   RefreshCw,
   RotateCcw,
+  Settings2,
   Square,
   Sun,
   Terminal,
   Trash2,
-  X,
 } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -52,16 +53,31 @@ import type {
   ComposeProjectAction,
   ComposeProjectDetail,
   ComposeProjectSummary,
+  ContainerDetail,
+  ContainerSpecInput,
   ContainerSummary,
   DashboardSnapshot,
   ImageSummary,
   NetworkSummary,
+  OperationAccepted,
+  OperationSnapshot,
+  OperationResource,
   RuntimePhase,
   VolumeSummary,
 } from "../shared/contracts.ts";
-import { isContainerPort, isImageReference, isResourceName } from "../shared/validation.ts";
+import { isImageReference, isResourceName } from "../shared/validation.ts";
 import { ApiRequestError, apiRequest } from "./api.ts";
 import { getResourceRoute, type ResourcePath } from "./routes.ts";
+
+const RunContainerDialog = lazy(() =>
+  import("./container-dialog.tsx").then((module) => ({ default: module.RunContainerDialog })),
+);
+const EditContainerDialog = lazy(() =>
+  import("./container-dialog.tsx").then((module) => ({ default: module.EditContainerDialog })),
+);
+const OperationsDrawer = lazy(() =>
+  import("./operations-drawer.tsx").then((module) => ({ default: module.OperationsDrawer })),
+);
 
 const runtimePresentation: Record<
   RuntimePhase,
@@ -155,170 +171,6 @@ function ConfirmAction({
         </AlertDialog.Viewport>
       </AlertDialog.Portal>
     </AlertDialog.Root>
-  );
-}
-
-function RunContainerDialog({
-  busy,
-  disabled,
-  onSubmit,
-}: {
-  busy: boolean;
-  disabled: boolean;
-  onSubmit: (input: { containerPort?: number; image: string; name?: string }) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [errors, setErrors] = useState<{
-    containerPort?: string;
-    form?: string;
-    image?: string;
-    name?: string;
-  }>({});
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setErrors({});
-    const form = new FormData(event.currentTarget);
-    const image = String(form.get("image") ?? "").trim();
-    const name = String(form.get("name") ?? "").trim() || undefined;
-    const portText = String(form.get("containerPort") ?? "").trim();
-    const containerPort = portText ? Number(portText) : undefined;
-    const nextErrors: typeof errors = {};
-    if (!isImageReference(image)) {
-      nextErrors.image = "유효한 레지스트리 경로와 이미지 태그를 입력하십시오.";
-    }
-    if (name && !isResourceName(name)) {
-      nextErrors.name = "영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오.";
-    }
-    if (containerPort !== undefined && !isContainerPort(containerPort)) {
-      nextErrors.containerPort = "1–65535 사이의 포트를 입력하십시오.";
-    }
-    if (Object.keys(nextErrors).length > 0) {
-      setErrors(nextErrors);
-      return;
-    }
-
-    try {
-      await onSubmit({ containerPort, image, name });
-      setOpen(false);
-    } catch (submitError) {
-      if (submitError instanceof ApiRequestError) {
-        if (submitError.code === "invalid_image") {
-          setErrors({ image: submitError.message });
-          return;
-        }
-        if (submitError.code === "invalid_name") {
-          setErrors({ name: submitError.message });
-          return;
-        }
-        if (submitError.code === "invalid_port") {
-          setErrors({ containerPort: submitError.message });
-          return;
-        }
-      }
-      setErrors({ form: actionError(submitError) });
-    }
-  };
-
-  return (
-    <Dialog.Root
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (!nextOpen) setErrors({});
-      }}
-      open={open}
-    >
-      <Dialog.Trigger disabled={disabled} render={<Button size="sm" variant="primary" />}>
-        <Plus aria-hidden="true" size={15} />
-        컨테이너 실행
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Backdrop />
-        <Dialog.Viewport>
-          <Dialog.Popup size="md">
-            <Dialog.Header>
-              <div>
-                <Dialog.Title>컨테이너 실행</Dialog.Title>
-                <Dialog.Description>
-                  이미지는 필요할 때 자동으로 내려받고, 공개 포트는 빈 로컬 포트에 연결합니다.
-                </Dialog.Description>
-              </div>
-              <Dialog.Close
-                aria-label="컨테이너 실행 창 닫기"
-                render={<Button iconOnly size="sm" variant="ghost" />}
-              >
-                <X aria-hidden="true" size={16} />
-              </Dialog.Close>
-            </Dialog.Header>
-            <form onSubmit={submit}>
-              <Dialog.Body className="overseer-form-stack">
-                {errors.form ? (
-                  <Alert.Root tone="destructive">
-                    <Alert.Title level={3}>컨테이너를 실행하지 못했습니다.</Alert.Title>
-                    <Alert.Description>{errors.form}</Alert.Description>
-                  </Alert.Root>
-                ) : null}
-                <Field.Root invalid={Boolean(errors.image)}>
-                  <Field.Label>
-                    이미지 <span aria-hidden="true">*</span>
-                  </Field.Label>
-                  <Input
-                    autoFocus
-                    name="image"
-                    onValueChange={() => setErrors((current) => ({ ...current, image: undefined }))}
-                    placeholder="nginx:alpine"
-                    required
-                  />
-                  <Field.Description>
-                    레지스트리 경로와 태그를 함께 입력할 수 있습니다.
-                  </Field.Description>
-                  <Field.Error match>{errors.image}</Field.Error>
-                </Field.Root>
-                <Field.Root invalid={Boolean(errors.name)}>
-                  <Field.Label>이름 (선택)</Field.Label>
-                  <Input
-                    name="name"
-                    onValueChange={() => setErrors((current) => ({ ...current, name: undefined }))}
-                    placeholder="web"
-                  />
-                  <Field.Description>비워 두면 Docker가 이름을 만듭니다.</Field.Description>
-                  <Field.Error match>{errors.name}</Field.Error>
-                </Field.Root>
-                <Field.Root invalid={Boolean(errors.containerPort)}>
-                  <Field.Label>컨테이너 포트 (선택)</Field.Label>
-                  <NumberField.Root
-                    max={65_535}
-                    min={1}
-                    onValueChange={() =>
-                      setErrors((current) => ({ ...current, containerPort: undefined }))
-                    }
-                    step={1}
-                  >
-                    <NumberField.Group>
-                      <NumberField.Input name="containerPort" placeholder="80" />
-                      <NumberField.Decrement aria-label="컨테이너 포트 감소" />
-                      <NumberField.Increment aria-label="컨테이너 포트 증가" />
-                    </NumberField.Group>
-                  </NumberField.Root>
-                  <Field.Description>
-                    호스트 포트는 충돌하지 않도록 자동 배정하며 127.0.0.1에만 공개합니다.
-                  </Field.Description>
-                  <Field.Error match>{errors.containerPort}</Field.Error>
-                </Field.Root>
-              </Dialog.Body>
-              <Dialog.Footer>
-                <Dialog.Close render={<Button type="button" variant="outline" />}>
-                  취소
-                </Dialog.Close>
-                <Button disabled={busy} type="submit">
-                  {busy ? "실행 중…" : "컨테이너 실행"}
-                </Button>
-              </Dialog.Footer>
-            </form>
-          </Dialog.Popup>
-        </Dialog.Viewport>
-      </Dialog.Portal>
-    </Dialog.Root>
   );
 }
 
@@ -591,16 +443,6 @@ function composeStatusLabel(status: string): string {
   return status;
 }
 
-function composeActionSuccess(name: string, action: ComposeProjectAction): string {
-  const labels: Record<ComposeProjectAction, string> = {
-    down: "내렸습니다",
-    restart: "재시작했습니다",
-    stop: "중지했습니다",
-    up: "실행했습니다",
-  };
-  return `${name} 프로젝트를 ${labels[action]}.`;
-}
-
 function composeFileName(file: string): string {
   return file.split("/").filter(Boolean).at(-1) ?? file;
 }
@@ -736,13 +578,13 @@ function ComposeProjectDialog({
 }
 
 function ComposePage({
-  busy,
+  isBusy,
   onAction,
   onInspect,
   onLogs,
   projects,
 }: {
-  busy?: string;
+  isBusy: (project: ComposeProjectSummary) => boolean;
   onAction: (project: ComposeProjectSummary, action: ComposeProjectAction) => Promise<void>;
   onInspect: (project: ComposeProjectSummary) => void;
   onLogs: (project: ComposeProjectSummary) => void;
@@ -787,7 +629,7 @@ function ComposePage({
             ) : (
               projects.map((project) => {
                 const running = composeIsRunning(project.status);
-                const rowBusy = busy?.startsWith(`compose-${project.name}-`) ?? false;
+                const rowBusy = isBusy(project);
                 return (
                   <Table.Row key={project.name}>
                     <Table.Cell>
@@ -895,8 +737,7 @@ function ComposePage({
 
 interface MutationOptions {
   key: string;
-  request: () => Promise<unknown>;
-  success: string;
+  request: () => Promise<OperationAccepted>;
 }
 
 function resourcePathFromLocation(): ResourcePath {
@@ -915,11 +756,15 @@ function AppContent() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot>();
   const [loadError, setLoadError] = useState<string>();
   const [operationError, setOperationError] = useState<string>();
-  const [busy, setBusy] = useState<string>();
+  const [submitting, setSubmitting] = useState<string>();
+  const [operations, setOperations] = useState<OperationSnapshot[]>([]);
+  const [editContainer, setEditContainer] = useState<ContainerSummary>();
   const [composeDetailProject, setComposeDetailProject] = useState<ComposeProjectSummary>();
   const [logsTarget, setLogsTarget] = useState<LogsTarget>();
   const [dark, setDark] = useState(() => window.localStorage.getItem("overseer-theme") === "dark");
   const [resourcePath, setResourcePath] = useState<ResourcePath>(resourcePathFromLocation);
+  const notifiedOperations = useRef(new Set<string>());
+  const operationsInitialized = useRef(false);
   const toastManager = Toast.useToastManager();
 
   const refresh = useCallback(async (quiet = false) => {
@@ -934,6 +779,116 @@ function AppContent() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const refreshResource = useCallback(
+    async (resource: OperationResource) => {
+      try {
+        if (resource === "runtime") {
+          await refresh(true);
+          return;
+        }
+        if (resource === "compose") {
+          const { projects } = await apiRequest<{ projects: ComposeProjectSummary[] }>(
+            "/compose/projects",
+          );
+          setDashboard((current) =>
+            current ? { ...current, composeProjects: projects } : current,
+          );
+          return;
+        }
+        if (resource === "container") {
+          const { containers } = await apiRequest<{ containers: ContainerSummary[] }>(
+            "/containers",
+          );
+          setDashboard((current) => (current ? { ...current, containers } : current));
+          return;
+        }
+        if (resource === "image") {
+          const { images } = await apiRequest<{ images: ImageSummary[] }>("/images");
+          setDashboard((current) => (current ? { ...current, images } : current));
+          return;
+        }
+        if (resource === "volume") {
+          const { volumes } = await apiRequest<{ volumes: VolumeSummary[] }>("/volumes");
+          setDashboard((current) => (current ? { ...current, volumes } : current));
+          return;
+        }
+        const { networks } = await apiRequest<{ networks: NetworkSummary[] }>("/networks");
+        setDashboard((current) => (current ? { ...current, networks } : current));
+      } catch (error) {
+        setLoadError(actionError(error));
+      }
+    },
+    [refresh],
+  );
+
+  const loadOperations = useCallback(async () => {
+    try {
+      const result = await apiRequest<{ operations: OperationSnapshot[] }>("/operations");
+      const nextOperations = Array.isArray(result.operations) ? result.operations : [];
+      if (!operationsInitialized.current) {
+        for (const operation of nextOperations) {
+          if (operation.status !== "queued" && operation.status !== "running") {
+            notifiedOperations.current.add(operation.id);
+          }
+        }
+        operationsInitialized.current = true;
+      }
+      setOperations(nextOperations);
+    } catch (error) {
+      setOperationError(actionError(error));
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOperations();
+  }, [loadOperations]);
+
+  const hasActiveOperations = operations.some(
+    ({ status }) => status === "queued" || status === "running",
+  );
+
+  useEffect(() => {
+    if (!hasActiveOperations) return;
+    const interval = window.setInterval(() => void loadOperations(), 1_000);
+    return () => window.clearInterval(interval);
+  }, [hasActiveOperations, loadOperations]);
+
+  useEffect(() => {
+    for (const operation of operations) {
+      if (
+        operation.status === "queued" ||
+        operation.status === "running" ||
+        notifiedOperations.current.has(operation.id)
+      ) {
+        continue;
+      }
+      notifiedOperations.current.add(operation.id);
+      if (operation.status === "succeeded") {
+        toastManager.add({
+          description: operation.successMessage,
+          title: "작업을 완료했습니다.",
+          type: "success",
+        });
+        const resources = new Set<OperationResource>([operation.target.resource]);
+        if (operation.kind === "container.create" || operation.kind === "container.update") {
+          resources.add("image");
+        }
+        if (operation.target.resource === "compose") {
+          resources.add("container");
+          resources.add("image");
+          resources.add("network");
+        }
+        for (const resource of resources) void refreshResource(resource);
+      } else if (operation.status === "failed") {
+        toastManager.add({
+          description: operation.error?.message ?? "작업을 완료하지 못했습니다.",
+          title: "작업이 실패했습니다.",
+          type: "warning",
+        });
+      }
+    }
+  }, [operations, refreshResource, toastManager]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -962,23 +917,39 @@ function AppContent() {
     selectResourcePath(nextPath);
   };
 
-  const mutate = async ({ key, request, success }: MutationOptions) => {
-    setBusy(key);
+  const mutate = async ({ key, request }: MutationOptions) => {
+    setSubmitting(key);
     setOperationError(undefined);
     try {
-      await request();
+      const { operation } = await request();
+      if (!operation) throw new Error("작업 응답을 확인하지 못했습니다.");
+      setOperations((current) => [operation, ...current.filter(({ id }) => id !== operation.id)]);
       toastManager.add({
-        description: success,
-        title: "작업을 완료했습니다.",
-        type: "success",
+        description: operation.title,
+        title: "작업을 시작했습니다.",
+        type: "info",
       });
-      await refresh(true);
     } catch (error) {
       const message = actionError(error);
       setOperationError(message);
       throw error;
     } finally {
-      setBusy(undefined);
+      setSubmitting(undefined);
+    }
+  };
+
+  const cancelOperation = async (id: string) => {
+    try {
+      const { operation } = await apiRequest<{ operation: OperationSnapshot }>(
+        `/operations/${id}`,
+        { method: "DELETE" },
+      );
+      setOperations((current) =>
+        current.map((candidate) => (candidate.id === operation.id ? operation : candidate)),
+      );
+    } catch (error) {
+      setOperationError(actionError(error));
+      await loadOperations();
     }
   };
 
@@ -987,74 +958,83 @@ function AppContent() {
   const runtime = dashboard?.runtime;
   const runtimeStatus = runtime ? runtimePresentation[runtime.phase] : runtimePresentation.error;
   const runtimeRunning = runtime?.phase === "running";
+  const activeOperations = operations.filter(
+    ({ status }) => status === "queued" || status === "running",
+  );
+  const targetBusy = (resource: OperationResource, identifier: string) =>
+    activeOperations.some(
+      ({ target }) =>
+        target.resource === resource && (target.id === identifier || target.name === identifier),
+    );
+  const runtimeBusy = activeOperations.some(({ target }) => target.resource === "runtime");
   const currentRoute = getResourceRoute(resourcePath);
   const pagePrimaryAction =
     !runtimeRunning || resourcePath === "/compose" ? null : resourcePath === "/containers" ? (
-      <RunContainerDialog
-        busy={busy === "container-run"}
-        disabled={Boolean(busy)}
-        onSubmit={async (input) =>
-          mutate({
-            key: "container-run",
-            request: () =>
-              apiRequest("/containers", {
-                body: JSON.stringify(input),
-                method: "POST",
-              }),
-            success: "컨테이너를 실행했습니다.",
-          })
-        }
-      />
+      <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+        <RunContainerDialog
+          disabled={Boolean(submitting) || runtimeBusy}
+          images={dashboard?.images ?? []}
+          networks={dashboard?.networks ?? []}
+          onSubmit={async (spec) =>
+            mutate({
+              key: "container-run",
+              request: () =>
+                apiRequest<OperationAccepted>("/containers", {
+                  body: JSON.stringify(spec),
+                  method: "POST",
+                }),
+            })
+          }
+          volumes={dashboard?.volumes ?? []}
+        />
+      </Suspense>
     ) : resourcePath === "/images" ? (
       <PullImageDialog
-        busy={busy === "image-pull"}
-        disabled={Boolean(busy)}
+        busy={submitting === "image-pull"}
+        disabled={Boolean(submitting) || runtimeBusy}
         onSubmit={async (image) =>
           mutate({
             key: "image-pull",
             request: () =>
-              apiRequest("/images/pull", {
+              apiRequest<OperationAccepted>("/images/pull", {
                 body: JSON.stringify({ image }),
                 method: "POST",
               }),
-            success: `${image} 이미지를 받았습니다.`,
           })
         }
       />
     ) : resourcePath === "/volumes" ? (
       <CreateNamedResourceDialog
-        busy={busy === "volume-create"}
+        busy={submitting === "volume-create"}
         description="local 드라이버를 사용하는 named volume을 만듭니다."
-        disabled={Boolean(busy)}
+        disabled={Boolean(submitting) || runtimeBusy}
         label="볼륨"
         onSubmit={(name) =>
           mutate({
             key: "volume-create",
             request: () =>
-              apiRequest("/volumes", {
+              apiRequest<OperationAccepted>("/volumes", {
                 body: JSON.stringify({ name }),
                 method: "POST",
               }),
-            success: `${name} 볼륨을 만들었습니다.`,
           })
         }
         placeholder="app-data"
       />
     ) : resourcePath === "/networks" ? (
       <CreateNamedResourceDialog
-        busy={busy === "network-create"}
+        busy={submitting === "network-create"}
         description="기본 bridge 드라이버를 사용하는 네트워크를 만듭니다."
-        disabled={Boolean(busy)}
+        disabled={Boolean(submitting) || runtimeBusy}
         label="네트워크"
         onSubmit={(name) =>
           mutate({
             key: "network-create",
             request: () =>
-              apiRequest("/networks", {
+              apiRequest<OperationAccepted>("/networks", {
                 body: JSON.stringify({ name }),
                 method: "POST",
               }),
-            success: `${name} 네트워크를 만들었습니다.`,
           })
         }
         placeholder="app-network"
@@ -1146,6 +1126,9 @@ function AppContent() {
               />
               <span>{runtimeStatus.label}</span>
             </span>
+            <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+              <OperationsDrawer onCancel={cancelOperation} operations={operations} />
+            </Suspense>
             <Button
               aria-label={dark ? "라이트 테마 사용" : "다크 테마 사용"}
               iconOnly
@@ -1167,32 +1150,24 @@ function AppContent() {
             </div>
             <div className="overseer-page-actions">
               <div className="overseer-page-utilities">
-                <Button
-                  disabled={Boolean(busy)}
-                  onClick={() => void refresh()}
-                  size="sm"
-                  variant="outline"
-                >
+                <Button onClick={() => void refresh()} size="sm" variant="outline">
                   <RefreshCw aria-hidden="true" size={14} />
                   새로고침
                 </Button>
                 {runtime?.phase === "missing" || runtime?.phase === "stopped" ? (
                   <Button
-                    disabled={Boolean(busy)}
+                    disabled={runtimeBusy || submitting === "runtime-start"}
                     onClick={() =>
                       void mutate({
                         key: "runtime-start",
-                        request: () => apiRequest("/runtime/start", { method: "POST" }),
-                        success:
-                          runtime.phase === "missing"
-                            ? "Lima 환경을 만들었습니다."
-                            : "Lima 런타임을 시작했습니다.",
+                        request: () =>
+                          apiRequest<OperationAccepted>("/runtime/start", { method: "POST" }),
                       }).catch(() => undefined)
                     }
                     size="sm"
                   >
                     <Play aria-hidden="true" size={14} />
-                    {busy === "runtime-start"
+                    {submitting === "runtime-start" || runtimeBusy
                       ? "준비 중…"
                       : runtime.phase === "missing"
                         ? "Lima 환경 만들기"
@@ -1201,13 +1176,13 @@ function AppContent() {
                 ) : runtimeRunning ? (
                   <ConfirmAction
                     actionLabel="런타임 중지"
-                    disabled={Boolean(busy)}
+                    disabled={runtimeBusy || Boolean(submitting)}
                     description="실행 중인 컨테이너에 접근할 수 없게 됩니다. 컨테이너 데이터는 유지됩니다."
                     onConfirm={() =>
                       void mutate({
                         key: "runtime-stop",
-                        request: () => apiRequest("/runtime/stop", { method: "POST" }),
-                        success: "Lima 런타임을 중지했습니다.",
+                        request: () =>
+                          apiRequest<OperationAccepted>("/runtime/stop", { method: "POST" }),
                       }).catch(() => undefined)
                     }
                     title="Lima 런타임을 중지하시겠습니까?"
@@ -1276,16 +1251,15 @@ function AppContent() {
             <>
               {resourcePath === "/compose" ? (
                 <ComposePage
-                  busy={busy}
+                  isBusy={(project) => runtimeBusy || targetBusy("compose", project.name)}
                   onAction={(project, action) =>
                     mutate({
                       key: `compose-${project.name}-${action}`,
                       request: () =>
-                        apiRequest(
+                        apiRequest<OperationAccepted>(
                           `/compose/projects/${encodeURIComponent(project.name)}/actions/${action}`,
                           { method: "POST" },
                         ),
-                      success: composeActionSuccess(project.name, action),
                     })
                   }
                   onInspect={setComposeDetailProject}
@@ -1303,18 +1277,19 @@ function AppContent() {
               {resourcePath === "/containers" ? (
                 <section className="overseer-panel" id="containers">
                   <ContainerTable
-                    busy={busy}
                     containers={dashboard?.containers ?? []}
+                    isBusy={(container) => runtimeBusy || targetBusy("container", container.id)}
                     onAction={(container, action) =>
                       void mutate({
                         key: `${container.id}-${action}`,
                         request: () =>
-                          apiRequest(`/containers/${container.id}/actions/${action}`, {
-                            method: "POST",
-                          }),
-                        success: `${container.name} 컨테이너 작업을 완료했습니다.`,
+                          apiRequest<OperationAccepted>(
+                            `/containers/${container.id}/actions/${action}`,
+                            { method: "POST" },
+                          ),
                       }).catch(() => undefined)
                     }
+                    onEdit={setEditContainer}
                     onLogs={(container) =>
                       setLogsTarget({
                         description: "최근 300줄을 시간 정보와 함께 표시합니다.",
@@ -1326,8 +1301,9 @@ function AppContent() {
                       void mutate({
                         key: `${container.id}-remove`,
                         request: () =>
-                          apiRequest(`/containers/${container.id}`, { method: "DELETE" }),
-                        success: `${container.name} 컨테이너를 삭제했습니다.`,
+                          apiRequest<OperationAccepted>(`/containers/${container.id}`, {
+                            method: "DELETE",
+                          }),
                       }).catch(() => undefined)
                     }
                   />
@@ -1337,13 +1313,15 @@ function AppContent() {
               {resourcePath === "/images" ? (
                 <section className="overseer-panel" id="images">
                   <ImageTable
-                    busy={busy}
                     images={dashboard?.images ?? []}
+                    isBusy={(image) => runtimeBusy || targetBusy("image", image.id)}
                     onRemove={(image) =>
                       void mutate({
                         key: `${image.id}-remove`,
-                        request: () => apiRequest(`/images/${image.id}`, { method: "DELETE" }),
-                        success: `${image.repository}:${image.tag} 이미지를 삭제했습니다.`,
+                        request: () =>
+                          apiRequest<OperationAccepted>(`/images/${image.id}`, {
+                            method: "DELETE",
+                          }),
                       }).catch(() => undefined)
                     }
                   />
@@ -1352,15 +1330,15 @@ function AppContent() {
 
               {resourcePath === "/volumes" ? (
                 <VolumesPage
-                  busy={busy}
+                  isBusy={(volume) => runtimeBusy || targetBusy("volume", volume.name)}
                   onRemove={(volume) =>
                     void mutate({
                       key: `${volume.name}-remove`,
                       request: () =>
-                        apiRequest(`/volumes/${encodeURIComponent(volume.name)}`, {
-                          method: "DELETE",
-                        }),
-                      success: `${volume.name} 볼륨을 삭제했습니다.`,
+                        apiRequest<OperationAccepted>(
+                          `/volumes/${encodeURIComponent(volume.name)}`,
+                          { method: "DELETE" },
+                        ),
                     }).catch(() => undefined)
                   }
                   volumes={dashboard?.volumes ?? []}
@@ -1369,16 +1347,16 @@ function AppContent() {
 
               {resourcePath === "/networks" ? (
                 <NetworksPage
-                  busy={busy}
+                  isBusy={(network) => runtimeBusy || targetBusy("network", network.name)}
                   networks={dashboard?.networks ?? []}
                   onRemove={(network) =>
                     void mutate({
                       key: `${network.name}-remove`,
                       request: () =>
-                        apiRequest(`/networks/${encodeURIComponent(network.name)}`, {
-                          method: "DELETE",
-                        }),
-                      success: `${network.name} 네트워크를 삭제했습니다.`,
+                        apiRequest<OperationAccepted>(
+                          `/networks/${encodeURIComponent(network.name)}`,
+                          { method: "DELETE" },
+                        ),
                     }).catch(() => undefined)
                   }
                 />
@@ -1391,6 +1369,27 @@ function AppContent() {
         onClose={() => setComposeDetailProject(undefined)}
         project={composeDetailProject}
       />
+      {editContainer ? (
+        <Suspense fallback={null}>
+          <EditContainerDialog
+            container={editContainer}
+            images={dashboard?.images ?? []}
+            networks={dashboard?.networks ?? []}
+            onClose={() => setEditContainer(undefined)}
+            onSubmit={(detail: ContainerDetail, spec: ContainerSpecInput) =>
+              mutate({
+                key: `${detail.id}-update`,
+                request: () =>
+                  apiRequest<OperationAccepted>(`/containers/${detail.id}`, {
+                    body: JSON.stringify({ expectedConfigHash: detail.configHash, spec }),
+                    method: "PATCH",
+                  }),
+              })
+            }
+            volumes={dashboard?.volumes ?? []}
+          />
+        </Suspense>
+      ) : null}
       <LogsDialog onClose={() => setLogsTarget(undefined)} target={logsTarget} />
       <Toast.Portal>
         <Toast.Viewport>
@@ -1510,11 +1509,11 @@ function CreateNamedResourceDialog({
 }
 
 function VolumesPage({
-  busy,
+  isBusy,
   onRemove,
   volumes,
 }: {
-  busy?: string;
+  isBusy: (volume: VolumeSummary) => boolean;
   onRemove: (volume: VolumeSummary) => void;
   volumes: VolumeSummary[];
 }) {
@@ -1569,7 +1568,7 @@ function VolumesPage({
                       <ConfirmAction
                         actionLabel="볼륨 삭제"
                         ariaLabel={`${volume.name} 볼륨 삭제`}
-                        disabled={Boolean(busy)}
+                        disabled={isBusy(volume)}
                         description="볼륨의 데이터가 영구적으로 삭제됩니다. 사용 중인 볼륨은 삭제되지 않습니다."
                         onConfirm={() => onRemove(volume)}
                         iconOnly
@@ -1590,11 +1589,11 @@ function VolumesPage({
 }
 
 function NetworksPage({
-  busy,
+  isBusy,
   networks,
   onRemove,
 }: {
-  busy?: string;
+  isBusy: (network: NetworkSummary) => boolean;
   networks: NetworkSummary[];
   onRemove: (network: NetworkSummary) => void;
 }) {
@@ -1666,7 +1665,7 @@ function NetworksPage({
                       <ConfirmAction
                         actionLabel="네트워크 삭제"
                         ariaLabel={`${network.name} 네트워크 삭제`}
-                        disabled={network.builtIn || Boolean(busy)}
+                        disabled={network.builtIn || isBusy(network)}
                         description="연결된 컨테이너가 있는 네트워크는 삭제되지 않습니다."
                         onConfirm={() => onRemove(network)}
                         iconOnly
@@ -1687,15 +1686,17 @@ function NetworksPage({
 }
 
 function ContainerTable({
-  busy,
   containers,
+  isBusy,
   onAction,
+  onEdit,
   onLogs,
   onRemove,
 }: {
-  busy?: string;
   containers: ContainerSummary[];
+  isBusy: (container: ContainerSummary) => boolean;
   onAction: (container: ContainerSummary, action: "restart" | "start" | "stop") => void;
+  onEdit: (container: ContainerSummary) => void;
   onLogs: (container: ContainerSummary) => void;
   onRemove: (container: ContainerSummary) => void;
 }) {
@@ -1738,7 +1739,7 @@ function ContainerTable({
           ) : (
             containers.map((container) => {
               const running = container.state === "running";
-              const rowBusy = busy?.startsWith(`${container.id}-`) ?? false;
+              const rowBusy = isBusy(container);
               return (
                 <Table.Row key={container.id}>
                   <Table.Cell>
@@ -1770,6 +1771,15 @@ function ContainerTable({
                   </Table.Cell>
                   <Table.Cell>
                     <div className="overseer-row-actions">
+                      <Button
+                        disabled={rowBusy}
+                        onClick={() => onEdit(container)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <Settings2 aria-hidden="true" size={14} />
+                        설정
+                      </Button>
                       {running ? (
                         <>
                           <Button
@@ -1839,12 +1849,12 @@ function ContainerTable({
 }
 
 function ImageTable({
-  busy,
   images,
+  isBusy,
   onRemove,
 }: {
-  busy?: string;
   images: ImageSummary[];
+  isBusy: (image: ImageSummary) => boolean;
   onRemove: (image: ImageSummary) => void;
 }) {
   return (
@@ -1905,7 +1915,7 @@ function ImageTable({
                     <ConfirmAction
                       actionLabel="이미지 삭제"
                       ariaLabel={`${image.repository} 이미지 삭제`}
-                      disabled={Boolean(busy)}
+                      disabled={isBusy(image)}
                       description="이 이미지를 사용하는 컨테이너가 있으면 삭제되지 않습니다."
                       onConfirm={() => onRemove(image)}
                       iconOnly

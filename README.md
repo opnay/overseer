@@ -24,7 +24,7 @@ pnpm dev
 리소스는 독립 URL에서 관리합니다.
 
 - `/compose`: 실행 이력이 있는 프로젝트·서비스 상태, 실행·중지·재시작·로그·내리기
-- `/containers`: 실행·중지·재시작·로그·삭제
+- `/containers`: 확장 설정으로 실행·수정, 시작·중지·재시작·로그·삭제
 - `/images`: pull·삭제
 - `/volumes`: 생성·삭제
 - `/networks`: 생성·삭제, 기본 네트워크 보호
@@ -42,10 +42,27 @@ docker ps
 pnpm check
 ```
 
+## 컨테이너 설정
+
+컨테이너 실행 시 복수 포트, 환경 변수, 명령 인수, named volume, 네트워크, 재시작 정책, CPU·메모리, hostname과 label을 지정할 수 있습니다. 자동 호스트 포트는 `127.0.0.1`에만 바인딩합니다.
+
+이름·재시작 정책·CPU·메모리는 Docker에서 직접 수정합니다. 그 밖의 설정은 Overseer가 만든 컨테이너에 한해 기존 컨테이너를 임시 보존하고 교체하며, 새 컨테이너 생성이나 시작에 실패하면 기존 이름과 실행 상태를 복구합니다. Compose나 외부에서 만든 컨테이너는 알 수 없는 설정의 손실을 막기 위해 교체하지 않습니다.
+
+## 비동기 작업
+
+모든 생성·수정·동작·삭제 요청은 `202 Accepted`와 작업 ID를 즉시 반환합니다. 상단의 **작업** Drawer에서 `queued`, `running`, `succeeded`, `failed`, `cancelled` 상태와 최근 Docker 출력을 확인할 수 있고, 대기 중인 작업만 취소할 수 있습니다. 작업 기록은 현재 서버 프로세스에서 최근 100개를 유지하며 서버 재시작 시 초기화됩니다.
+
+- `GET /api/operations`: 최근 작업 목록
+- `GET /api/operations/:id`: 단일 작업 상태
+- `DELETE /api/operations/:id`: 대기 작업 취소
+- `GET /api/containers/:id`: 수정용 설정과 config hash
+- `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
+
 ## 안전 경계
 
 - 서버는 `127.0.0.1`에만 바인딩합니다.
 - 컨테이너 포트는 기본적으로 `127.0.0.1`의 빈 포트에 게시합니다.
+- 컨테이너 설정은 named volume만 연결하며 bind mount, privileged, device와 host network를 노출하지 않습니다.
 - 브라우저 요청으로 임의 셸 명령을 실행할 수 없습니다.
 - Compose 작업은 Docker가 보고한 프로젝트명과 구성 파일만 사용합니다.
 - Compose 프로젝트 내리기는 named volume과 구성 파일을 삭제하지 않습니다.

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "../src/server/api.ts";
+import { emptyContainerSpec } from "../src/shared/container-spec.ts";
 import type { RuntimeController } from "../src/server/lima-docker-runtime.ts";
 
 function createController(): RuntimeController {
@@ -8,6 +9,14 @@ function createController(): RuntimeController {
     containerAction: vi.fn(async () => undefined),
     createNetwork: vi.fn(async () => undefined),
     createVolume: vi.fn(async () => undefined),
+    getContainer: vi.fn(async (id) => ({
+      configHash: "a".repeat(64),
+      id,
+      replacementBlockers: [],
+      running: true,
+      spec: { ...emptyContainerSpec(), image: "nginx:alpine", name: "web" },
+    })),
+    getContainers: vi.fn(async () => []),
     getComposeProject: vi.fn(async (name) => ({
       configFiles: ["/workspace/compose.yaml"],
       name,
@@ -29,6 +38,9 @@ function createController(): RuntimeController {
       },
       volumes: [],
     })),
+    getImages: vi.fn(async () => []),
+    getNetworks: vi.fn(async () => []),
+    getVolumes: vi.fn(async () => []),
     pullImage: vi.fn(async () => undefined),
     removeContainer: vi.fn(async () => undefined),
     removeImage: vi.fn(async () => undefined),
@@ -45,6 +57,7 @@ function createController(): RuntimeController {
       message: "중지됨",
       phase: "stopped" as const,
     })),
+    updateContainer: vi.fn(async () => undefined),
   };
 }
 
@@ -69,25 +82,45 @@ describe("API boundary", () => {
   it("validates and forwards a typed run request", async () => {
     const controller = createController();
     const app = createApi(controller);
+    const spec = {
+      ...emptyContainerSpec(),
+      image: "nginx:alpine",
+      name: "web",
+      ports: [{ containerPort: 80, protocol: "tcp" as const }],
+    };
     const response = await app.request("/containers", {
-      body: JSON.stringify({ containerPort: 80, image: "nginx:alpine", name: "web" }),
+      body: JSON.stringify(spec),
       headers: { ...localHeaders, "content-type": "application/json" },
       method: "POST",
     });
 
-    expect(response.status).toBe(201);
-    expect(controller.runContainer).toHaveBeenCalledWith({
-      containerPort: 80,
-      image: "nginx:alpine",
-      name: "web",
-    });
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(controller.runContainer).toHaveBeenCalled());
+    expect(controller.runContainer).toHaveBeenCalledWith(spec, expect.any(Object));
   });
 
   it("rejects command injection input before the runtime", async () => {
     const controller = createController();
     const app = createApi(controller);
     const response = await app.request("/containers", {
-      body: JSON.stringify({ image: "nginx; whoami" }),
+      body: JSON.stringify({ ...emptyContainerSpec(), image: "nginx; whoami" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(controller.runContainer).not.toHaveBeenCalled();
+  });
+
+  it("rejects wrong container spec value types instead of dropping them", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/containers", {
+      body: JSON.stringify({
+        ...emptyContainerSpec(),
+        image: "nginx:alpine",
+        resources: { cpus: "0.5" },
+      }),
       headers: { ...localHeaders, "content-type": "application/json" },
       method: "POST",
     });
@@ -115,8 +148,9 @@ describe("API boundary", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(201);
-    expect(controller.createVolume).toHaveBeenCalledWith({ name: "app-data" });
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(controller.createVolume).toHaveBeenCalled());
+    expect(controller.createVolume).toHaveBeenCalledWith({ name: "app-data" }, expect.any(Object));
   });
 
   it("lists Compose projects and forwards project actions", async () => {
@@ -140,7 +174,57 @@ describe("API boundary", () => {
       headers: localHeaders,
       method: "POST",
     });
-    expect(actionResponse.status).toBe(200);
-    expect(controller.composeProjectAction).toHaveBeenCalledWith("demo-stack", "stop");
+    expect(actionResponse.status).toBe(202);
+    await vi.waitFor(() => expect(controller.composeProjectAction).toHaveBeenCalled());
+    expect(controller.composeProjectAction).toHaveBeenCalledWith(
+      "demo-stack",
+      "stop",
+      expect.any(Object),
+    );
+  });
+
+  it("accepts a long operation before the Docker promise settles", async () => {
+    const controller = createController();
+    let finish!: () => void;
+    vi.mocked(controller.runContainer).mockImplementation(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const app = createApi(controller);
+    const response = await app.request("/containers", {
+      body: JSON.stringify({ ...emptyContainerSpec(), image: "alpine:3.23", name: "async" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    const value = (await response.json()) as { operation: { id: string; status: string } };
+    expect(value.operation.id).toBeTruthy();
+    expect(["queued", "running"]).toContain(value.operation.status);
+    await vi.waitFor(() => expect(controller.runContainer).toHaveBeenCalled());
+    finish();
+  });
+
+  it("returns container detail and accepts a typed async update", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const detailResponse = await app.request("/containers/container-id", { headers: localHeaders });
+    expect(detailResponse.status).toBe(200);
+    await expect(detailResponse.json()).resolves.toMatchObject({
+      container: { configHash: "a".repeat(64), id: "container-id" },
+    });
+
+    const spec = { ...emptyContainerSpec(), image: "nginx:alpine", name: "renamed" };
+    const updateResponse = await app.request("/containers/container-id", {
+      body: JSON.stringify({ expectedConfigHash: "a".repeat(64), spec }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+    expect(updateResponse.status).toBe(202);
+    await vi.waitFor(() => expect(controller.updateContainer).toHaveBeenCalled());
+    expect(controller.updateContainer).toHaveBeenCalledWith(
+      "container-id",
+      { expectedConfigHash: "a".repeat(64), spec },
+      expect.any(Object),
+    );
   });
 });
