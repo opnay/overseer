@@ -367,7 +367,7 @@
   }
 
   .overseer-table-empty-state {
-    padding: 0;
+    padding: var(--city-space-4) 0;
     border: 0;
     border-radius: 0;
     background: transparent;
