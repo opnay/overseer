@@ -81,6 +81,54 @@ describe("App", () => {
     expect(screen.getByText(/Docker 29\.7\.2/)).toBeInTheDocument();
   });
 
+  it("renders container logs in the terminal viewer", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [
+        {
+          id: "container-id",
+          image: "nginx:alpine",
+          name: "web",
+          ports: "127.0.0.1:8080->80/tcp",
+          state: "running",
+          status: "Up 1 minute",
+        },
+      ],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "Lima와 Docker가 정상적으로 실행 중입니다.",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("/api/containers/container-id/logs")
+          ? jsonResponse({ logs: "first line\nsecond line" })
+          : jsonResponse(dashboard),
+      ),
+    );
+
+    render(<App />);
+    await screen.findByRole("row", { name: /web/ });
+    await user.click(screen.getByRole("button", { name: "web 로그 보기" }));
+
+    expect(await screen.findByRole("region", { name: "web 로그 터미널" })).toBeInTheDocument();
+    expect(screen.getByText("tail -n 300")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "로그 복사" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "자동 갱신 켜짐" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(await screen.findByText("first line")).toBeInTheDocument();
+    expect(document.querySelectorAll(".overseer-terminal-lines li")).toHaveLength(2);
+  });
+
   it("navigates to the images page from the sidebar", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {

@@ -12,10 +12,13 @@ import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
 import { Toast } from "@opnay/city-ds-react/toast";
 import {
+  ArrowDownToLine,
   Box,
   Boxes,
+  Check,
   CircleStop,
   Container,
+  Copy,
   Database,
   Download,
   FileText,
@@ -26,16 +29,19 @@ import {
   Network as NetworkIcon,
   Play,
   Plus,
+  Radio,
   RefreshCw,
   RotateCcw,
   Square,
   Sun,
+  Terminal,
   Trash2,
   X,
 } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
   type MouseEvent,
@@ -414,24 +420,58 @@ function LogsDialog({ onClose, target }: { onClose: () => void; target?: LogsTar
   const [logs, setLogs] = useState("");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const [following, setFollowing] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
-    if (!target) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const result = await apiRequest<{ logs: string }>(target.requestPath);
-      setLogs(result.logs || "출력된 로그가 없습니다.");
-    } catch (loadError) {
-      setError(actionError(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }, [target]);
+  const load = useCallback(
+    async (quiet = false) => {
+      if (!target) return;
+      if (!quiet) setLoading(true);
+      setError(undefined);
+      try {
+        const result = await apiRequest<{ logs: string }>(target.requestPath);
+        setLogs(result.logs);
+      } catch (loadError) {
+        setError(actionError(loadError));
+      } finally {
+        if (!quiet) setLoading(false);
+      }
+    },
+    [target],
+  );
 
   useEffect(() => {
+    setLogs("");
+    setError(undefined);
+    setFollowing(true);
+    setCopied(false);
     if (target) void load();
   }, [target, load]);
+
+  useEffect(() => {
+    if (!target || !following) return;
+    const interval = window.setInterval(() => void load(true), 3_000);
+    return () => window.clearInterval(interval);
+  }, [following, load, target]);
+
+  useEffect(() => {
+    if (!following || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [following, logs]);
+
+  const copyLogs = async () => {
+    if (!logs || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(logs);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1_500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const lines = logs ? logs.split(/\r?\n/) : [];
 
   return (
     <Dialog.Root onOpenChange={(open) => !open && onClose()} open={Boolean(target)}>
@@ -444,22 +484,95 @@ function LogsDialog({ onClose, target }: { onClose: () => void; target?: LogsTar
                 <Dialog.Title>{target?.title}</Dialog.Title>
                 <Dialog.Description>{target?.description}</Dialog.Description>
               </div>
-              <Button disabled={loading} onClick={() => void load()} size="sm" variant="outline">
-                <RefreshCw aria-hidden="true" size={14} />
-                새로고침
-              </Button>
             </Dialog.Header>
-            <Dialog.Body>
+            <Dialog.Body className="overseer-log-stack">
               {error ? (
                 <Alert.Root tone="destructive">
                   <Alert.Title level={3}>로그를 불러오지 못했습니다.</Alert.Title>
                   <Alert.Description>{error}</Alert.Description>
                 </Alert.Root>
-              ) : (
-                <pre aria-busy={loading} className="overseer-logs" tabIndex={0}>
-                  {loading ? "로그를 불러오는 중…" : logs}
-                </pre>
-              )}
+              ) : null}
+              <section aria-label={`${target?.title} 터미널`} className="overseer-terminal">
+                <div className="overseer-terminal-toolbar">
+                  <div className="overseer-terminal-context">
+                    <Terminal aria-hidden="true" size={14} />
+                    <code>tail -n 300</code>
+                    <span aria-live="polite">{loading ? "동기화 중…" : `${lines.length}줄`}</span>
+                  </div>
+                  <div className="overseer-terminal-actions">
+                    <Button
+                      aria-label={copied ? "로그 복사 완료" : "로그 복사"}
+                      disabled={!logs}
+                      iconOnly
+                      onClick={() => void copyLogs()}
+                      size="xsm"
+                      variant="ghost"
+                    >
+                      {copied ? (
+                        <Check aria-hidden="true" size={13} />
+                      ) : (
+                        <Copy aria-hidden="true" size={13} />
+                      )}
+                    </Button>
+                    <Button
+                      aria-label="맨 아래로 이동"
+                      disabled={!logs}
+                      iconOnly
+                      onClick={() => {
+                        if (scrollRef.current) {
+                          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                        }
+                      }}
+                      size="xsm"
+                      variant="ghost"
+                    >
+                      <ArrowDownToLine aria-hidden="true" size={13} />
+                    </Button>
+                    <Button
+                      aria-label={following ? "자동 갱신 켜짐" : "자동 갱신 꺼짐"}
+                      aria-pressed={following}
+                      iconOnly
+                      onClick={() => setFollowing((value) => !value)}
+                      size="xsm"
+                      variant="ghost"
+                    >
+                      <Radio aria-hidden="true" size={13} />
+                    </Button>
+                    <Button
+                      aria-label="로그 새로고침"
+                      disabled={loading}
+                      iconOnly
+                      onClick={() => void load()}
+                      size="xsm"
+                      variant="ghost"
+                    >
+                      <RefreshCw aria-hidden="true" size={13} />
+                    </Button>
+                  </div>
+                </div>
+                <div
+                  aria-busy={loading}
+                  className="overseer-terminal-scroll"
+                  ref={scrollRef}
+                  tabIndex={0}
+                >
+                  {loading && lines.length === 0 ? (
+                    <div className="overseer-terminal-empty" role="status">
+                      로그를 불러오는 중…
+                    </div>
+                  ) : lines.length === 0 ? (
+                    <div className="overseer-terminal-empty">출력된 로그가 없습니다.</div>
+                  ) : (
+                    <ol className="overseer-terminal-lines">
+                      {lines.map((line, index) => (
+                        <li key={`${index}-${line.slice(0, 24)}`}>
+                          <code>{line || " "}</code>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              </section>
             </Dialog.Body>
             <Dialog.Footer>
               <Dialog.Close render={<Button variant="outline" />}>닫기</Dialog.Close>

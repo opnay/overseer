@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import type {
   ComposeProjectAction,
   ComposeProjectDetail,
@@ -191,7 +192,9 @@ export class LimaDockerRuntime implements RuntimeController {
 
   async getContainerLogs(id: string): Promise<string> {
     const result = await this.docker(["logs", "--tail", "300", "--timestamps", id]);
-    return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    return stripVTControlCharacters(
+      [result.stdout, result.stderr].filter(Boolean).join("\n"),
+    ).trim();
   }
 
   async getComposeProjects(): Promise<ComposeProjectSummary[]> {
@@ -233,7 +236,9 @@ export class LimaDockerRuntime implements RuntimeController {
       "--timestamps",
       "--no-color",
     ]);
-    return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    return stripVTControlCharacters(
+      [result.stdout, result.stderr].filter(Boolean).join("\n"),
+    ).trim();
   }
 
   async composeProjectAction(name: string, action: ComposeProjectAction): Promise<void> {

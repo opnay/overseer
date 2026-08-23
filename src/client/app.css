@@ -464,26 +464,129 @@
     height: 16rem;
   }
 
-  .overseer-logs {
-    min-height: 20rem;
-    max-height: min(60vh, 42rem);
-    margin: 0;
-    padding: var(--city-space-4);
-    overflow: auto;
-    border: 1px solid var(--city-color-border);
+  .overseer-log-stack {
+    display: grid;
+    gap: var(--city-space-4);
+  }
+
+  .overseer-terminal {
+    overflow: hidden;
+    border: 1px solid var(--city-palette-neutral-700);
     border-radius: var(--city-radius-sm);
-    background: var(--city-color-background);
-    color: var(--city-color-foreground);
+    background: var(--city-palette-neutral-950);
+    color: var(--city-palette-neutral-100);
+    box-shadow: inset 0 1px 0 var(--city-palette-neutral-800);
+  }
+
+  .overseer-terminal-toolbar,
+  .overseer-terminal-context,
+  .overseer-terminal-actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .overseer-terminal-toolbar {
+    min-height: var(--city-control-lg);
+    padding: var(--city-space-1-5) var(--city-space-2);
+    border-bottom: 1px solid var(--city-palette-neutral-800);
+    background: var(--city-palette-neutral-900);
+    justify-content: space-between;
+    gap: var(--city-space-3);
+    flex-wrap: wrap;
+  }
+
+  .overseer-terminal-context {
+    min-width: 0;
+    color: var(--city-palette-neutral-400);
+    gap: var(--city-space-2);
+  }
+
+  .overseer-terminal-context code {
+    color: var(--city-palette-neutral-200);
+    font-family: var(--city-font-family-mono);
+    font-size: var(--city-font-size-xs);
+    white-space: nowrap;
+  }
+
+  .overseer-terminal-context span {
+    font-size: var(--city-font-size-2xs);
+    white-space: nowrap;
+  }
+
+  .overseer-terminal-actions {
+    margin-left: auto;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-terminal .city-button {
+    color: var(--city-palette-neutral-100);
+  }
+
+  .overseer-terminal .city-button:hover,
+  .overseer-terminal .city-button[aria-pressed="true"] {
+    background: var(--city-palette-neutral-800);
+  }
+
+  .overseer-terminal-scroll {
+    min-height: 22rem;
+    max-height: min(60vh, 42rem);
+    overflow: auto;
+    background: var(--city-palette-neutral-950);
+    color: var(--city-palette-neutral-100);
     font-family: var(--city-font-family-mono);
     font-size: var(--city-font-size-xs);
     line-height: var(--city-line-height-sm);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    scrollbar-color: var(--city-palette-neutral-600) var(--city-palette-neutral-900);
   }
 
-  .overseer-logs:focus-visible {
-    outline: 2px solid var(--city-color-ring);
-    outline-offset: 2px;
+  .overseer-terminal-lines {
+    min-width: max-content;
+    margin: 0;
+    padding: var(--city-space-2) 0;
+    list-style: none;
+    counter-reset: log-line;
+  }
+
+  .overseer-terminal-lines li {
+    display: grid;
+    min-height: var(--city-line-height-sm);
+    grid-template-columns: 3.5rem minmax(max-content, 1fr);
+    counter-increment: log-line;
+  }
+
+  .overseer-terminal-lines li::before {
+    padding: 0 var(--city-space-3) 0 var(--city-space-2);
+    border-right: 1px solid var(--city-palette-neutral-800);
+    color: var(--city-palette-neutral-600);
+    content: counter(log-line);
+    text-align: right;
+    user-select: none;
+  }
+
+  .overseer-terminal-lines li:hover {
+    background: var(--city-palette-neutral-900);
+  }
+
+  .overseer-terminal-lines code {
+    padding: 0 var(--city-space-3);
+    color: inherit;
+    font: inherit;
+    tab-size: 4;
+    white-space: pre;
+  }
+
+  .overseer-terminal-empty {
+    display: grid;
+    min-height: 22rem;
+    padding: var(--city-space-6);
+    color: var(--city-palette-neutral-500);
+    place-items: center;
+    text-align: center;
+  }
+
+  .overseer-terminal-scroll:focus-visible {
+    outline: 2px solid var(--city-palette-neutral-400);
+    outline-offset: -2px;
   }
 
   @media (max-width: 52rem) {
@@ -580,6 +683,17 @@
 
     .overseer-primary-action > * {
       width: 100%;
+    }
+
+    .overseer-terminal-actions {
+      width: 100%;
+      margin-left: 0;
+      justify-content: flex-end;
+    }
+
+    .overseer-terminal-scroll,
+    .overseer-terminal-empty {
+      min-height: 18rem;
     }
   }
 
