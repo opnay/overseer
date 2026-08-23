@@ -215,6 +215,8 @@ export interface OperationSnapshot {
   id: string;
   kind: OperationKind;
   output: string[];
+  retriedFromId?: string;
+  retryable: boolean;
   startedAt?: string;
   status: OperationStatus;
   step: string;

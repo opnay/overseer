@@ -345,6 +345,10 @@
     min-width: 46rem;
   }
 
+  .overseer-table--operations {
+    min-width: 64rem;
+  }
+
   .overseer-table-caption {
     position: absolute;
     width: 1px;
@@ -408,6 +412,29 @@
 
   .overseer-table--compose-projects .overseer-actions-column {
     width: 17rem;
+  }
+
+  .overseer-table--operations .overseer-actions-column {
+    width: 11rem;
+  }
+
+  .overseer-operation-summary {
+    display: grid;
+    max-width: 26rem;
+    gap: var(--city-space-0-5);
+  }
+
+  .overseer-operation-summary span {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-operation-summary .overseer-operation-summary-error {
+    overflow: hidden;
+    color: var(--city-color-destructive);
+    font-size: var(--city-font-size-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .overseer-compose-status-stack {
@@ -564,6 +591,38 @@
     line-height: var(--city-line-height-sm);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  .overseer-operation-output--detail {
+    max-height: min(50vh, 28rem);
+  }
+
+  .overseer-operation-detail {
+    display: grid;
+    gap: var(--city-space-4);
+  }
+
+  .overseer-operation-detail-meta {
+    display: grid;
+    margin: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--city-space-3);
+  }
+
+  .overseer-operation-detail-meta > div {
+    display: grid;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-operation-detail-meta dt {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-operation-detail-meta dd {
+    margin: 0;
+    font-size: var(--city-font-size-sm);
+    font-weight: var(--city-font-weight-medium);
   }
 
   .overseer-loading-brand {
@@ -791,7 +850,7 @@
       display: grid;
       width: 100%;
       margin-left: 0;
-      grid-template-columns: repeat(5, minmax(3rem, 1fr));
+      grid-template-columns: repeat(6, minmax(3rem, 1fr));
     }
 
     .overseer-sidebar nav a {
@@ -834,6 +893,7 @@
     }
 
     .overseer-form-section-grid,
+    .overseer-operation-detail-meta,
     .overseer-repeatable-row,
     .overseer-port-row,
     .overseer-volume-row {

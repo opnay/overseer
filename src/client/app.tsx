@@ -24,6 +24,7 @@ import {
   FileText,
   HardDrive,
   Layers3,
+  ListChecks,
   ListTree,
   Moon,
   Network as NetworkIcon,
@@ -89,6 +90,9 @@ const RemoteComposeActions = lazy(() =>
     default: module.RemoteComposeActions,
   })),
 );
+const OperationsPage = lazy(() =>
+  import("./operations-page.tsx").then((module) => ({ default: module.OperationsPage })),
+);
 
 const runtimePresentation: Record<
   RuntimePhase,
@@ -112,7 +116,7 @@ function LoadingScreen() {
       <aside aria-hidden="true" className="overseer-sidebar overseer-loading-sidebar">
         <Skeleton className="overseer-loading-brand" />
         <div className="overseer-loading-nav">
-          {[0, 1, 2, 3, 4].map((item) => (
+          {[0, 1, 2, 3, 4, 5].map((item) => (
             <Skeleton className="overseer-loading-nav-item" key={item} />
           ))}
         </div>
@@ -1031,6 +1035,15 @@ function AppContent() {
     }
   };
 
+  const retryOperation = (id: string) =>
+    mutate({
+      key: `operation-retry-${id}`,
+      request: () =>
+        apiRequest<OperationAccepted>(`/operations/${encodeURIComponent(id)}/retry`, {
+          method: "POST",
+        }),
+    });
+
   if (!dashboard && !loadError) return <LoadingScreen />;
 
   const runtime = dashboard?.runtime;
@@ -1190,6 +1203,14 @@ function AppContent() {
             <NetworkIcon aria-hidden="true" size={16} />
             네트워크
           </a>
+          <a
+            aria-current={resourcePath === "/operations" ? "page" : undefined}
+            href="/operations"
+            onClick={(event) => handleResourceLink(event, "/operations")}
+          >
+            <ListChecks aria-hidden="true" size={16} />
+            작업
+          </a>
         </nav>
         <div className="overseer-sidebar-status">
           <span aria-hidden="true" data-state={runtimeStatus.tone} />
@@ -1220,7 +1241,12 @@ function AppContent() {
               <span>{runtimeStatus.label}</span>
             </span>
             <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
-              <OperationsDrawer onCancel={cancelOperation} operations={operations} />
+              <OperationsDrawer
+                onCancel={cancelOperation}
+                onRetry={retryOperation}
+                onViewAll={() => selectResourcePath("/operations")}
+                operations={operations}
+              />
             </Suspense>
             <Button
               aria-label={dark ? "라이트 테마 사용" : "다크 테마 사용"}
@@ -1243,7 +1269,13 @@ function AppContent() {
             </div>
             <div className="overseer-page-actions">
               <div className="overseer-page-utilities">
-                <Button onClick={() => void refresh()} size="sm" variant="outline">
+                <Button
+                  onClick={() =>
+                    void (resourcePath === "/operations" ? loadOperations() : refresh())
+                  }
+                  size="sm"
+                  variant="outline"
+                >
                   <RefreshCw aria-hidden="true" size={14} />
                   새로고침
                 </Button>
@@ -1320,7 +1352,7 @@ function AppContent() {
             </Alert.Root>
           ) : null}
 
-          {dashboard && !runtimeRunning ? (
+          {dashboard && !runtimeRunning && resourcePath !== "/operations" ? (
             <section className="overseer-runtime-empty">
               <EmptyState.Root>
                 <EmptyState.Icon>
@@ -1340,7 +1372,19 @@ function AppContent() {
             </section>
           ) : null}
 
-          {dashboard && runtimeRunning ? (
+          {resourcePath === "/operations" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <OperationsPage
+                busyId={
+                  submitting?.startsWith("operation-retry-") ? submitting.slice(16) : undefined
+                }
+                onRetry={retryOperation}
+                operations={operations}
+              />
+            </Suspense>
+          ) : null}
+
+          {dashboard && runtimeRunning && resourcePath !== "/operations" ? (
             <>
               {resourcePath === "/compose" ? (
                 <ComposePage

@@ -2,19 +2,24 @@ import { randomUUID } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
 import type { OperationKind, OperationSnapshot, OperationTarget } from "../shared/contracts.ts";
 import { ExpectedError } from "./errors.ts";
+import type {
+  OperationHistoryStore,
+  OperationRetryRequest,
+  PersistedOperation,
+} from "./operation-history.ts";
 
 const MAX_OUTPUT_LINES = 100;
-const MAX_OPERATIONS = 100;
 
 export interface OperationProgress {
   output(value: string): void;
   step(value: string): void;
 }
 
-interface EnqueueOperation {
+export interface EnqueueOperation {
   exclusive?: boolean;
   kind: OperationKind;
   locks: string[];
+  retryRequest?: OperationRetryRequest;
   run(progress: OperationProgress): Promise<void>;
   successMessage: string;
   target: OperationTarget;
@@ -24,15 +29,23 @@ interface EnqueueOperation {
 interface StoredOperation extends OperationSnapshot {
   exclusive: boolean;
   locks: string[];
-  run(progress: OperationProgress): Promise<void>;
+  retryRequest?: OperationRetryRequest;
+  run?: (progress: OperationProgress) => Promise<void>;
 }
 
 function clone(operation: StoredOperation): OperationSnapshot {
-  const { exclusive: _exclusive, locks: _locks, run: _run, ...snapshot } = operation;
+  const {
+    exclusive: _exclusive,
+    locks: _locks,
+    retryRequest: _retryRequest,
+    run: _run,
+    ...snapshot
+  } = operation;
   return {
     ...snapshot,
     error: snapshot.error ? { ...snapshot.error } : undefined,
     output: [...snapshot.output],
+    retryable: snapshot.status === "failed" && Boolean(operation.retryRequest),
     target: { ...snapshot.target },
   };
 }
@@ -43,6 +56,7 @@ function operationError(error: unknown): { code: string; message: string } {
 }
 
 export class OperationQueue {
+  private readonly history?: OperationHistoryStore;
   private readonly maxConcurrent: number;
   private readonly operations = new Map<string, StoredOperation>();
   private readonly pending: string[] = [];
@@ -50,8 +64,23 @@ export class OperationQueue {
   private running = 0;
   private exclusiveRunning = false;
 
-  constructor(maxConcurrent = 3) {
+  constructor(maxConcurrent = 3, history?: OperationHistoryStore) {
     this.maxConcurrent = maxConcurrent;
+    this.history = history;
+    if (history) {
+      history.recoverInterrupted();
+      for (const record of history.list()) {
+        this.operations.set(record.snapshot.id, {
+          ...record.snapshot,
+          error: record.snapshot.error ? { ...record.snapshot.error } : undefined,
+          exclusive: false,
+          locks: [],
+          output: [...record.snapshot.output],
+          ...(record.retryRequest ? { retryRequest: record.retryRequest } : {}),
+          target: { ...record.snapshot.target },
+        });
+      }
+    }
   }
 
   enqueue(input: EnqueueOperation): OperationSnapshot {
@@ -63,6 +92,8 @@ export class OperationQueue {
       kind: input.kind,
       locks: [...new Set(input.locks)],
       output: [],
+      ...(input.retryRequest ? { retryRequest: structuredClone(input.retryRequest) } : {}),
+      retryable: false,
       run: input.run,
       status: "queued",
       step: "대기 중",
@@ -70,9 +101,9 @@ export class OperationQueue {
       target: input.target,
       title: input.title,
     };
+    this.persist(operation, true);
     this.operations.set(id, operation);
     this.pending.push(id);
-    this.trim();
     queueMicrotask(() => this.drain());
     return clone(operation);
   }
@@ -88,6 +119,30 @@ export class OperationQueue {
     return operation ? clone(operation) : undefined;
   }
 
+  getRetryRequest(id: string): OperationRetryRequest {
+    const operation = this.operations.get(id);
+    if (!operation) throw new ExpectedError("operation_not_found", "작업을 찾을 수 없습니다.", 404);
+    if (operation.status !== "failed") {
+      throw new ExpectedError(
+        "operation_not_failed",
+        "실패한 작업만 다시 시도할 수 있습니다.",
+        409,
+      );
+    }
+    if (!operation.retryRequest) {
+      throw new ExpectedError("operation_not_retryable", "이 작업은 다시 시도할 수 없습니다.", 409);
+    }
+    return structuredClone(operation.retryRequest);
+  }
+
+  markRetried(id: string, sourceId: string): OperationSnapshot {
+    const operation = this.operations.get(id);
+    if (!operation) throw new ExpectedError("operation_not_found", "작업을 찾을 수 없습니다.", 404);
+    operation.retriedFromId = sourceId;
+    this.persist(operation);
+    return clone(operation);
+  }
+
   cancel(id: string): OperationSnapshot {
     const operation = this.operations.get(id);
     if (!operation) throw new ExpectedError("operation_not_found", "작업을 찾을 수 없습니다.", 404);
@@ -99,6 +154,7 @@ export class OperationQueue {
     operation.status = "cancelled";
     operation.step = "취소됨";
     operation.finishedAt = new Date().toISOString();
+    this.persist(operation);
     queueMicrotask(() => this.drain());
     return clone(operation);
   }
@@ -134,6 +190,7 @@ export class OperationQueue {
     operation.status = "running";
     operation.step = "시작 중";
     operation.startedAt = new Date().toISOString();
+    this.persist(operation);
     this.running += 1;
     this.exclusiveRunning = operation.exclusive;
     operation.locks.forEach((lock) => this.runningLocks.add(lock));
@@ -151,11 +208,28 @@ export class OperationQueue {
       },
       step: (value) => {
         operation.step = value;
+        this.persist(operation);
       },
     };
 
-    void operation
-      .run(progress)
+    const run = operation.run;
+    if (!run) {
+      operation.status = "failed";
+      operation.step = "실행 정보를 찾을 수 없음";
+      operation.error = {
+        code: "operation_runner_missing",
+        message: "작업 실행 정보를 찾을 수 없습니다. 다시 시도하십시오.",
+      };
+      operation.finishedAt = new Date().toISOString();
+      this.running -= 1;
+      this.exclusiveRunning = false;
+      operation.locks.forEach((lock) => this.runningLocks.delete(lock));
+      this.persist(operation);
+      this.drain();
+      return;
+    }
+
+    void run(progress)
       .then(() => {
         operation.status = "succeeded";
         operation.step = "완료됨";
@@ -171,20 +245,22 @@ export class OperationQueue {
         this.running -= 1;
         this.exclusiveRunning = false;
         operation.locks.forEach((lock) => this.runningLocks.delete(lock));
-        this.trim();
+        this.persist(operation);
         this.drain();
       });
   }
 
-  private trim(): void {
-    if (this.operations.size <= MAX_OPERATIONS) return;
-    const terminal = [...this.operations.values()]
-      .filter(({ status }) => status !== "queued" && status !== "running")
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-    while (this.operations.size > MAX_OPERATIONS) {
-      const operation = terminal.shift();
-      if (!operation) return;
-      this.operations.delete(operation.id);
+  private persist(operation: StoredOperation, required = false): void {
+    if (!this.history) return;
+    const record: PersistedOperation = {
+      ...(operation.retryRequest ? { retryRequest: structuredClone(operation.retryRequest) } : {}),
+      snapshot: clone(operation),
+    };
+    try {
+      this.history.save(record);
+    } catch (error) {
+      if (required) throw error;
+      console.error("작업 히스토리를 저장하지 못했습니다.", error);
     }
   }
 }

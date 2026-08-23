@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "../src/server/api.ts";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
+import { ExpectedError } from "../src/server/errors.ts";
 import type { RuntimeController } from "../src/server/lima-docker-runtime.ts";
 
 function createController(): RuntimeController {
@@ -277,6 +278,43 @@ describe("API boundary", () => {
     expect(controller.updateContainer).toHaveBeenCalledWith(
       "container-id",
       { expectedConfigHash: "a".repeat(64), spec },
+      expect.any(Object),
+    );
+  });
+
+  it("revalidates and creates a new operation when a failed action is retried", async () => {
+    const controller = createController();
+    vi.mocked(controller.createVolume)
+      .mockRejectedValueOnce(new ExpectedError("docker_command_failed", "첫 시도 실패", 503))
+      .mockResolvedValueOnce(undefined);
+    const app = createApi(controller);
+    const firstResponse = await app.request("/volumes", {
+      body: JSON.stringify({ name: "retry-data" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+    const first = (await firstResponse.json()) as { operation: { id: string } };
+    await vi.waitFor(async () => {
+      const response = await app.request(`/operations/${first.operation.id}`, {
+        headers: localHeaders,
+      });
+      const value = (await response.json()) as { operation: { status: string } };
+      expect(value.operation.status).toBe("failed");
+    });
+
+    const retryResponse = await app.request(`/operations/${first.operation.id}/retry`, {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(retryResponse.status).toBe(202);
+    const retry = (await retryResponse.json()) as {
+      operation: { id: string; retriedFromId?: string };
+    };
+    expect(retry.operation.id).not.toBe(first.operation.id);
+    expect(retry.operation.retriedFromId).toBe(first.operation.id);
+    await vi.waitFor(() => expect(controller.createVolume).toHaveBeenCalledTimes(2));
+    expect(controller.createVolume).toHaveBeenLastCalledWith(
+      { name: "retry-data" },
       expect.any(Object),
     );
   });

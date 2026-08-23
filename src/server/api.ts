@@ -1,9 +1,18 @@
-import { Hono } from "hono";
-import type { PullImageInput, RegisterRemoteComposeInput } from "../shared/contracts.ts";
+import { Hono, type Context } from "hono";
+import type {
+  OperationAccepted,
+  PullImageInput,
+  RegisterRemoteComposeInput,
+} from "../shared/contracts.ts";
 import { parseContainerSpec, parseUpdateContainerInput } from "./container-spec.ts";
 import { ExpectedError } from "./errors.ts";
 import { LimaDockerRuntime, type RuntimeController } from "./lima-docker-runtime.ts";
-import { OperationQueue } from "./operations.ts";
+import {
+  SqliteOperationHistoryStore,
+  type OperationRetryMethod,
+  type OperationRetryRequest,
+} from "./operation-history.ts";
+import { OperationQueue, type EnqueueOperation } from "./operations.ts";
 import { deriveRemoteComposeProjectName } from "./remote-compose.ts";
 import { requireLocalRequest } from "./security.ts";
 import {
@@ -27,8 +36,27 @@ async function readObject(context: { req: { json: () => Promise<unknown> } }) {
   }
 }
 
+function retryRequest(context: Context, body?: unknown): OperationRetryRequest {
+  const method = context.req.method;
+  if (method !== "DELETE" && method !== "PATCH" && method !== "POST") {
+    throw new Error(`unsupported operation retry method: ${method}`);
+  }
+  const pathname = new URL(context.req.url).pathname;
+  const path = pathname.startsWith("/api/") ? pathname.slice("/api".length) : pathname;
+  return {
+    ...(body === undefined ? {} : { body }),
+    method: method as OperationRetryMethod,
+    path,
+  };
+}
+
 export function createApi(controller: RuntimeController, operations = new OperationQueue()) {
   const app = new Hono();
+  const enqueue = (
+    context: Context,
+    input: Omit<EnqueueOperation, "retryRequest">,
+    body?: unknown,
+  ) => operations.enqueue({ ...input, retryRequest: retryRequest(context, body) });
 
   app.use("*", requireLocalRequest);
 
@@ -44,9 +72,24 @@ export function createApi(controller: RuntimeController, operations = new Operat
   app.delete("/operations/:id", (context) =>
     context.json({ operation: operations.cancel(context.req.param("id")) }),
   );
+  app.post("/operations/:id/retry", async (context) => {
+    const sourceId = context.req.param("id");
+    const request = operations.getRetryRequest(sourceId);
+    const headers = new Headers({ host: "localhost", origin: "http://localhost" });
+    const body = request.body === undefined ? undefined : JSON.stringify(request.body);
+    if (body !== undefined) headers.set("content-type", "application/json");
+    const response = await app.request(request.path, {
+      ...(body === undefined ? {} : { body }),
+      headers,
+      method: request.method,
+    });
+    if (response.status !== 202) return response;
+    const value = (await response.json()) as OperationAccepted;
+    return context.json({ operation: operations.markRetried(value.operation.id, sourceId) }, 202);
+  });
 
   app.post("/runtime/start", (context) => {
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       exclusive: true,
       kind: "runtime.start",
       locks: [],
@@ -59,7 +102,7 @@ export function createApi(controller: RuntimeController, operations = new Operat
   });
 
   app.post("/runtime/stop", (context) => {
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       exclusive: true,
       kind: "runtime.stop",
       locks: [],
@@ -82,19 +125,23 @@ export function createApi(controller: RuntimeController, operations = new Operat
       url: requireComposeUrl(body.url),
     };
     const name = input.name ?? deriveRemoteComposeProjectName(input.url);
-    const operation = operations.enqueue({
-      kind: "compose.remote.register",
-      locks: [`compose:${name}`],
-      run: (progress) => controller.registerRemoteCompose(input, progress),
-      successMessage: `${name} URL Compose 프로젝트를 등록했습니다.`,
-      target: { name, resource: "compose" },
-      title: "URL Compose 등록",
-    });
+    const operation = enqueue(
+      context,
+      {
+        kind: "compose.remote.register",
+        locks: [`compose:${name}`],
+        run: (progress) => controller.registerRemoteCompose(input, progress),
+        successMessage: `${name} URL Compose 프로젝트를 등록했습니다.`,
+        target: { name, resource: "compose" },
+        title: "URL Compose 등록",
+      },
+      input,
+    );
     return context.json({ operation }, 202);
   });
   app.post("/compose/projects/:name/remote/check", (context) => {
     const name = requireResourceName(context.req.param("name"));
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: "compose.remote.check",
       locks: [`compose:${name}`],
       run: (progress) => controller.checkRemoteComposeUpdate(name, progress),
@@ -106,7 +153,7 @@ export function createApi(controller: RuntimeController, operations = new Operat
   });
   app.post("/compose/projects/:name/remote/update", (context) => {
     const name = requireResourceName(context.req.param("name"));
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: "compose.remote.update",
       locks: [`compose:${name}`],
       run: (progress) => controller.applyRemoteComposeUpdate(name, progress),
@@ -118,7 +165,7 @@ export function createApi(controller: RuntimeController, operations = new Operat
   });
   app.delete("/compose/projects/:name/remote", (context) => {
     const name = requireResourceName(context.req.param("name"));
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: "compose.remote.remove",
       locks: [`compose:${name}`],
       run: (progress) => controller.removeRemoteCompose(name, progress),
@@ -145,7 +192,7 @@ export function createApi(controller: RuntimeController, operations = new Operat
     if (action !== "up" && action !== "stop" && action !== "restart" && action !== "down") {
       throw new ExpectedError("invalid_action", "지원하지 않는 Compose 작업입니다.", 400);
     }
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: `compose.${action}`,
       locks: [`compose:${name}`],
       run: (progress) => controller.composeProjectAction(name, action, progress),
@@ -162,18 +209,22 @@ export function createApi(controller: RuntimeController, operations = new Operat
   app.post("/containers", async (context) => {
     const spec = parseContainerSpec(await readObject(context));
     const name = spec.name ?? spec.image;
-    const operation = operations.enqueue({
-      kind: "container.create",
-      locks: [
-        ...(spec.name ? [`container-name:${spec.name}`] : []),
-        ...spec.networks.map((network) => `network:${network}`),
-        ...spec.volumes.map(({ volume }) => `volume:${volume}`),
-      ],
-      run: (progress) => controller.runContainer(spec, progress),
-      successMessage: `${name} 컨테이너를 실행했습니다.`,
-      target: { name, resource: "container" },
-      title: "컨테이너 실행",
-    });
+    const operation = enqueue(
+      context,
+      {
+        kind: "container.create",
+        locks: [
+          ...(spec.name ? [`container-name:${spec.name}`] : []),
+          ...spec.networks.map((network) => `network:${network}`),
+          ...spec.volumes.map(({ volume }) => `volume:${volume}`),
+        ],
+        run: (progress) => controller.runContainer(spec, progress),
+        successMessage: `${name} 컨테이너를 실행했습니다.`,
+        target: { name, resource: "container" },
+        title: "컨테이너 실행",
+      },
+      spec,
+    );
     return context.json({ operation }, 202);
   });
   app.get("/containers/:id", async (context) =>
@@ -185,19 +236,23 @@ export function createApi(controller: RuntimeController, operations = new Operat
     const id = requireContainerReference(context.req.param("id"));
     const input = parseUpdateContainerInput(await readObject(context));
     const name = input.spec.name ?? id;
-    const operation = operations.enqueue({
-      kind: "container.update",
-      locks: [
-        `container:${id}`,
-        `container-name:${name}`,
-        ...input.spec.networks.map((network) => `network:${network}`),
-        ...input.spec.volumes.map(({ volume }) => `volume:${volume}`),
-      ],
-      run: (progress) => controller.updateContainer(id, input, progress),
-      successMessage: `${name} 컨테이너 설정을 변경했습니다.`,
-      target: { id, name, resource: "container" },
-      title: "컨테이너 설정 변경",
-    });
+    const operation = enqueue(
+      context,
+      {
+        kind: "container.update",
+        locks: [
+          `container:${id}`,
+          `container-name:${name}`,
+          ...input.spec.networks.map((network) => `network:${network}`),
+          ...input.spec.volumes.map(({ volume }) => `volume:${volume}`),
+        ],
+        run: (progress) => controller.updateContainer(id, input, progress),
+        successMessage: `${name} 컨테이너 설정을 변경했습니다.`,
+        target: { id, name, resource: "container" },
+        title: "컨테이너 설정 변경",
+      },
+      input,
+    );
     return context.json({ operation }, 202);
   });
   app.post("/containers/:id/actions/:action", (context) => {
@@ -206,7 +261,7 @@ export function createApi(controller: RuntimeController, operations = new Operat
     if (action !== "start" && action !== "stop" && action !== "restart") {
       throw new ExpectedError("invalid_action", "지원하지 않는 컨테이너 작업입니다.", 400);
     }
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: `container.${action}`,
       locks: [`container:${id}`],
       run: (progress) => controller.containerAction(id, action, progress),
@@ -218,7 +273,7 @@ export function createApi(controller: RuntimeController, operations = new Operat
   });
   app.delete("/containers/:id", (context) => {
     const id = requireContainerReference(context.req.param("id"));
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: "container.remove",
       locks: [`container:${id}`],
       run: (progress) => controller.removeContainer(id, progress),
@@ -239,19 +294,23 @@ export function createApi(controller: RuntimeController, operations = new Operat
   app.post("/images/pull", async (context) => {
     const body = await readObject(context);
     const input: PullImageInput = { image: requireImageReference(body.image) };
-    const operation = operations.enqueue({
-      kind: "image.pull",
-      locks: [`image:${input.image}`],
-      run: (progress) => controller.pullImage(input, progress),
-      successMessage: `${input.image} 이미지를 받았습니다.`,
-      target: { name: input.image, resource: "image" },
-      title: "이미지 받기",
-    });
+    const operation = enqueue(
+      context,
+      {
+        kind: "image.pull",
+        locks: [`image:${input.image}`],
+        run: (progress) => controller.pullImage(input, progress),
+        successMessage: `${input.image} 이미지를 받았습니다.`,
+        target: { name: input.image, resource: "image" },
+        title: "이미지 받기",
+      },
+      input,
+    );
     return context.json({ operation }, 202);
   });
   app.delete("/images/:id", (context) => {
     const id = requireContainerReference(context.req.param("id"));
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: "image.remove",
       locks: [`image:${id}`],
       run: (progress) => controller.removeImage(id, progress),
@@ -266,19 +325,23 @@ export function createApi(controller: RuntimeController, operations = new Operat
   app.post("/volumes", async (context) => {
     const body = await readObject(context);
     const name = requireResourceName(body.name);
-    const operation = operations.enqueue({
-      kind: "volume.create",
-      locks: [`volume:${name}`],
-      run: (progress) => controller.createVolume({ name }, progress),
-      successMessage: `${name} 볼륨을 만들었습니다.`,
-      target: { name, resource: "volume" },
-      title: "볼륨 만들기",
-    });
+    const operation = enqueue(
+      context,
+      {
+        kind: "volume.create",
+        locks: [`volume:${name}`],
+        run: (progress) => controller.createVolume({ name }, progress),
+        successMessage: `${name} 볼륨을 만들었습니다.`,
+        target: { name, resource: "volume" },
+        title: "볼륨 만들기",
+      },
+      { name },
+    );
     return context.json({ operation }, 202);
   });
   app.delete("/volumes/:name", (context) => {
     const name = requireResourceName(context.req.param("name"));
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: "volume.remove",
       locks: [`volume:${name}`],
       run: (progress) => controller.removeVolume(name, progress),
@@ -295,19 +358,23 @@ export function createApi(controller: RuntimeController, operations = new Operat
   app.post("/networks", async (context) => {
     const body = await readObject(context);
     const name = requireResourceName(body.name);
-    const operation = operations.enqueue({
-      kind: "network.create",
-      locks: [`network:${name}`],
-      run: (progress) => controller.createNetwork({ name }, progress),
-      successMessage: `${name} 네트워크를 만들었습니다.`,
-      target: { name, resource: "network" },
-      title: "네트워크 만들기",
-    });
+    const operation = enqueue(
+      context,
+      {
+        kind: "network.create",
+        locks: [`network:${name}`],
+        run: (progress) => controller.createNetwork({ name }, progress),
+        successMessage: `${name} 네트워크를 만들었습니다.`,
+        target: { name, resource: "network" },
+        title: "네트워크 만들기",
+      },
+      { name },
+    );
     return context.json({ operation }, 202);
   });
   app.delete("/networks/:name", (context) => {
     const name = requireResourceName(context.req.param("name"));
-    const operation = operations.enqueue({
+    const operation = enqueue(context, {
       kind: "network.remove",
       locks: [`network:${name}`],
       run: (progress) => controller.removeNetwork(name, progress),
@@ -332,5 +399,9 @@ export function createApi(controller: RuntimeController, operations = new Operat
   return app;
 }
 
-export const api = createApi(new LimaDockerRuntime());
+export function createPersistentApi() {
+  const history = new SqliteOperationHistoryStore();
+  return createApi(new LimaDockerRuntime(), new OperationQueue(3, history));
+}
+
 export type ApiType = ReturnType<typeof createApi>;

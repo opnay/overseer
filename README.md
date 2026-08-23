@@ -28,6 +28,7 @@ pnpm dev
 - `/images`: pull·삭제
 - `/volumes`: 생성·삭제
 - `/networks`: 생성·삭제, 기본 네트워크 보호
+- `/operations`: Overseer에서 요청한 전체 작업 히스토리·상세 출력·실패 작업 재시도
 
 첫 화면에서 **Lima 환경 만들기**를 실행하면 `overseer` 인스턴스를 공식 `template:docker`로 생성합니다. Docker CLI에서 같은 런타임을 사용하려면 다음 환경 변수를 설정하십시오.
 
@@ -50,11 +51,12 @@ pnpm check
 
 ## 비동기 작업
 
-모든 생성·수정·동작·삭제 요청은 `202 Accepted`와 작업 ID를 즉시 반환합니다. 상단의 **작업** Drawer에서 `queued`, `running`, `succeeded`, `failed`, `cancelled` 상태와 최근 Docker 출력을 확인할 수 있고, 대기 중인 작업만 취소할 수 있습니다. 작업 기록은 현재 서버 프로세스에서 최근 100개를 유지하며 서버 재시작 시 초기화됩니다.
+모든 생성·수정·동작·삭제 요청은 `202 Accepted`와 작업 ID를 즉시 반환합니다. 상단의 **작업** Drawer에는 대기·진행·실패 작업만 표시하고, `/operations` 페이지에는 Overseer에서 요청한 모든 작업과 최근 Docker 출력을 SQLite에 계속 저장합니다. 서버 재시작 당시 대기·실행 중이던 작업은 중단 실패로 기록하며, 실패 작업은 저장된 원래 요청을 다시 검증해 새 작업으로 재시도할 수 있습니다. Docker CLI에서 직접 실행한 작업은 기록하지 않습니다.
 
-- `GET /api/operations`: 최근 작업 목록
+- `GET /api/operations`: 전체 작업 히스토리
 - `GET /api/operations/:id`: 단일 작업 상태
 - `DELETE /api/operations/:id`: 대기 작업 취소
+- `POST /api/operations/:id/retry`: 실패 작업을 새 작업으로 재접수
 - `GET /api/containers/:id`: 수정용 설정과 config hash
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
 

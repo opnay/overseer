@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../src/client/app.tsx";
@@ -21,6 +21,7 @@ function operation(
     id: "operation-id",
     kind: "volume.create",
     output: [],
+    retryable: false,
     status,
     step: status === "succeeded" ? "완료됨" : "대기 중",
     successMessage: "app-data 볼륨을 만들었습니다.",
@@ -39,7 +40,7 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(5);
+    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(6);
     expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
   });
@@ -157,7 +158,7 @@ describe("App", () => {
     expect(document.querySelector("[data-base-ui-inert]")).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "작업" }));
     expect(await screen.findByRole("heading", { name: "작업" })).toBeInTheDocument();
-    expect(screen.getByText("작업 기록이 없습니다.")).toBeInTheDocument();
+    expect(screen.getByText("확인할 작업이 없습니다.")).toBeInTheDocument();
   });
 
   it("keeps immutable fields read-only for an unmanaged container", async () => {
@@ -254,7 +255,101 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "작업" })).toBeInTheDocument();
     expect(screen.getByText("볼륨 만들기")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "대기 작업 취소" }));
-    expect(await screen.findByText("취소됨")).toBeInTheDocument();
+    expect(await screen.findByText("확인할 작업이 없습니다.")).toBeInTheDocument();
+  });
+
+  it("separates attention work in the drawer from persistent history and retries failures", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const history = [
+      operation("queued", { id: "queued-id", title: "대기 작업" }),
+      operation("running", { id: "running-id", step: "실행 중", title: "진행 작업" }),
+      operation("failed", {
+        error: { code: "docker_command_failed", message: "포트 충돌" },
+        finishedAt: "2026-08-23T10:00:03.000Z",
+        id: "failed-id",
+        output: ["docker output"],
+        retryable: true,
+        step: "실패함",
+        title: "실패 작업",
+      }),
+      operation("succeeded", {
+        finishedAt: "2026-08-23T10:00:02.000Z",
+        id: "succeeded-id",
+        title: "완료 작업",
+      }),
+      operation("cancelled", {
+        finishedAt: "2026-08-23T10:00:01.000Z",
+        id: "cancelled-id",
+        step: "취소됨",
+        title: "취소 작업",
+      }),
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/operations/failed-id/retry") && init?.method === "POST") {
+        return jsonResponse(
+          {
+            operation: operation("queued", {
+              id: "retry-id",
+              retriedFromId: "failed-id",
+              title: "실패 작업",
+            }),
+          },
+          202,
+        );
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: history });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/containers");
+    render(<App />);
+    await screen.findByText("컨테이너가 없습니다.");
+
+    await user.click(screen.getByRole("button", { name: /^작업/ }));
+    const drawer = await screen.findByRole("dialog", { name: "작업" });
+    expect(within(drawer).getByText("대기 작업")).toBeInTheDocument();
+    expect(within(drawer).getByText("진행 작업")).toBeInTheDocument();
+    expect(within(drawer).getByText("실패 작업")).toBeInTheDocument();
+    expect(within(drawer).queryByText("완료 작업")).not.toBeInTheDocument();
+    expect(within(drawer).queryByText("취소 작업")).not.toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole("button", { name: "전체 작업 보기" }));
+    expect(await screen.findByRole("heading", { name: "작업", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "전체 작업 히스토리" })).toBeInTheDocument();
+    expect(screen.getByText("완료 작업")).toBeInTheDocument();
+    expect(screen.getByText("취소 작업")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/operations");
+
+    const failedRow = screen.getByRole("row", { name: /실패 작업/ });
+    await user.click(within(failedRow).getByRole("button", { name: "상세" }));
+    const detail = await screen.findByRole("dialog", { name: "실패 작업" });
+    expect(detail).toHaveTextContent("포트 충돌");
+    expect(detail).toHaveTextContent("docker output");
+    await user.click(within(detail).getByRole("button", { name: "닫기" }));
+
+    await user.click(within(failedRow).getByRole("button", { name: "재시도" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/operations/failed-id/retry") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
   });
 
   it("renders container logs in the terminal viewer", async () => {

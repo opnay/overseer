@@ -29,6 +29,12 @@ export const RESOURCE_ROUTES = [
     label: "네트워크",
     path: "/networks",
   },
+  {
+    description: "Overseer에서 요청한 모든 Docker 작업과 결과를 확인합니다.",
+    eyebrow: "OPERATION HISTORY",
+    label: "작업",
+    path: "/operations",
+  },
 ] as const;
 
 export type ResourcePath = (typeof RESOURCE_ROUTES)[number]["path"];

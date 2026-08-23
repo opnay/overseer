@@ -3,28 +3,10 @@ import { Button } from "@opnay/city-ds-react/button";
 import { Drawer } from "@opnay/city-ds-react/drawer";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Progress } from "@opnay/city-ds-react/progress";
-import { Activity, ListChecks } from "lucide-react";
+import { Activity, ListChecks, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { OperationSnapshot, OperationStatus } from "../shared/contracts.ts";
-
-const statusPresentation: Record<
-  OperationStatus,
-  { label: string; tone: "destructive" | "neutral" | "success" | "warning" }
-> = {
-  cancelled: { label: "취소됨", tone: "neutral" },
-  failed: { label: "실패", tone: "destructive" },
-  queued: { label: "대기 중", tone: "warning" },
-  running: { label: "진행 중", tone: "warning" },
-  succeeded: { label: "완료", tone: "success" },
-};
-
-function elapsed(operation: OperationSnapshot): string {
-  const start = new Date(operation.startedAt ?? operation.createdAt).getTime();
-  const end = operation.finishedAt ? new Date(operation.finishedAt).getTime() : Date.now();
-  const seconds = Math.max(0, Math.round((end - start) / 1_000));
-  if (seconds < 60) return `${seconds}초`;
-  return `${Math.floor(seconds / 60)}분 ${seconds % 60}초`;
-}
+import type { OperationSnapshot } from "../shared/contracts.ts";
+import { operationElapsed, operationStatusPresentation } from "./operation-presentation.ts";
 
 function useCompactDrawer(): boolean {
   const [compact, setCompact] = useState(false);
@@ -40,21 +22,32 @@ function useCompactDrawer(): boolean {
 
 export function OperationsDrawer({
   onCancel,
+  onRetry,
+  onViewAll,
   operations,
 }: {
   onCancel: (id: string) => Promise<void>;
+  onRetry: (id: string) => Promise<void>;
+  onViewAll: () => void;
   operations: OperationSnapshot[];
 }) {
   const compact = useCompactDrawer();
   const side = compact ? "bottom" : "right";
-  const active = operations.filter(({ status }) => status === "queued" || status === "running");
+  const visible = operations.filter(
+    ({ status }) => status === "queued" || status === "running" || status === "failed",
+  );
+  const hasFailures = visible.some(({ status }) => status === "failed");
 
   return (
     <Drawer.Root modal={compact} swipeDirection={compact ? "down" : "right"}>
       <Drawer.Trigger render={<Button size="sm" variant="outline" />}>
         <Activity aria-hidden="true" size={14} />
         작업
-        {active.length > 0 ? <Badge size="sm">{active.length}</Badge> : null}
+        {visible.length > 0 ? (
+          <Badge size="sm" tone={hasFailures ? "destructive" : "warning"}>
+            {visible.length}
+          </Badge>
+        ) : null}
       </Drawer.Trigger>
       <Drawer.Portal>
         {compact ? <Drawer.Backdrop /> : null}
@@ -64,7 +57,7 @@ export function OperationsDrawer({
               <div>
                 <Drawer.Title>작업</Drawer.Title>
                 <Drawer.Description>
-                  진행 중인 Docker 작업과 최근 결과입니다. 서버를 재시작하면 기록이 초기화됩니다.
+                  대기·진행 중인 작업과 실패한 작업만 표시합니다.
                 </Drawer.Description>
               </div>
               {!compact ? (
@@ -72,20 +65,20 @@ export function OperationsDrawer({
               ) : null}
             </Drawer.Header>
             <Drawer.Body>
-              {operations.length === 0 ? (
+              {visible.length === 0 ? (
                 <EmptyState.Root density="compact">
                   <EmptyState.Icon>
                     <ListChecks aria-hidden="true" />
                   </EmptyState.Icon>
-                  <EmptyState.Title level={2}>작업 기록이 없습니다.</EmptyState.Title>
+                  <EmptyState.Title level={2}>확인할 작업이 없습니다.</EmptyState.Title>
                   <EmptyState.Description>
-                    생성·수정·삭제 작업을 시작하면 여기에 표시됩니다.
+                    완료·취소 기록은 작업 페이지에서 확인할 수 있습니다.
                   </EmptyState.Description>
                 </EmptyState.Root>
               ) : (
                 <ol className="overseer-operation-list">
-                  {operations.map((operation) => {
-                    const presentation = statusPresentation[operation.status];
+                  {visible.map((operation) => {
+                    const presentation = operationStatusPresentation[operation.status];
                     const activeOperation =
                       operation.status === "queued" || operation.status === "running";
                     return (
@@ -112,7 +105,7 @@ export function OperationsDrawer({
                         ) : null}
                         <div className="overseer-operation-meta">
                           <span>{operation.step}</span>
-                          <span>{elapsed(operation)}</span>
+                          <span>{operationElapsed(operation)}</span>
                         </div>
                         {operation.error ? (
                           <p className="overseer-operation-error">{operation.error.message}</p>
@@ -131,17 +124,33 @@ export function OperationsDrawer({
                             대기 작업 취소
                           </Button>
                         ) : null}
+                        {operation.retryable ? (
+                          <Button
+                            onClick={() => void onRetry(operation.id).catch(() => undefined)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <RotateCcw aria-hidden="true" size={14} />
+                            재시도
+                          </Button>
+                        ) : null}
                       </li>
                     );
                   })}
                 </ol>
               )}
             </Drawer.Body>
-            {compact ? (
-              <Drawer.Footer>
+            <Drawer.Footer>
+              <Drawer.Close
+                onClick={onViewAll}
+                render={<Button variant={compact ? "primary" : "outline"} />}
+              >
+                전체 작업 보기
+              </Drawer.Close>
+              {compact ? (
                 <Drawer.Close render={<Button variant="outline" />}>닫기</Drawer.Close>
-              </Drawer.Footer>
-            ) : null}
+              ) : null}
+            </Drawer.Footer>
           </Drawer.Popup>
         </Drawer.Viewport>
       </Drawer.Portal>

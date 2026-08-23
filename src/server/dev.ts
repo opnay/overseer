@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import type { ViteDevServer } from "vite";
-import { api } from "./api.ts";
+import { createPersistentApi } from "./api.ts";
 
 const app = new Hono<{ Bindings: { vite: ViteDevServer } }>();
+const api = createPersistentApi();
 
 app.route("/api", api);
 app.get("*", async (context) => {
