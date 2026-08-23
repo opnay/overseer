@@ -1369,27 +1369,25 @@ function AppContent() {
         onClose={() => setComposeDetailProject(undefined)}
         project={composeDetailProject}
       />
-      {editContainer ? (
-        <Suspense fallback={null}>
-          <EditContainerDialog
-            container={editContainer}
-            images={dashboard?.images ?? []}
-            networks={dashboard?.networks ?? []}
-            onClose={() => setEditContainer(undefined)}
-            onSubmit={(detail: ContainerDetail, spec: ContainerSpecInput) =>
-              mutate({
-                key: `${detail.id}-update`,
-                request: () =>
-                  apiRequest<OperationAccepted>(`/containers/${detail.id}`, {
-                    body: JSON.stringify({ expectedConfigHash: detail.configHash, spec }),
-                    method: "PATCH",
-                  }),
-              })
-            }
-            volumes={dashboard?.volumes ?? []}
-          />
-        </Suspense>
-      ) : null}
+      <Suspense fallback={null}>
+        <EditContainerDialog
+          container={editContainer}
+          images={dashboard?.images ?? []}
+          networks={dashboard?.networks ?? []}
+          onClose={() => setEditContainer(undefined)}
+          onSubmit={(detail: ContainerDetail, spec: ContainerSpecInput) =>
+            mutate({
+              key: `${detail.id}-update`,
+              request: () =>
+                apiRequest<OperationAccepted>(`/containers/${detail.id}`, {
+                  body: JSON.stringify({ expectedConfigHash: detail.configHash, spec }),
+                  method: "PATCH",
+                }),
+            })
+          }
+          volumes={dashboard?.volumes ?? []}
+        />
+      </Suspense>
       <LogsDialog onClose={() => setLogsTarget(undefined)} target={logsTarget} />
       <Toast.Portal>
         <Toast.Viewport>

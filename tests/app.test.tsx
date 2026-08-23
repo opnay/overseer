@@ -147,6 +147,13 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "환경 변수 추가" }));
     expect(screen.getByRole("textbox", { name: "환경 변수 이름 1" })).toBeInTheDocument();
     expect(screen.getByLabelText("CPU 수")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "취소" }));
+    expect(screen.queryByRole("dialog", { name: "컨테이너 실행" })).not.toBeInTheDocument();
+    expect(document.querySelector("[data-base-ui-inert]")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "작업" }));
+    expect(await screen.findByRole("heading", { name: "작업" })).toBeInTheDocument();
+    expect(screen.getByText("작업 기록이 없습니다.")).toBeInTheDocument();
   });
 
   it("keeps immutable fields read-only for an unmanaged container", async () => {
@@ -200,6 +207,11 @@ describe("App", () => {
     expect(screen.getByText("일부 설정은 읽기 전용입니다.")).toBeInTheDocument();
     expect(screen.getByLabelText("이미지")).toBeDisabled();
     expect(screen.getByLabelText("이름")).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "취소" }));
+    expect(screen.queryByRole("dialog", { name: "web 설정" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "작업" }));
+    expect(await screen.findByRole("heading", { name: "작업" })).toBeInTheDocument();
   });
 
   it("shows queued work in the City DS operation drawer and cancels it", async () => {

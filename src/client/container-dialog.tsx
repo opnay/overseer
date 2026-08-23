@@ -749,9 +749,7 @@ function ContainerForm({
             </Fieldset.Root>
           </Dialog.Body>
           <Dialog.Footer>
-            <Button onClick={onClose} type="button" variant="outline">
-              취소
-            </Button>
+            <Dialog.Close render={<Button type="button" variant="outline" />}>취소</Dialog.Close>
             <Button disabled={submitting} type="submit">
               {submitting ? "요청 중…" : detail ? "설정 저장" : "컨테이너 실행"}
             </Button>
@@ -759,32 +757,33 @@ function ContainerForm({
         </form>
       </Dialog.Popup>
 
-      <AlertDialog.Root
-        onOpenChange={(open) => !open && setPendingReplacement(undefined)}
-        open={Boolean(pendingReplacement)}
-      >
-        <AlertDialog.Portal>
-          <AlertDialog.Backdrop />
-          <AlertDialog.Viewport>
-            <AlertDialog.Popup>
-              <AlertDialog.Title>컨테이너를 다시 만드시겠습니까?</AlertDialog.Title>
-              <AlertDialog.Description>
-                기존 쓰기 레이어는 삭제되며 named volume은 유지됩니다. 실패하면 기존 컨테이너를 자동
-                복구합니다.
-              </AlertDialog.Description>
-              <div className="overseer-dialog-actions">
-                <AlertDialog.Cancel render={<Button variant="outline" />}>취소</AlertDialog.Cancel>
-                <AlertDialog.Action
-                  onClick={() => pendingReplacement && void submitSpec(pendingReplacement)}
-                  render={<Button />}
-                >
-                  다시 만들어 저장
-                </AlertDialog.Action>
-              </div>
-            </AlertDialog.Popup>
-          </AlertDialog.Viewport>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {pendingReplacement ? (
+        <AlertDialog.Root onOpenChange={(open) => !open && setPendingReplacement(undefined)} open>
+          <AlertDialog.Portal>
+            <AlertDialog.Backdrop />
+            <AlertDialog.Viewport>
+              <AlertDialog.Popup>
+                <AlertDialog.Title>컨테이너를 다시 만드시겠습니까?</AlertDialog.Title>
+                <AlertDialog.Description>
+                  기존 쓰기 레이어는 삭제되며 named volume은 유지됩니다. 실패하면 기존 컨테이너를
+                  자동 복구합니다.
+                </AlertDialog.Description>
+                <div className="overseer-dialog-actions">
+                  <AlertDialog.Cancel render={<Button variant="outline" />}>
+                    취소
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action
+                    onClick={() => void submitSpec(pendingReplacement)}
+                    render={<Button />}
+                  >
+                    다시 만들어 저장
+                  </AlertDialog.Action>
+                </div>
+              </AlertDialog.Popup>
+            </AlertDialog.Viewport>
+          </AlertDialog.Portal>
+        </AlertDialog.Root>
+      ) : null}
     </>
   );
 }
@@ -812,17 +811,16 @@ export function RunContainerDialog({
       <Dialog.Portal>
         <Dialog.Backdrop />
         <Dialog.Viewport>
-          {open ? (
-            <ContainerForm
-              images={images}
-              initialSpec={emptyContainerSpec()}
-              networks={networks}
-              onClose={() => setOpen(false)}
-              onSubmit={onSubmit}
-              title="컨테이너 실행"
-              volumes={volumes}
-            />
-          ) : null}
+          <ContainerForm
+            images={images}
+            initialSpec={emptyContainerSpec()}
+            key={String(open)}
+            networks={networks}
+            onClose={() => setOpen(false)}
+            onSubmit={onSubmit}
+            title="컨테이너 실행"
+            volumes={volumes}
+          />
         </Dialog.Viewport>
       </Dialog.Portal>
     </Dialog.Root>
@@ -878,9 +876,7 @@ export function EditContainerDialog({
               <Dialog.Title>설정을 불러오지 못했습니다.</Dialog.Title>
               <Dialog.Description>{error}</Dialog.Description>
               <Dialog.Footer>
-                <Button onClick={onClose} variant="outline">
-                  닫기
-                </Button>
+                <Dialog.Close render={<Button variant="outline" />}>닫기</Dialog.Close>
               </Dialog.Footer>
             </Dialog.Popup>
           ) : detail ? (
