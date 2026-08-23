@@ -64,6 +64,7 @@ Compose 페이지에서 GitHub Raw처럼 인증 없이 파일 내용이 열리�
 
 - URL 등록은 비동기 작업이며 Docker Compose JSON config로 검증합니다.
 - **업데이트 확인**은 조건부 HTTP 요청과 content hash를 사용하고, 변경된 파일은 사용자가 **업데이트 적용**을 실행할 때 현재 파일이 됩니다.
+- URL Compose는 Lima 내부의 전용 작업 디렉터리에서 실행하므로 `./data` 같은 상대 bind mount는 VM 디스크에 유지됩니다.
 - `build.context`가 포함된 파일도 등록·업데이트할 수 있지만 로컬 소스가 없으므로 **Compose 적용**은 명시적으로 실패합니다.
 - 인증 정보가 없는 HTTPS만 허용하며 리다이렉트마다 DNS를 확인해 loopback·사설·link-local 주소를 거부합니다.
 - 응답 시간은 15초, 리다이렉트는 3회, 파일 크기는 1MiB로 제한합니다.

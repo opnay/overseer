@@ -225,4 +225,111 @@ describe("LimaDockerRuntime remote Compose", () => {
     );
     expect(dockerCommands.some((args) => args.includes("up"))).toBe(false);
   });
+
+  it("runs a remote project from a writable Lima guest directory", async () => {
+    const commands: Array<{ args: readonly string[]; executable: string }> = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      commands.push({ args, executable });
+      if (executable === "limactl" && args[0] === "list") {
+        return { stderr: "", stdout: limaRow };
+      }
+      if (executable === "docker") return { stderr: "", stdout: "[]" };
+      if (executable === "limactl" && args.includes("printenv")) {
+        return { stderr: "", stdout: "/home/test.guest\n" };
+      }
+      return { stderr: "", stdout: "" };
+    });
+    const registry: RemoteComposeRegistry = {
+      applyUpdate: vi.fn(async () => undefined),
+      checkUpdate: vi.fn(async () => undefined),
+      get: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          buildContext: false,
+          checkedAt: "2026-08-23T00:00:00.000Z",
+          configFile: "/host/compose/remote-stack/compose.yaml",
+          contentHash: "a".repeat(64),
+          name: "remote-stack",
+          updateAvailable: false,
+          url: "https://example.com/compose.yaml",
+        },
+      ]),
+      register: vi.fn(async () => {
+        throw new Error("unused");
+      }),
+      remove: vi.fn(async () => undefined),
+    };
+    const runtime = new LimaDockerRuntime(command, registry);
+
+    await runtime.composeProjectAction("remote-stack", "up");
+
+    expect(commands).toContainEqual({
+      args: [
+        "copy",
+        "--backend=scp",
+        "/host/compose/remote-stack/compose.yaml",
+        "overseer:/home/test.guest/.local/share/overseer/compose/remote-stack/compose.yaml",
+      ],
+      executable: "limactl",
+    });
+    expect(commands).toContainEqual({
+      args: [
+        "shell",
+        "--workdir",
+        "/home/test.guest/.local/share/overseer/compose/remote-stack",
+        "overseer",
+        "docker",
+        "compose",
+        "--project-name",
+        "remote-stack",
+        "--file",
+        "/home/test.guest/.local/share/overseer/compose/remote-stack/compose.yaml",
+        "up",
+        "--detach",
+      ],
+      executable: "limactl",
+    });
+    expect(
+      commands.some(({ args, executable }) => executable === "docker" && args.includes("--detach")),
+    ).toBe(false);
+  });
+
+  it("uses only the final diagnostic line as an unknown Docker error message", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      const dockerArgs = args.slice(2);
+      if (dockerArgs[0] === "compose" && dockerArgs[1] === "ls") {
+        return {
+          stderr: "",
+          stdout: JSON.stringify([
+            {
+              ConfigFiles: "/tmp/compose.yaml",
+              Name: "remote-stack",
+              Status: "exited(1)",
+            },
+          ]),
+        };
+      }
+      throw new CommandError(
+        "docker compose up",
+        Object.assign(new Error("failed"), { code: 1 }),
+        "Image example Pulling\nlayer Downloading 400MB\nError response from daemon: read-only file system\n",
+      );
+    });
+    const registry: RemoteComposeRegistry = {
+      applyUpdate: vi.fn(async () => undefined),
+      checkUpdate: vi.fn(async () => undefined),
+      get: vi.fn(async () => undefined),
+      list: vi.fn(async () => []),
+      register: vi.fn(async () => {
+        throw new Error("unused");
+      }),
+      remove: vi.fn(async () => undefined),
+    };
+    const runtime = new LimaDockerRuntime(command, registry);
+
+    await expect(runtime.composeProjectAction("remote-stack", "up")).rejects.toMatchObject({
+      message: "Error response from daemon: read-only file system",
+    });
+  });
 });

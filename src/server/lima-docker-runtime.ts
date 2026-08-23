@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { posix as posixPath } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type {
   ComposeProjectAction,
@@ -239,6 +240,7 @@ function restartArgument(policy: ContainerSpecInput["restartPolicy"]): string {
 export class LimaDockerRuntime implements RuntimeController {
   private readonly command: CommandRunner;
   private readonly remoteCompose: RemoteComposeRegistry;
+  private remoteComposeGuestHome?: string;
   private transition?: Promise<RuntimeSnapshot>;
 
   constructor(command: CommandRunner = runCommand, remoteCompose?: RemoteComposeRegistry) {
@@ -930,12 +932,13 @@ export class LimaDockerRuntime implements RuntimeController {
     return project;
   }
 
-  private compose(
+  private async compose(
     project: ComposeProjectSummary,
     args: readonly string[],
     timeoutMs?: number,
     progress?: OperationProgress,
   ) {
+    if (project.remote) return this.composeRemote(project, args, timeoutMs, progress);
     return this.docker(
       [
         "compose",
@@ -947,6 +950,85 @@ export class LimaDockerRuntime implements RuntimeController {
       timeoutMs,
       progress,
     );
+  }
+
+  private async composeRemote(
+    project: ComposeProjectSummary,
+    args: readonly string[],
+    timeoutMs?: number,
+    progress?: OperationProgress,
+  ) {
+    const source = project.configFiles[0];
+    if (!source) {
+      throw new ExpectedError(
+        "remote_compose_config_missing",
+        "URL Compose 구성 파일을 찾을 수 없습니다.",
+        503,
+      );
+    }
+    try {
+      const guestHome = await this.getRemoteComposeGuestHome();
+      const directory = posixPath.join(
+        guestHome,
+        ".local",
+        "share",
+        "overseer",
+        "compose",
+        project.name,
+      );
+      const configFile = posixPath.join(directory, "compose.yaml");
+      progress?.step("Compose 파일을 Lima로 준비하는 중");
+      await this.command("limactl", ["shell", LIMA_INSTANCE, "mkdir", "-p", directory], {
+        timeoutMs: 30_000,
+      });
+      await this.command(
+        "limactl",
+        ["copy", "--backend=scp", source, `${LIMA_INSTANCE}:${configFile}`],
+        {
+          timeoutMs: 30_000,
+        },
+      );
+      return await this.command(
+        "limactl",
+        [
+          "shell",
+          "--workdir",
+          directory,
+          LIMA_INSTANCE,
+          "docker",
+          "compose",
+          "--project-name",
+          project.name,
+          "--file",
+          configFile,
+          ...args,
+        ],
+        { onOutput: progress?.output, timeoutMs },
+      );
+    } catch (error) {
+      if (error instanceof ExpectedError) throw error;
+      if (error instanceof CommandError) {
+        throw new ExpectedError("remote_compose_command_failed", this.dockerMessage(error), 503);
+      }
+      throw error;
+    }
+  }
+
+  private async getRemoteComposeGuestHome(): Promise<string> {
+    if (this.remoteComposeGuestHome) return this.remoteComposeGuestHome;
+    const result = await this.command("limactl", ["shell", LIMA_INSTANCE, "printenv", "HOME"], {
+      timeoutMs: 30_000,
+    });
+    const guestHome = result.stdout.trim();
+    if (!guestHome.startsWith("/") || guestHome.includes("\0") || guestHome.includes("\n")) {
+      throw new ExpectedError(
+        "remote_compose_home_invalid",
+        "Lima 사용자 홈 경로를 확인하지 못했습니다.",
+        503,
+      );
+    }
+    this.remoteComposeGuestHome = guestHome;
+    return guestHome;
   }
 
   private async docker(args: readonly string[], timeoutMs?: number, progress?: OperationProgress) {
@@ -968,7 +1050,7 @@ export class LimaDockerRuntime implements RuntimeController {
   }
 
   private dockerMessage(error: CommandError): string {
-    const detail = error.stderr.trim();
+    const detail = stripVTControlCharacters(error.stderr).trim();
     if (detail.includes("No such container")) return "컨테이너를 찾을 수 없습니다.";
     if (detail.includes("is already in use by container")) return "이미 사용 중인 이름입니다.";
     if (detail.includes("No such image")) return "이미지를 찾을 수 없습니다.";
@@ -983,7 +1065,12 @@ export class LimaDockerRuntime implements RuntimeController {
     if (detail.includes("is being used by")) return "사용 중인 리소스는 삭제할 수 없습니다.";
     if (detail.includes("active endpoints"))
       return "연결된 컨테이너가 있는 네트워크는 삭제할 수 없습니다.";
-    return detail || "Docker 명령을 완료하지 못했습니다.";
+    const lastLine = detail
+      .split(/\r?\n|\r/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .at(-1);
+    return lastLine?.slice(0, 2_000) || "Docker 명령을 완료하지 못했습니다.";
   }
 
   private missingSnapshot(): RuntimeSnapshot {
