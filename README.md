@@ -10,6 +10,8 @@ Lima의 공식 Docker 템플릿으로 만든 전용 VM을 브라우저에서 관
 - Node.js 24 이상
 - pnpm 11
 
+City DS는 `opnay/city-ds`의 `1dd3d58772831fb70562d88c752805a3b9d1ee59`에서 빌드한 패키지를 `vendor/opnay-city-ds-react-0.1.0-1dd3d58.tgz`로 고정합니다.
+
 ## 시작
 
 ```bash

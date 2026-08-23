@@ -322,7 +322,7 @@
   }
 
   .overseer-panel-header {
-    padding: var(--city-space-5) var(--city-space-5) 0;
+    padding: var(--city-space-4) var(--city-space-4) 0;
   }
 
   .overseer-panel-header p {
@@ -468,15 +468,26 @@
     }
 
     .overseer-stat-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(5, minmax(8rem, 1fr));
+      padding-bottom: var(--city-space-1);
+      overflow-x: auto;
+      scroll-snap-type: x proximity;
     }
 
     .overseer-stat-card {
       min-height: 5.5rem;
+      scroll-snap-align: start;
     }
 
     .overseer-panel-header {
       padding: var(--city-space-4) var(--city-space-4) 0;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .overseer-sidebar nav a,
+    .city-button {
+      min-height: var(--city-hit-target-min);
     }
   }
 

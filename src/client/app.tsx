@@ -9,6 +9,7 @@ import { Field } from "@opnay/city-ds-react/field";
 import { Input } from "@opnay/city-ds-react/input";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
+import { Toast } from "@opnay/city-ds-react/toast";
 import {
   Box,
   Boxes,
@@ -47,7 +48,8 @@ import type {
   RuntimePhase,
   VolumeSummary,
 } from "../shared/contracts.ts";
-import { apiRequest } from "./api.ts";
+import { isContainerPort, isImageReference, isResourceName } from "../shared/validation.ts";
+import { ApiRequestError, apiRequest } from "./api.ts";
 import { getResourceRoute, type ResourcePath } from "./routes.ts";
 
 const runtimePresentation: Record<
@@ -71,7 +73,7 @@ function LoadingScreen() {
     <div aria-busy="true" aria-label="대시보드 불러오는 중" className="overseer-loading">
       <Skeleton className="overseer-loading-title" />
       <div className="overseer-stat-grid">
-        {[0, 1, 2].map((item) => (
+        {[0, 1, 2, 3, 4].map((item) => (
           <Skeleton className="overseer-loading-stat" key={item} />
         ))}
       </div>
@@ -104,22 +106,29 @@ function StatCard({
 
 function ConfirmAction({
   actionLabel,
+  ariaLabel,
   children,
   description,
   disabled,
+  iconOnly = false,
   onConfirm,
   title,
 }: {
   actionLabel: string;
+  ariaLabel?: string;
   children: ReactNode;
   description: string;
   disabled?: boolean;
+  iconOnly?: boolean;
   onConfirm: () => void;
   title: string;
 }) {
   return (
     <AlertDialog.Root>
-      <AlertDialog.Trigger disabled={disabled} render={<Button size="sm" variant="ghost" />}>
+      <AlertDialog.Trigger
+        disabled={disabled}
+        render={<Button aria-label={ariaLabel} iconOnly={iconOnly} size="sm" variant="ghost" />}
+      >
         {children}
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
@@ -155,27 +164,66 @@ function RunContainerDialog({
   onSubmit: (input: { containerPort?: number; image: string; name?: string }) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string>();
+  const [errors, setErrors] = useState<{
+    containerPort?: string;
+    form?: string;
+    image?: string;
+    name?: string;
+  }>({});
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError(undefined);
+    setErrors({});
     const form = new FormData(event.currentTarget);
     const image = String(form.get("image") ?? "").trim();
     const name = String(form.get("name") ?? "").trim() || undefined;
     const portText = String(form.get("containerPort") ?? "").trim();
     const containerPort = portText ? Number(portText) : undefined;
+    const nextErrors: typeof errors = {};
+    if (!isImageReference(image)) {
+      nextErrors.image = "유효한 레지스트리 경로와 이미지 태그를 입력하십시오.";
+    }
+    if (name && !isResourceName(name)) {
+      nextErrors.name = "영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오.";
+    }
+    if (containerPort !== undefined && !isContainerPort(containerPort)) {
+      nextErrors.containerPort = "1–65535 사이의 포트를 입력하십시오.";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
 
     try {
       await onSubmit({ containerPort, image, name });
       setOpen(false);
     } catch (submitError) {
-      setError(actionError(submitError));
+      if (submitError instanceof ApiRequestError) {
+        if (submitError.code === "invalid_image") {
+          setErrors({ image: submitError.message });
+          return;
+        }
+        if (submitError.code === "invalid_name") {
+          setErrors({ name: submitError.message });
+          return;
+        }
+        if (submitError.code === "invalid_port") {
+          setErrors({ containerPort: submitError.message });
+          return;
+        }
+      }
+      setErrors({ form: actionError(submitError) });
     }
   };
 
   return (
-    <Dialog.Root onOpenChange={setOpen} open={open}>
+    <Dialog.Root
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setErrors({});
+      }}
+      open={open}
+    >
       <Dialog.Trigger disabled={disabled} render={<Button size="sm" variant="primary" />}>
         <Plus aria-hidden="true" size={15} />
         컨테이너 실행
@@ -200,25 +248,27 @@ function RunContainerDialog({
             </Dialog.Header>
             <form onSubmit={submit}>
               <Dialog.Body className="overseer-form-stack">
-                {error ? (
+                {errors.form ? (
                   <Alert.Root tone="destructive">
                     <Alert.Title level={3}>컨테이너를 실행하지 못했습니다.</Alert.Title>
-                    <Alert.Description>{error}</Alert.Description>
+                    <Alert.Description>{errors.form}</Alert.Description>
                   </Alert.Root>
                 ) : null}
-                <Field.Root>
+                <Field.Root invalid={Boolean(errors.image)}>
                   <Field.Label>이미지</Field.Label>
                   <Input autoFocus name="image" placeholder="nginx:alpine" required />
                   <Field.Description>
                     레지스트리 경로와 태그를 함께 입력할 수 있습니다.
                   </Field.Description>
+                  <Field.Error match>{errors.image}</Field.Error>
                 </Field.Root>
-                <Field.Root>
+                <Field.Root invalid={Boolean(errors.name)}>
                   <Field.Label>이름</Field.Label>
                   <Input name="name" placeholder="web" />
                   <Field.Description>비워 두면 Docker가 이름을 만듭니다.</Field.Description>
+                  <Field.Error match>{errors.name}</Field.Error>
                 </Field.Root>
-                <Field.Root>
+                <Field.Root invalid={Boolean(errors.containerPort)}>
                   <Field.Label>컨테이너 포트</Field.Label>
                   <Input
                     inputMode="numeric"
@@ -230,6 +280,7 @@ function RunContainerDialog({
                   <Field.Description>
                     호스트 포트는 충돌하지 않도록 자동 배정하며 127.0.0.1에만 공개합니다.
                   </Field.Description>
+                  <Field.Error match>{errors.containerPort}</Field.Error>
                 </Field.Root>
               </Dialog.Body>
               <Dialog.Footer>
@@ -258,22 +309,37 @@ function PullImageDialog({
   onSubmit: (image: string) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string>();
+  const [errors, setErrors] = useState<{ form?: string; image?: string }>({});
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError(undefined);
+    setErrors({});
     const form = new FormData(event.currentTarget);
+    const image = String(form.get("image") ?? "").trim();
+    if (!isImageReference(image)) {
+      setErrors({ image: "유효한 레지스트리 경로와 이미지 태그를 입력하십시오." });
+      return;
+    }
     try {
-      await onSubmit(String(form.get("image") ?? "").trim());
+      await onSubmit(image);
       setOpen(false);
     } catch (submitError) {
-      setError(actionError(submitError));
+      if (submitError instanceof ApiRequestError && submitError.code === "invalid_image") {
+        setErrors({ image: submitError.message });
+        return;
+      }
+      setErrors({ form: actionError(submitError) });
     }
   };
 
   return (
-    <Dialog.Root onOpenChange={setOpen} open={open}>
+    <Dialog.Root
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setErrors({});
+      }}
+      open={open}
+    >
       <Dialog.Trigger disabled={disabled} render={<Button size="sm" variant="primary" />}>
         <Download aria-hidden="true" size={15} />
         이미지 받기
@@ -286,15 +352,16 @@ function PullImageDialog({
             <Dialog.Description>표준 OCI/Docker 이미지 경로를 입력하십시오.</Dialog.Description>
             <form onSubmit={submit}>
               <Dialog.Body className="overseer-form-stack">
-                {error ? (
+                {errors.form ? (
                   <Alert.Root tone="destructive">
                     <Alert.Title level={3}>이미지를 받지 못했습니다.</Alert.Title>
-                    <Alert.Description>{error}</Alert.Description>
+                    <Alert.Description>{errors.form}</Alert.Description>
                   </Alert.Root>
                 ) : null}
-                <Field.Root>
+                <Field.Root invalid={Boolean(errors.image)}>
                   <Field.Label>이미지</Field.Label>
                   <Input autoFocus name="image" placeholder="alpine:latest" required />
+                  <Field.Error match>{errors.image}</Field.Error>
                 </Field.Root>
               </Dialog.Body>
               <Dialog.Footer>
@@ -385,13 +452,22 @@ function resourcePathFromLocation(): ResourcePath {
 }
 
 export function App() {
+  return (
+    <Toast.Provider limit={3} timeout={5_000}>
+      <AppContent />
+    </Toast.Provider>
+  );
+}
+
+function AppContent() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot>();
   const [loadError, setLoadError] = useState<string>();
-  const [notice, setNotice] = useState<{ message: string; tone: "destructive" | "success" }>();
+  const [operationError, setOperationError] = useState<string>();
   const [busy, setBusy] = useState<string>();
   const [logsContainer, setLogsContainer] = useState<ContainerSummary>();
   const [dark, setDark] = useState(() => window.localStorage.getItem("overseer-theme") === "dark");
   const [resourcePath, setResourcePath] = useState<ResourcePath>(resourcePathFromLocation);
+  const toastManager = Toast.useToastManager();
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setLoadError(undefined);
@@ -435,14 +511,18 @@ export function App() {
 
   const mutate = async ({ key, request, success }: MutationOptions) => {
     setBusy(key);
-    setNotice(undefined);
+    setOperationError(undefined);
     try {
       await request();
-      setNotice({ message: success, tone: "success" });
+      toastManager.add({
+        description: success,
+        title: "작업을 완료했습니다.",
+        type: "success",
+      });
       await refresh(true);
     } catch (error) {
       const message = actionError(error);
-      setNotice({ message, tone: "destructive" });
+      setOperationError(message);
       throw error;
     } finally {
       setBusy(undefined);
@@ -613,12 +693,10 @@ export function App() {
             </Alert.Root>
           ) : null}
 
-          {notice ? (
-            <Alert.Root appearance="subtle" tone={notice.tone}>
-              <Alert.Title level={2}>
-                {notice.tone === "success" ? "작업을 완료했습니다." : "작업을 완료하지 못했습니다."}
-              </Alert.Title>
-              <Alert.Description>{notice.message}</Alert.Description>
+          {operationError ? (
+            <Alert.Root appearance="subtle" tone="destructive">
+              <Alert.Title level={2}>작업을 완료하지 못했습니다.</Alert.Title>
+              <Alert.Description>{operationError}</Alert.Description>
             </Alert.Root>
           ) : null}
 
@@ -826,6 +904,21 @@ export function App() {
         </main>
       </div>
       <LogsDialog container={logsContainer} onClose={() => setLogsContainer(undefined)} />
+      <Toast.Portal>
+        <Toast.Viewport>
+          {toastManager.toasts.map((toast) => (
+            <Toast.Root key={toast.id} toast={toast}>
+              <Toast.Content>
+                <div>
+                  <Toast.Title />
+                  <Toast.Description />
+                </div>
+                <Toast.Close aria-label="알림 닫기" />
+              </Toast.Content>
+            </Toast.Root>
+          ))}
+        </Toast.Viewport>
+      </Toast.Portal>
     </div>
   );
 }
@@ -846,23 +939,37 @@ function CreateNamedResourceDialog({
   placeholder: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string>();
+  const [errors, setErrors] = useState<{ form?: string; name?: string }>({});
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError(undefined);
+    setErrors({});
     const form = new FormData(event.currentTarget);
     const name = String(form.get("name") ?? "").trim();
+    if (!isResourceName(name)) {
+      setErrors({ name: "영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오." });
+      return;
+    }
     try {
       await onSubmit(name);
       setOpen(false);
     } catch (submitError) {
-      setError(actionError(submitError));
+      if (submitError instanceof ApiRequestError && submitError.code === "invalid_name") {
+        setErrors({ name: submitError.message });
+        return;
+      }
+      setErrors({ form: actionError(submitError) });
     }
   };
 
   return (
-    <Dialog.Root onOpenChange={setOpen} open={open}>
+    <Dialog.Root
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setErrors({});
+      }}
+      open={open}
+    >
       <Dialog.Trigger disabled={disabled} render={<Button size="sm" variant="primary" />}>
         <Plus aria-hidden="true" size={15} />
         {label} 만들기
@@ -875,18 +982,19 @@ function CreateNamedResourceDialog({
             <Dialog.Description>{description}</Dialog.Description>
             <form onSubmit={submit}>
               <Dialog.Body className="overseer-form-stack">
-                {error ? (
+                {errors.form ? (
                   <Alert.Root tone="destructive">
                     <Alert.Title level={3}>{label}을 만들지 못했습니다.</Alert.Title>
-                    <Alert.Description>{error}</Alert.Description>
+                    <Alert.Description>{errors.form}</Alert.Description>
                   </Alert.Root>
                 ) : null}
-                <Field.Root>
+                <Field.Root invalid={Boolean(errors.name)}>
                   <Field.Label>이름</Field.Label>
                   <Input autoFocus name="name" placeholder={placeholder} required />
                   <Field.Description>
                     영문·숫자로 시작하고 점·밑줄·하이픈을 사용할 수 있습니다.
                   </Field.Description>
+                  <Field.Error match>{errors.name}</Field.Error>
                 </Field.Root>
               </Dialog.Body>
               <Dialog.Footer>
@@ -970,13 +1078,14 @@ function VolumesPage({
                     <div className="overseer-row-actions">
                       <ConfirmAction
                         actionLabel="볼륨 삭제"
+                        ariaLabel={`${volume.name} 볼륨 삭제`}
                         disabled={Boolean(busy)}
                         description="볼륨의 데이터가 영구적으로 삭제됩니다. 사용 중인 볼륨은 삭제되지 않습니다."
                         onConfirm={() => onRemove(volume)}
+                        iconOnly
                         title={`${volume.name} 볼륨을 삭제하시겠습니까?`}
                       >
                         <Trash2 aria-hidden="true" size={14} />
-                        <span className="city-sr-only">{volume.name} 볼륨 삭제</span>
                       </ConfirmAction>
                     </div>
                   </Table.Cell>
@@ -1072,13 +1181,14 @@ function NetworksPage({
                     <div className="overseer-row-actions">
                       <ConfirmAction
                         actionLabel="네트워크 삭제"
+                        ariaLabel={`${network.name} 네트워크 삭제`}
                         disabled={network.builtIn || Boolean(busy)}
                         description="연결된 컨테이너가 있는 네트워크는 삭제되지 않습니다."
                         onConfirm={() => onRemove(network)}
+                        iconOnly
                         title={`${network.name} 네트워크를 삭제하시겠습니까?`}
                       >
                         <Trash2 aria-hidden="true" size={14} />
-                        <span className="city-sr-only">{network.name} 네트워크 삭제</span>
                       </ConfirmAction>
                     </div>
                   </Table.Cell>
@@ -1205,13 +1315,14 @@ function ContainerTable({
                       </Button>
                       <ConfirmAction
                         actionLabel="컨테이너 삭제"
+                        ariaLabel={`${container.name} 컨테이너 삭제`}
                         disabled={running || rowBusy}
                         description="컨테이너의 쓰기 레이어가 삭제됩니다. 연결된 named volume과 이미지는 유지됩니다."
                         onConfirm={() => onRemove(container)}
+                        iconOnly
                         title={`${container.name} 컨테이너를 삭제하시겠습니까?`}
                       >
                         <Trash2 aria-hidden="true" size={14} />
-                        <span className="city-sr-only">{container.name} 삭제</span>
                       </ConfirmAction>
                     </div>
                   </Table.Cell>
@@ -1281,13 +1392,14 @@ function ImageTable({
                   <div className="overseer-row-actions">
                     <ConfirmAction
                       actionLabel="이미지 삭제"
+                      ariaLabel={`${image.repository} 이미지 삭제`}
                       disabled={Boolean(busy)}
                       description="이 이미지를 사용하는 컨테이너가 있으면 삭제되지 않습니다."
                       onConfirm={() => onRemove(image)}
+                      iconOnly
                       title={`${image.repository}:${image.tag} 이미지를 삭제하시겠습니까?`}
                     >
                       <Trash2 aria-hidden="true" size={14} />
-                      <span className="city-sr-only">{image.repository} 이미지 삭제</span>
                     </ConfirmAction>
                   </div>
                 </Table.Cell>

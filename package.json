@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
-    "@opnay/city-ds-react": "file:vendor/opnay-city-ds-react-0.1.0.tgz",
+    "@opnay/city-ds-react": "file:vendor/opnay-city-ds-react-0.1.0-1dd3d58.tgz",
     "hono": "4.13.3",
     "lucide-react": "1.26.0",
     "react": "19.2.8",

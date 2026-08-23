@@ -12,6 +12,17 @@ function jsonResponse(value: unknown, status = 200) {
 }
 
 describe("App", () => {
+  it("matches the loading skeleton to all five summary cards", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+
+    const { container } = render(<App />);
+
+    expect(container.querySelectorAll(".overseer-loading-stat")).toHaveLength(5);
+  });
+
   it("explains the first-run Lima state", async () => {
     const dashboard: DashboardSnapshot = {
       containers: [],
@@ -133,7 +144,74 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: "네트워크", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /bridge/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "bridge 네트워크 삭제" })).toHaveAttribute(
+      "data-city-icon-only",
+      "",
+    );
     expect(window.location.pathname).toBe("/networks");
+  });
+
+  it("shows invalid resource names beside the City DS field", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "Lima와 Docker가 정상적으로 실행 중입니다.",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const fetchMock = vi.fn(async () => jsonResponse(dashboard));
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/volumes");
+    render(<App />);
+    await screen.findByText("볼륨이 없습니다.");
+
+    await user.click(screen.getByRole("button", { name: "볼륨 만들기" }));
+    await user.type(screen.getByRole("textbox", { name: "이름" }), "bad/name");
+    await user.click(screen.getByRole("button", { name: "볼륨 만들기" }));
+
+    expect(
+      screen.getByText("영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오."),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports successful resource creation with a City DS toast", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "Lima와 Docker가 정상적으로 실행 중입니다.",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
+        init?.method === "POST" ? jsonResponse({ ok: true }, 201) : jsonResponse(dashboard),
+      ),
+    );
+    window.history.replaceState(null, "", "/volumes");
+    render(<App />);
+    await screen.findByText("볼륨이 없습니다.");
+
+    await user.click(screen.getByRole("button", { name: "볼륨 만들기" }));
+    await user.type(screen.getByRole("textbox", { name: "이름" }), "app-data");
+    await user.click(screen.getByRole("button", { name: "볼륨 만들기" }));
+
+    expect(await screen.findByRole("dialog", { name: "작업을 완료했습니다." })).toHaveTextContent(
+      "app-data 볼륨을 만들었습니다.",
+    );
   });
 
   it("renders a recoverable API failure", async () => {
