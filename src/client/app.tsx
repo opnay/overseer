@@ -69,7 +69,12 @@ import type {
 } from "../shared/contracts.ts";
 import { isImageReference, isResourceName } from "../shared/validation.ts";
 import { ApiRequestError, apiRequest } from "./api.ts";
-import { getResourceRoute, type ResourcePath } from "./routes.ts";
+import {
+  getResourceRoute,
+  RESOURCE_ROUTES,
+  RESOURCE_ROUTE_GROUPS,
+  type ResourcePath,
+} from "./routes.ts";
 
 const RunContainerDialog = lazy(() =>
   import("./container-dialog.tsx").then((module) => ({ default: module.RunContainerDialog })),
@@ -94,6 +99,15 @@ const OperationsPage = lazy(() =>
   import("./operations-page.tsx").then((module) => ({ default: module.OperationsPage })),
 );
 
+const resourceRouteIcon = {
+  "/compose": Layers3,
+  "/containers": Boxes,
+  "/images": HardDrive,
+  "/networks": NetworkIcon,
+  "/operations": ListChecks,
+  "/volumes": Database,
+} satisfies Record<ResourcePath, typeof Layers3>;
+
 const runtimePresentation: Record<
   RuntimePhase,
   { label: string; tone: "destructive" | "info" | "neutral" | "success" | "warning" }
@@ -116,8 +130,15 @@ function LoadingScreen() {
       <aside aria-hidden="true" className="overseer-sidebar overseer-loading-sidebar">
         <Skeleton className="overseer-loading-brand" />
         <div className="overseer-loading-nav">
-          {[0, 1, 2, 3, 4, 5].map((item) => (
-            <Skeleton className="overseer-loading-nav-item" key={item} />
+          {RESOURCE_ROUTE_GROUPS.map((group) => (
+            <div className="overseer-loading-nav-group" key={group.id}>
+              <Skeleton className="overseer-loading-nav-label" />
+              <div className="overseer-loading-nav-items">
+                {RESOURCE_ROUTES.filter((route) => route.group === group.id).map((route) => (
+                  <Skeleton className="overseer-loading-nav-item" key={route.path} />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </aside>
@@ -1163,54 +1184,37 @@ function AppContent() {
           </div>
         </div>
         <nav aria-label="주요 메뉴">
-          <a
-            aria-current={resourcePath === "/compose" ? "page" : undefined}
-            href="/compose"
-            onClick={(event) => handleResourceLink(event, "/compose")}
-          >
-            <Layers3 aria-hidden="true" size={16} />
-            Compose
-          </a>
-          <a
-            aria-current={resourcePath === "/containers" ? "page" : undefined}
-            href="/containers"
-            onClick={(event) => handleResourceLink(event, "/containers")}
-          >
-            <Boxes aria-hidden="true" size={16} />
-            컨테이너
-          </a>
-          <a
-            aria-current={resourcePath === "/images" ? "page" : undefined}
-            href="/images"
-            onClick={(event) => handleResourceLink(event, "/images")}
-          >
-            <HardDrive aria-hidden="true" size={16} />
-            이미지
-          </a>
-          <a
-            aria-current={resourcePath === "/volumes" ? "page" : undefined}
-            href="/volumes"
-            onClick={(event) => handleResourceLink(event, "/volumes")}
-          >
-            <Database aria-hidden="true" size={16} />
-            볼륨
-          </a>
-          <a
-            aria-current={resourcePath === "/networks" ? "page" : undefined}
-            href="/networks"
-            onClick={(event) => handleResourceLink(event, "/networks")}
-          >
-            <NetworkIcon aria-hidden="true" size={16} />
-            네트워크
-          </a>
-          <a
-            aria-current={resourcePath === "/operations" ? "page" : undefined}
-            href="/operations"
-            onClick={(event) => handleResourceLink(event, "/operations")}
-          >
-            <ListChecks aria-hidden="true" size={16} />
-            작업
-          </a>
+          {RESOURCE_ROUTE_GROUPS.map((group) => {
+            const labelId = `overseer-nav-${group.id}`;
+            return (
+              <div
+                aria-labelledby={labelId}
+                className="overseer-nav-group"
+                key={group.id}
+                role="group"
+              >
+                <span className="overseer-nav-group-label" id={labelId}>
+                  {group.label}
+                </span>
+                <div className="overseer-nav-group-items">
+                  {RESOURCE_ROUTES.filter((route) => route.group === group.id).map((route) => {
+                    const Icon = resourceRouteIcon[route.path];
+                    return (
+                      <a
+                        aria-current={resourcePath === route.path ? "page" : undefined}
+                        href={route.path}
+                        key={route.path}
+                        onClick={(event) => handleResourceLink(event, route.path)}
+                      >
+                        <Icon aria-hidden="true" size={16} />
+                        {route.label}
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </nav>
         <div className="overseer-sidebar-status">
           <span aria-hidden="true" data-state={runtimeStatus.tone} />

@@ -328,7 +328,7 @@ describe("App", () => {
     expect(within(drawer).queryByText("취소 작업")).not.toBeInTheDocument();
 
     await user.click(within(drawer).getByRole("button", { name: "전체 작업 보기" }));
-    expect(await screen.findByRole("heading", { name: "작업", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "작업 기록", level: 1 })).toBeInTheDocument();
     expect(await screen.findByRole("table", { name: "전체 작업 히스토리" })).toBeInTheDocument();
     expect(screen.getByText("완료 작업")).toBeInTheDocument();
     expect(screen.getByText("취소 작업")).toBeInTheDocument();
@@ -349,6 +349,51 @@ describe("App", () => {
             String(input).endsWith("/api/operations/failed-id/retry") && init?.method === "POST",
         ),
       ).toBe(true),
+    );
+  });
+
+  it("groups desktop navigation by workload, resource, and operations", async () => {
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/api/operations")
+          ? jsonResponse({ operations: [] })
+          : jsonResponse(dashboard),
+      ),
+    );
+    render(<App />);
+    await screen.findByText("컨테이너가 없습니다.");
+
+    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
+    const workloads = within(navigation).getByRole("group", { name: "워크로드" });
+    const resources = within(navigation).getByRole("group", { name: "리소스" });
+    const operations = within(navigation).getByRole("group", { name: "운영" });
+    expect(
+      within(workloads)
+        .getAllByRole("link")
+        .map(({ textContent }) => textContent),
+    ).toEqual(["Compose", "컨테이너"]);
+    expect(
+      within(resources)
+        .getAllByRole("link")
+        .map(({ textContent }) => textContent),
+    ).toEqual(["이미지", "볼륨", "네트워크"]);
+    expect(within(operations).getByRole("link", { name: "작업 기록" })).toHaveAttribute(
+      "href",
+      "/operations",
     );
   });
 
