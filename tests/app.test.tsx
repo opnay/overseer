@@ -12,7 +12,7 @@ function jsonResponse(value: unknown, status = 200) {
 }
 
 describe("App", () => {
-  it("matches the loading skeleton to all four summary cards", () => {
+  it("matches the loading skeleton to the page shell and table", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => new Promise<Response>(() => undefined)),
@@ -20,7 +20,9 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll(".overseer-loading-stat")).toHaveLength(4);
+    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(4);
+    expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
+    expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
   });
 
   it("explains the first-run Lima state", async () => {

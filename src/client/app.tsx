@@ -34,7 +34,6 @@ import {
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type FormEvent,
   type MouseEvent,
@@ -90,40 +89,10 @@ function LoadingScreen() {
             <Skeleton className="overseer-loading-title" />
             <Skeleton className="overseer-loading-description" />
           </div>
-          <div className="overseer-stat-grid">
-            {[0, 1, 2, 3].map((item) => (
-              <Skeleton className="overseer-loading-stat" key={item} />
-            ))}
-          </div>
           <Skeleton className="overseer-loading-table" />
         </main>
       </div>
     </div>
-  );
-}
-
-function StatCard({
-  detail,
-  icon,
-  label,
-  value,
-}: {
-  detail: string;
-  icon: ReactNode;
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <article className="overseer-stat-card">
-      <div className="overseer-stat-heading">
-        <p>{label}</p>
-        <span className="overseer-stat-icon" aria-hidden="true">
-          {icon}
-        </span>
-      </div>
-      <strong>{value}</strong>
-      <span className="overseer-stat-detail">{detail}</span>
-    </article>
   );
 }
 
@@ -579,11 +548,6 @@ function AppContent() {
     }
   };
 
-  const runningCount = useMemo(
-    () => dashboard?.containers.filter((container) => container.state === "running").length ?? 0,
-    [dashboard],
-  );
-
   if (!dashboard && !loadError) return <LoadingScreen />;
 
   const runtime = dashboard?.runtime;
@@ -845,35 +809,6 @@ function AppContent() {
             </Alert.Root>
           ) : null}
 
-          {runtimeRunning ? (
-            <section aria-label="Docker 리소스 요약" className="overseer-stat-grid">
-              <StatCard
-                detail={`${runningCount}개 실행 중`}
-                icon={<Boxes size={17} strokeWidth={1.8} />}
-                label="컨테이너"
-                value={`${dashboard?.containers.length ?? 0}개`}
-              />
-              <StatCard
-                detail="로컬 저장소"
-                icon={<HardDrive size={17} strokeWidth={1.8} />}
-                label="이미지"
-                value={`${dashboard?.images.length ?? 0}개`}
-              />
-              <StatCard
-                detail="영구 데이터"
-                icon={<Database size={17} strokeWidth={1.8} />}
-                label="볼륨"
-                value={`${dashboard?.volumes.length ?? 0}개`}
-              />
-              <StatCard
-                detail="기본 네트워크 포함"
-                icon={<NetworkIcon size={17} strokeWidth={1.8} />}
-                label="네트워크"
-                value={`${dashboard?.networks.length ?? 0}개`}
-              />
-            </section>
-          ) : null}
-
           {dashboard && !runtimeRunning ? (
             <section className="overseer-runtime-empty">
               <EmptyState.Root>
@@ -898,12 +833,6 @@ function AppContent() {
             <>
               {resourcePath === "/containers" ? (
                 <section className="overseer-panel" id="containers">
-                  <div className="overseer-panel-header">
-                    <div>
-                      <h2 className="city-text-subsection-title">컨테이너 목록</h2>
-                      <p>실행 상태와 로컬 공개 포트를 확인하고 필요한 작업을 수행합니다.</p>
-                    </div>
-                  </div>
                   <ContainerTable
                     busy={busy}
                     containers={dashboard?.containers ?? []}
@@ -932,12 +861,6 @@ function AppContent() {
 
               {resourcePath === "/images" ? (
                 <section className="overseer-panel" id="images">
-                  <div className="overseer-panel-header">
-                    <div>
-                      <h2 className="city-text-subsection-title">이미지 목록</h2>
-                      <p>로컬 이미지와 태그, 크기를 확인합니다.</p>
-                    </div>
-                  </div>
                   <ImageTable
                     busy={busy}
                     images={dashboard?.images ?? []}
@@ -1118,12 +1041,6 @@ function VolumesPage({
 }) {
   return (
     <section className="overseer-panel" id="volumes">
-      <div className="overseer-panel-header">
-        <div>
-          <h2 className="city-text-subsection-title">볼륨 목록</h2>
-          <p>컨테이너가 삭제되어도 유지되는 로컬 데이터를 관리합니다.</p>
-        </div>
-      </div>
       <DataTableRegion
         className="overseer-data-table-region"
         hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
@@ -1153,7 +1070,7 @@ function VolumesPage({
                   <EmptyState.Icon>
                     <Database aria-hidden="true" />
                   </EmptyState.Icon>
-                  <EmptyState.Title level={3}>볼륨이 없습니다.</EmptyState.Title>
+                  <EmptyState.Title level={2}>볼륨이 없습니다.</EmptyState.Title>
                   <EmptyState.Description>
                     named volume을 만들어 컨테이너 데이터를 유지할 수 있습니다.
                   </EmptyState.Description>
@@ -1204,12 +1121,6 @@ function NetworksPage({
 }) {
   return (
     <section className="overseer-panel" id="networks">
-      <div className="overseer-panel-header">
-        <div>
-          <h2 className="city-text-subsection-title">네트워크 목록</h2>
-          <p>컨테이너 간 통신 범위와 Docker 기본 네트워크를 확인합니다.</p>
-        </div>
-      </div>
       <DataTableRegion
         className="overseer-data-table-region"
         hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
@@ -1241,7 +1152,7 @@ function NetworksPage({
                   <EmptyState.Icon>
                     <NetworkIcon aria-hidden="true" />
                   </EmptyState.Icon>
-                  <EmptyState.Title level={3}>네트워크가 없습니다.</EmptyState.Title>
+                  <EmptyState.Title level={2}>네트워크가 없습니다.</EmptyState.Title>
                   <EmptyState.Description>
                     bridge 네트워크를 만들어 컨테이너를 연결할 수 있습니다.
                   </EmptyState.Description>
@@ -1339,7 +1250,7 @@ function ContainerTable({
                 <EmptyState.Icon>
                   <Box aria-hidden="true" />
                 </EmptyState.Icon>
-                <EmptyState.Title level={3}>컨테이너가 없습니다.</EmptyState.Title>
+                <EmptyState.Title level={2}>컨테이너가 없습니다.</EmptyState.Title>
                 <EmptyState.Description>
                   이미지를 지정해 첫 컨테이너를 실행할 수 있습니다.
                 </EmptyState.Description>
@@ -1482,7 +1393,7 @@ function ImageTable({
                 <EmptyState.Icon>
                   <HardDrive aria-hidden="true" />
                 </EmptyState.Icon>
-                <EmptyState.Title level={3}>로컬 이미지가 없습니다.</EmptyState.Title>
+                <EmptyState.Title level={2}>로컬 이미지가 없습니다.</EmptyState.Title>
                 <EmptyState.Description>
                   필요한 이미지를 먼저 받을 수 있습니다.
                 </EmptyState.Description>
