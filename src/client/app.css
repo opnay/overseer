@@ -348,6 +348,7 @@
   .overseer-primary-cell {
     display: grid;
     gap: var(--city-space-0-5);
+    justify-items: start;
   }
 
   .overseer-actions-column {
@@ -468,7 +469,7 @@
     }
 
     .overseer-stat-grid {
-      grid-template-columns: repeat(5, minmax(8rem, 1fr));
+      grid-template-columns: repeat(5, minmax(10.5rem, 1fr));
       padding-bottom: var(--city-space-1);
       overflow-x: auto;
       scroll-snap-type: x proximity;
@@ -477,6 +478,10 @@
     .overseer-stat-card {
       min-height: 5.5rem;
       scroll-snap-align: start;
+    }
+
+    .overseer-stat-card p {
+      white-space: nowrap;
     }
 
     .overseer-panel-header {

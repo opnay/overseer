@@ -7,6 +7,7 @@ import { Dialog } from "@opnay/city-ds-react/dialog";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Field } from "@opnay/city-ds-react/field";
 import { Input } from "@opnay/city-ds-react/input";
+import { NumberField } from "@opnay/city-ds-react/number-field";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
 import { Toast } from "@opnay/city-ds-react/toast";
@@ -255,28 +256,47 @@ function RunContainerDialog({
                   </Alert.Root>
                 ) : null}
                 <Field.Root invalid={Boolean(errors.image)}>
-                  <Field.Label>이미지</Field.Label>
-                  <Input autoFocus name="image" placeholder="nginx:alpine" required />
+                  <Field.Label>
+                    이미지 <span aria-hidden="true">*</span>
+                  </Field.Label>
+                  <Input
+                    autoFocus
+                    name="image"
+                    onValueChange={() => setErrors((current) => ({ ...current, image: undefined }))}
+                    placeholder="nginx:alpine"
+                    required
+                  />
                   <Field.Description>
                     레지스트리 경로와 태그를 함께 입력할 수 있습니다.
                   </Field.Description>
                   <Field.Error match>{errors.image}</Field.Error>
                 </Field.Root>
                 <Field.Root invalid={Boolean(errors.name)}>
-                  <Field.Label>이름</Field.Label>
-                  <Input name="name" placeholder="web" />
+                  <Field.Label>이름 (선택)</Field.Label>
+                  <Input
+                    name="name"
+                    onValueChange={() => setErrors((current) => ({ ...current, name: undefined }))}
+                    placeholder="web"
+                  />
                   <Field.Description>비워 두면 Docker가 이름을 만듭니다.</Field.Description>
                   <Field.Error match>{errors.name}</Field.Error>
                 </Field.Root>
                 <Field.Root invalid={Boolean(errors.containerPort)}>
-                  <Field.Label>컨테이너 포트</Field.Label>
-                  <Input
-                    inputMode="numeric"
-                    max="65535"
-                    min="1"
-                    name="containerPort"
-                    placeholder="80"
-                  />
+                  <Field.Label>컨테이너 포트 (선택)</Field.Label>
+                  <NumberField.Root
+                    max={65_535}
+                    min={1}
+                    onValueChange={() =>
+                      setErrors((current) => ({ ...current, containerPort: undefined }))
+                    }
+                    step={1}
+                  >
+                    <NumberField.Group>
+                      <NumberField.Input name="containerPort" placeholder="80" />
+                      <NumberField.Decrement aria-label="컨테이너 포트 감소" />
+                      <NumberField.Increment aria-label="컨테이너 포트 증가" />
+                    </NumberField.Group>
+                  </NumberField.Root>
                   <Field.Description>
                     호스트 포트는 충돌하지 않도록 자동 배정하며 127.0.0.1에만 공개합니다.
                   </Field.Description>
@@ -359,8 +379,16 @@ function PullImageDialog({
                   </Alert.Root>
                 ) : null}
                 <Field.Root invalid={Boolean(errors.image)}>
-                  <Field.Label>이미지</Field.Label>
-                  <Input autoFocus name="image" placeholder="alpine:latest" required />
+                  <Field.Label>
+                    이미지 <span aria-hidden="true">*</span>
+                  </Field.Label>
+                  <Input
+                    autoFocus
+                    name="image"
+                    onValueChange={() => setErrors((current) => ({ ...current, image: undefined }))}
+                    placeholder="alpine:latest"
+                    required
+                  />
                   <Field.Error match>{errors.image}</Field.Error>
                 </Field.Root>
               </Dialog.Body>
@@ -762,7 +790,7 @@ function AppContent() {
                 <section className="overseer-panel" id="containers">
                   <div className="overseer-panel-header">
                     <div>
-                      <h2 className="city-text-subsection-title">컨테이너</h2>
+                      <h2 className="city-text-subsection-title">컨테이너 목록</h2>
                       <p>실행 상태와 로컬 공개 포트를 확인하고 필요한 작업을 수행합니다.</p>
                     </div>
                     <RunContainerDialog
@@ -811,7 +839,7 @@ function AppContent() {
                 <section className="overseer-panel" id="images">
                   <div className="overseer-panel-header">
                     <div>
-                      <h2 className="city-text-subsection-title">이미지</h2>
+                      <h2 className="city-text-subsection-title">이미지 목록</h2>
                       <p>로컬 이미지와 태그, 크기를 확인합니다.</p>
                     </div>
                     <PullImageDialog
@@ -989,8 +1017,16 @@ function CreateNamedResourceDialog({
                   </Alert.Root>
                 ) : null}
                 <Field.Root invalid={Boolean(errors.name)}>
-                  <Field.Label>이름</Field.Label>
-                  <Input autoFocus name="name" placeholder={placeholder} required />
+                  <Field.Label>
+                    이름 <span aria-hidden="true">*</span>
+                  </Field.Label>
+                  <Input
+                    autoFocus
+                    name="name"
+                    onValueChange={() => setErrors((current) => ({ ...current, name: undefined }))}
+                    placeholder={placeholder}
+                    required
+                  />
                   <Field.Description>
                     영문·숫자로 시작하고 점·밑줄·하이픈을 사용할 수 있습니다.
                   </Field.Description>
@@ -1028,7 +1064,7 @@ function VolumesPage({
     <section className="overseer-panel" id="volumes">
       <div className="overseer-panel-header">
         <div>
-          <h2 className="city-text-subsection-title">볼륨</h2>
+          <h2 className="city-text-subsection-title">볼륨 목록</h2>
           <p>컨테이너가 삭제되어도 유지되는 로컬 데이터를 관리합니다.</p>
         </div>
         <CreateNamedResourceDialog
@@ -1114,7 +1150,7 @@ function NetworksPage({
     <section className="overseer-panel" id="networks">
       <div className="overseer-panel-header">
         <div>
-          <h2 className="city-text-subsection-title">네트워크</h2>
+          <h2 className="city-text-subsection-title">네트워크 목록</h2>
           <p>컨테이너 간 통신 범위와 Docker 기본 네트워크를 확인합니다.</p>
         </div>
         <CreateNamedResourceDialog

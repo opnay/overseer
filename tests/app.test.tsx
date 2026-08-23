@@ -172,12 +172,18 @@ describe("App", () => {
     await screen.findByText("볼륨이 없습니다.");
 
     await user.click(screen.getByRole("button", { name: "볼륨 만들기" }));
-    await user.type(screen.getByRole("textbox", { name: "이름" }), "bad/name");
+    const nameInput = screen.getByRole("textbox", { name: "이름" });
+    await user.type(nameInput, "bad/name");
     await user.click(screen.getByRole("button", { name: "볼륨 만들기" }));
 
     expect(
       screen.getByText("영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오."),
     ).toBeInTheDocument();
+    await user.clear(nameInput);
+    await user.type(nameInput, "app-data");
+    expect(
+      screen.queryByText("영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오."),
+    ).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
