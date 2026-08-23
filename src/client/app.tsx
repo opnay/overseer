@@ -26,7 +26,6 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
-  Server,
   Square,
   Sun,
   Trash2,
@@ -71,36 +70,59 @@ function actionError(error: unknown): string {
 
 function LoadingScreen() {
   return (
-    <div aria-busy="true" aria-label="대시보드 불러오는 중" className="overseer-loading">
-      <Skeleton className="overseer-loading-title" />
-      <div className="overseer-stat-grid">
-        {[0, 1, 2, 3, 4].map((item) => (
-          <Skeleton className="overseer-loading-stat" key={item} />
-        ))}
+    <div aria-busy="true" aria-label="대시보드 불러오는 중" className="overseer-shell">
+      <aside aria-hidden="true" className="overseer-sidebar overseer-loading-sidebar">
+        <Skeleton className="overseer-loading-brand" />
+        <div className="overseer-loading-nav">
+          {[0, 1, 2, 3].map((item) => (
+            <Skeleton className="overseer-loading-nav-item" key={item} />
+          ))}
+        </div>
+      </aside>
+      <div className="overseer-workspace">
+        <header aria-hidden="true" className="overseer-topbar">
+          <Skeleton className="overseer-loading-topbar-context" />
+          <Skeleton className="overseer-loading-topbar-action" />
+        </header>
+        <main className="overseer-main">
+          <div aria-hidden="true" className="overseer-loading-heading">
+            <Skeleton className="overseer-loading-eyebrow" />
+            <Skeleton className="overseer-loading-title" />
+            <Skeleton className="overseer-loading-description" />
+          </div>
+          <div className="overseer-stat-grid">
+            {[0, 1, 2, 3].map((item) => (
+              <Skeleton className="overseer-loading-stat" key={item} />
+            ))}
+          </div>
+          <Skeleton className="overseer-loading-table" />
+        </main>
       </div>
-      <Skeleton className="overseer-loading-table" />
     </div>
   );
 }
 
 function StatCard({
+  detail,
   icon,
   label,
   value,
 }: {
+  detail: string;
   icon: ReactNode;
   label: string;
   value: string | number;
 }) {
   return (
     <article className="overseer-stat-card">
-      <span className="overseer-stat-icon" aria-hidden="true">
-        {icon}
-      </span>
-      <div>
+      <div className="overseer-stat-heading">
         <p>{label}</p>
-        <strong>{value}</strong>
+        <span className="overseer-stat-icon" aria-hidden="true">
+          {icon}
+        </span>
       </div>
+      <strong>{value}</strong>
+      <span className="overseer-stat-detail">{detail}</span>
     </article>
   );
 }
@@ -568,6 +590,77 @@ function AppContent() {
   const runtimeStatus = runtime ? runtimePresentation[runtime.phase] : runtimePresentation.error;
   const runtimeRunning = runtime?.phase === "running";
   const currentRoute = getResourceRoute(resourcePath);
+  const pagePrimaryAction = !runtimeRunning ? null : resourcePath === "/containers" ? (
+    <RunContainerDialog
+      busy={busy === "container-run"}
+      disabled={Boolean(busy)}
+      onSubmit={async (input) =>
+        mutate({
+          key: "container-run",
+          request: () =>
+            apiRequest("/containers", {
+              body: JSON.stringify(input),
+              method: "POST",
+            }),
+          success: "컨테이너를 실행했습니다.",
+        })
+      }
+    />
+  ) : resourcePath === "/images" ? (
+    <PullImageDialog
+      busy={busy === "image-pull"}
+      disabled={Boolean(busy)}
+      onSubmit={async (image) =>
+        mutate({
+          key: "image-pull",
+          request: () =>
+            apiRequest("/images/pull", {
+              body: JSON.stringify({ image }),
+              method: "POST",
+            }),
+          success: `${image} 이미지를 받았습니다.`,
+        })
+      }
+    />
+  ) : resourcePath === "/volumes" ? (
+    <CreateNamedResourceDialog
+      busy={busy === "volume-create"}
+      description="local 드라이버를 사용하는 named volume을 만듭니다."
+      disabled={Boolean(busy)}
+      label="볼륨"
+      onSubmit={(name) =>
+        mutate({
+          key: "volume-create",
+          request: () =>
+            apiRequest("/volumes", {
+              body: JSON.stringify({ name }),
+              method: "POST",
+            }),
+          success: `${name} 볼륨을 만들었습니다.`,
+        })
+      }
+      placeholder="app-data"
+    />
+  ) : (
+    <CreateNamedResourceDialog
+      busy={busy === "network-create"}
+      description="기본 bridge 드라이버를 사용하는 네트워크를 만듭니다."
+      disabled={Boolean(busy)}
+      label="네트워크"
+      onSubmit={(name) =>
+        mutate({
+          key: "network-create",
+          request: () =>
+            apiRequest("/networks", {
+              body: JSON.stringify({ name }),
+              method: "POST",
+            }),
+          success: `${name} 네트워크를 만들었습니다.`,
+        })
+      }
+      placeholder="app-network"
+    />
+  );
 
   return (
     <div className="overseer-shell">
@@ -634,9 +727,18 @@ function AppContent() {
             <strong>127.0.0.1 전용</strong>
           </div>
           <div className="overseer-topbar-actions">
-            <Badge appearance="outline" size="sm" tone={runtimeStatus.tone}>
-              {runtimeStatus.label}
-            </Badge>
+            {runtime?.dockerVersion ? (
+              <span className="overseer-runtime-version">Docker {runtime.dockerVersion}</span>
+            ) : null}
+            <span className="overseer-runtime-state">
+              <Badge
+                aria-label={`Lima ${runtimeStatus.label}`}
+                dot
+                size="sm"
+                tone={runtimeStatus.tone}
+              />
+              <span>{runtimeStatus.label}</span>
+            </span>
             <Button
               aria-label={dark ? "라이트 테마 사용" : "다크 테마 사용"}
               iconOnly
@@ -657,54 +759,59 @@ function AppContent() {
               <span className="city-text-supporting">{currentRoute.description}</span>
             </div>
             <div className="overseer-page-actions">
-              <Button
-                disabled={Boolean(busy)}
-                onClick={() => void refresh()}
-                size="sm"
-                variant="outline"
-              >
-                <RefreshCw aria-hidden="true" size={14} />
-                새로고침
-              </Button>
-              {runtime?.phase === "missing" || runtime?.phase === "stopped" ? (
+              <div className="overseer-page-utilities">
                 <Button
                   disabled={Boolean(busy)}
-                  onClick={() =>
-                    void mutate({
-                      key: "runtime-start",
-                      request: () => apiRequest("/runtime/start", { method: "POST" }),
-                      success:
-                        runtime.phase === "missing"
-                          ? "Lima 환경을 만들었습니다."
-                          : "Lima 런타임을 시작했습니다.",
-                    }).catch(() => undefined)
-                  }
+                  onClick={() => void refresh()}
                   size="sm"
+                  variant="outline"
                 >
-                  <Play aria-hidden="true" size={14} />
-                  {busy === "runtime-start"
-                    ? "준비 중…"
-                    : runtime.phase === "missing"
-                      ? "Lima 환경 만들기"
-                      : "런타임 시작"}
+                  <RefreshCw aria-hidden="true" size={14} />
+                  새로고침
                 </Button>
-              ) : runtimeRunning ? (
-                <ConfirmAction
-                  actionLabel="런타임 중지"
-                  disabled={Boolean(busy)}
-                  description="실행 중인 컨테이너에 접근할 수 없게 됩니다. 컨테이너 데이터는 유지됩니다."
-                  onConfirm={() =>
-                    void mutate({
-                      key: "runtime-stop",
-                      request: () => apiRequest("/runtime/stop", { method: "POST" }),
-                      success: "Lima 런타임을 중지했습니다.",
-                    }).catch(() => undefined)
-                  }
-                  title="Lima 런타임을 중지하시겠습니까?"
-                >
-                  <CircleStop aria-hidden="true" size={14} />
-                  런타임 중지
-                </ConfirmAction>
+                {runtime?.phase === "missing" || runtime?.phase === "stopped" ? (
+                  <Button
+                    disabled={Boolean(busy)}
+                    onClick={() =>
+                      void mutate({
+                        key: "runtime-start",
+                        request: () => apiRequest("/runtime/start", { method: "POST" }),
+                        success:
+                          runtime.phase === "missing"
+                            ? "Lima 환경을 만들었습니다."
+                            : "Lima 런타임을 시작했습니다.",
+                      }).catch(() => undefined)
+                    }
+                    size="sm"
+                  >
+                    <Play aria-hidden="true" size={14} />
+                    {busy === "runtime-start"
+                      ? "준비 중…"
+                      : runtime.phase === "missing"
+                        ? "Lima 환경 만들기"
+                        : "런타임 시작"}
+                  </Button>
+                ) : runtimeRunning ? (
+                  <ConfirmAction
+                    actionLabel="런타임 중지"
+                    disabled={Boolean(busy)}
+                    description="실행 중인 컨테이너에 접근할 수 없게 됩니다. 컨테이너 데이터는 유지됩니다."
+                    onConfirm={() =>
+                      void mutate({
+                        key: "runtime-stop",
+                        request: () => apiRequest("/runtime/stop", { method: "POST" }),
+                        success: "Lima 런타임을 중지했습니다.",
+                      }).catch(() => undefined)
+                    }
+                    title="Lima 런타임을 중지하시겠습니까?"
+                  >
+                    <CircleStop aria-hidden="true" size={14} />
+                    런타임 중지
+                  </ConfirmAction>
+                ) : null}
+              </div>
+              {pagePrimaryAction ? (
+                <div className="overseer-primary-action">{pagePrimaryAction}</div>
               ) : null}
             </div>
           </section>
@@ -728,7 +835,7 @@ function AppContent() {
             </Alert.Root>
           ) : null}
 
-          {runtime ? (
+          {runtime && !runtimeRunning ? (
             <Alert.Root appearance="subtle" tone={runtimeStatus.tone}>
               <Alert.Title level={2}>Lima · {runtimeStatus.label}</Alert.Title>
               <Alert.Description>
@@ -738,35 +845,36 @@ function AppContent() {
             </Alert.Root>
           ) : null}
 
-          <section aria-label="Docker 리소스 요약" className="overseer-stat-grid">
-            <StatCard
-              icon={<Server size={19} strokeWidth={1.8} />}
-              label="실행 중"
-              value={runningCount}
-            />
-            <StatCard
-              icon={<Boxes size={19} strokeWidth={1.8} />}
-              label="전체 컨테이너"
-              value={dashboard?.containers.length ?? 0}
-            />
-            <StatCard
-              icon={<HardDrive size={19} strokeWidth={1.8} />}
-              label="로컬 이미지"
-              value={dashboard?.images.length ?? 0}
-            />
-            <StatCard
-              icon={<Database size={19} strokeWidth={1.8} />}
-              label="볼륨"
-              value={dashboard?.volumes.length ?? 0}
-            />
-            <StatCard
-              icon={<NetworkIcon size={19} strokeWidth={1.8} />}
-              label="네트워크"
-              value={dashboard?.networks.length ?? 0}
-            />
-          </section>
+          {runtimeRunning ? (
+            <section aria-label="Docker 리소스 요약" className="overseer-stat-grid">
+              <StatCard
+                detail={`${runningCount}개 실행 중`}
+                icon={<Boxes size={17} strokeWidth={1.8} />}
+                label="컨테이너"
+                value={`${dashboard?.containers.length ?? 0}개`}
+              />
+              <StatCard
+                detail="로컬 저장소"
+                icon={<HardDrive size={17} strokeWidth={1.8} />}
+                label="이미지"
+                value={`${dashboard?.images.length ?? 0}개`}
+              />
+              <StatCard
+                detail="영구 데이터"
+                icon={<Database size={17} strokeWidth={1.8} />}
+                label="볼륨"
+                value={`${dashboard?.volumes.length ?? 0}개`}
+              />
+              <StatCard
+                detail="기본 네트워크 포함"
+                icon={<NetworkIcon size={17} strokeWidth={1.8} />}
+                label="네트워크"
+                value={`${dashboard?.networks.length ?? 0}개`}
+              />
+            </section>
+          ) : null}
 
-          {!runtimeRunning ? (
+          {dashboard && !runtimeRunning ? (
             <section className="overseer-runtime-empty">
               <EmptyState.Root>
                 <EmptyState.Icon>
@@ -784,7 +892,9 @@ function AppContent() {
                 </EmptyState.Description>
               </EmptyState.Root>
             </section>
-          ) : (
+          ) : null}
+
+          {dashboard && runtimeRunning ? (
             <>
               {resourcePath === "/containers" ? (
                 <section className="overseer-panel" id="containers">
@@ -793,21 +903,6 @@ function AppContent() {
                       <h2 className="city-text-subsection-title">컨테이너 목록</h2>
                       <p>실행 상태와 로컬 공개 포트를 확인하고 필요한 작업을 수행합니다.</p>
                     </div>
-                    <RunContainerDialog
-                      busy={busy === "container-run"}
-                      disabled={Boolean(busy)}
-                      onSubmit={async (input) =>
-                        mutate({
-                          key: "container-run",
-                          request: () =>
-                            apiRequest("/containers", {
-                              body: JSON.stringify(input),
-                              method: "POST",
-                            }),
-                          success: "컨테이너를 실행했습니다.",
-                        })
-                      }
-                    />
                   </div>
                   <ContainerTable
                     busy={busy}
@@ -842,21 +937,6 @@ function AppContent() {
                       <h2 className="city-text-subsection-title">이미지 목록</h2>
                       <p>로컬 이미지와 태그, 크기를 확인합니다.</p>
                     </div>
-                    <PullImageDialog
-                      busy={busy === "image-pull"}
-                      disabled={Boolean(busy)}
-                      onSubmit={async (image) =>
-                        mutate({
-                          key: "image-pull",
-                          request: () =>
-                            apiRequest("/images/pull", {
-                              body: JSON.stringify({ image }),
-                              method: "POST",
-                            }),
-                          success: `${image} 이미지를 받았습니다.`,
-                        })
-                      }
-                    />
                   </div>
                   <ImageTable
                     busy={busy}
@@ -875,17 +955,6 @@ function AppContent() {
               {resourcePath === "/volumes" ? (
                 <VolumesPage
                   busy={busy}
-                  onCreate={(name) =>
-                    mutate({
-                      key: "volume-create",
-                      request: () =>
-                        apiRequest("/volumes", {
-                          body: JSON.stringify({ name }),
-                          method: "POST",
-                        }),
-                      success: `${name} 볼륨을 만들었습니다.`,
-                    })
-                  }
                   onRemove={(volume) =>
                     void mutate({
                       key: `${volume.name}-remove`,
@@ -904,17 +973,6 @@ function AppContent() {
                 <NetworksPage
                   busy={busy}
                   networks={dashboard?.networks ?? []}
-                  onCreate={(name) =>
-                    mutate({
-                      key: "network-create",
-                      request: () =>
-                        apiRequest("/networks", {
-                          body: JSON.stringify({ name }),
-                          method: "POST",
-                        }),
-                      success: `${name} 네트워크를 만들었습니다.`,
-                    })
-                  }
                   onRemove={(network) =>
                     void mutate({
                       key: `${network.name}-remove`,
@@ -928,7 +986,7 @@ function AppContent() {
                 />
               ) : null}
             </>
-          )}
+          ) : null}
         </main>
       </div>
       <LogsDialog container={logsContainer} onClose={() => setLogsContainer(undefined)} />
@@ -1051,12 +1109,10 @@ function CreateNamedResourceDialog({
 
 function VolumesPage({
   busy,
-  onCreate,
   onRemove,
   volumes,
 }: {
   busy?: string;
-  onCreate: (name: string) => Promise<void>;
   onRemove: (volume: VolumeSummary) => void;
   volumes: VolumeSummary[];
 }) {
@@ -1067,18 +1123,20 @@ function VolumesPage({
           <h2 className="city-text-subsection-title">볼륨 목록</h2>
           <p>컨테이너가 삭제되어도 유지되는 로컬 데이터를 관리합니다.</p>
         </div>
-        <CreateNamedResourceDialog
-          busy={busy === "volume-create"}
-          description="local 드라이버를 사용하는 named volume을 만듭니다."
-          disabled={Boolean(busy)}
-          label="볼륨"
-          onSubmit={onCreate}
-          placeholder="app-data"
-        />
       </div>
-      <DataTableRegion hint="모든 열을 보려면 표를 가로로 스크롤하십시오." label="볼륨 표">
-        <Table.Root aria-label="볼륨 목록" className="overseer-table" size="sm">
-          <Table.Caption>Lima overseer 인스턴스의 볼륨</Table.Caption>
+      <DataTableRegion
+        className="overseer-data-table-region"
+        hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+        label="볼륨 표"
+      >
+        <Table.Root
+          aria-label="볼륨 목록"
+          className="overseer-table overseer-table--volumes"
+          size="sm"
+        >
+          <Table.Caption className="overseer-table-caption">
+            Lima overseer 인스턴스의 볼륨
+          </Table.Caption>
           <Table.Header>
             <Table.Row>
               <Table.Head>이름</Table.Head>
@@ -1091,7 +1149,7 @@ function VolumesPage({
           <Table.Body>
             {volumes.length === 0 ? (
               <Table.StateRow colSpan={5}>
-                <EmptyState.Root density="compact">
+                <EmptyState.Root className="overseer-table-empty-state" density="compact">
                   <EmptyState.Icon>
                     <Database aria-hidden="true" />
                   </EmptyState.Icon>
@@ -1138,12 +1196,10 @@ function VolumesPage({
 function NetworksPage({
   busy,
   networks,
-  onCreate,
   onRemove,
 }: {
   busy?: string;
   networks: NetworkSummary[];
-  onCreate: (name: string) => Promise<void>;
   onRemove: (network: NetworkSummary) => void;
 }) {
   return (
@@ -1153,18 +1209,20 @@ function NetworksPage({
           <h2 className="city-text-subsection-title">네트워크 목록</h2>
           <p>컨테이너 간 통신 범위와 Docker 기본 네트워크를 확인합니다.</p>
         </div>
-        <CreateNamedResourceDialog
-          busy={busy === "network-create"}
-          description="기본 bridge 드라이버를 사용하는 네트워크를 만듭니다."
-          disabled={Boolean(busy)}
-          label="네트워크"
-          onSubmit={onCreate}
-          placeholder="app-network"
-        />
       </div>
-      <DataTableRegion hint="모든 열을 보려면 표를 가로로 스크롤하십시오." label="네트워크 표">
-        <Table.Root aria-label="네트워크 목록" className="overseer-table" size="sm">
-          <Table.Caption>Lima overseer 인스턴스의 네트워크</Table.Caption>
+      <DataTableRegion
+        className="overseer-data-table-region"
+        hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+        label="네트워크 표"
+      >
+        <Table.Root
+          aria-label="네트워크 목록"
+          className="overseer-table overseer-table--networks"
+          size="sm"
+        >
+          <Table.Caption className="overseer-table-caption">
+            Lima overseer 인스턴스의 네트워크
+          </Table.Caption>
           <Table.Header>
             <Table.Row>
               <Table.Head>이름</Table.Head>
@@ -1179,7 +1237,7 @@ function NetworksPage({
           <Table.Body>
             {networks.length === 0 ? (
               <Table.StateRow colSpan={7}>
-                <EmptyState.Root density="compact">
+                <EmptyState.Root className="overseer-table-empty-state" density="compact">
                   <EmptyState.Icon>
                     <NetworkIcon aria-hidden="true" />
                   </EmptyState.Icon>
@@ -1252,9 +1310,19 @@ function ContainerTable({
   onRemove: (container: ContainerSummary) => void;
 }) {
   return (
-    <DataTableRegion hint="모든 열을 보려면 표를 가로로 스크롤하십시오." label="컨테이너 표">
-      <Table.Root aria-label="컨테이너 목록" className="overseer-table" size="sm">
-        <Table.Caption>Lima overseer 인스턴스의 전체 컨테이너</Table.Caption>
+    <DataTableRegion
+      className="overseer-data-table-region"
+      hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+      label="컨테이너 표"
+    >
+      <Table.Root
+        aria-label="컨테이너 목록"
+        className="overseer-table overseer-table--containers"
+        size="sm"
+      >
+        <Table.Caption className="overseer-table-caption">
+          Lima overseer 인스턴스의 전체 컨테이너
+        </Table.Caption>
         <Table.Header>
           <Table.Row>
             <Table.Head>이름</Table.Head>
@@ -1267,7 +1335,7 @@ function ContainerTable({
         <Table.Body>
           {containers.length === 0 ? (
             <Table.StateRow colSpan={5}>
-              <EmptyState.Root density="compact">
+              <EmptyState.Root className="overseer-table-empty-state" density="compact">
                 <EmptyState.Icon>
                   <Box aria-hidden="true" />
                 </EmptyState.Icon>
@@ -1291,13 +1359,15 @@ function ContainerTable({
                   </Table.Cell>
                   <Table.Cell>{container.image}</Table.Cell>
                   <Table.Cell>
-                    <Badge
-                      appearance={running ? "subtle" : "outline"}
-                      size="sm"
-                      tone={running ? "success" : "neutral"}
-                    >
-                      {container.status}
-                    </Badge>
+                    <span className="overseer-container-status">
+                      <Badge
+                        aria-label={running ? "실행 중" : "중지됨"}
+                        dot
+                        size="sm"
+                        tone={running ? "success" : "neutral"}
+                      />
+                      <span>{container.status}</span>
+                    </span>
                   </Table.Cell>
                   <Table.Cell>
                     <code>{container.ports || "—"}</code>
@@ -1382,9 +1452,19 @@ function ImageTable({
   onRemove: (image: ImageSummary) => void;
 }) {
   return (
-    <DataTableRegion hint="모든 열을 보려면 표를 가로로 스크롤하십시오." label="이미지 표">
-      <Table.Root aria-label="이미지 목록" className="overseer-table" size="sm">
-        <Table.Caption>Lima overseer 인스턴스의 로컬 이미지</Table.Caption>
+    <DataTableRegion
+      className="overseer-data-table-region"
+      hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+      label="이미지 표"
+    >
+      <Table.Root
+        aria-label="이미지 목록"
+        className="overseer-table overseer-table--images"
+        size="sm"
+      >
+        <Table.Caption className="overseer-table-caption">
+          Lima overseer 인스턴스의 로컬 이미지
+        </Table.Caption>
         <Table.Header>
           <Table.Row>
             <Table.Head>저장소</Table.Head>
@@ -1398,7 +1478,7 @@ function ImageTable({
         <Table.Body>
           {images.length === 0 ? (
             <Table.StateRow colSpan={6}>
-              <EmptyState.Root density="compact">
+              <EmptyState.Root className="overseer-table-empty-state" density="compact">
                 <EmptyState.Icon>
                   <HardDrive aria-hidden="true" />
                 </EmptyState.Icon>

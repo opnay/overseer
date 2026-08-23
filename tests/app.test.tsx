@@ -12,7 +12,7 @@ function jsonResponse(value: unknown, status = 200) {
 }
 
 describe("App", () => {
-  it("matches the loading skeleton to all five summary cards", () => {
+  it("matches the loading skeleton to all four summary cards", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => new Promise<Response>(() => undefined)),
@@ -20,7 +20,7 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll(".overseer-loading-stat")).toHaveLength(5);
+    expect(container.querySelectorAll(".overseer-loading-stat")).toHaveLength(4);
   });
 
   it("explains the first-run Lima state", async () => {
@@ -68,7 +68,12 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("컨테이너가 없습니다.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "컨테이너 실행" })).toBeEnabled();
+    const primaryAction = screen.getByRole("button", { name: "컨테이너 실행" });
+    const pageHeader = screen
+      .getByRole("heading", { name: "컨테이너", level: 1 })
+      .closest(".overseer-page-header");
+    expect(primaryAction).toBeEnabled();
+    expect(pageHeader).toContainElement(primaryAction);
     expect(screen.getByText(/Docker 29\.7\.2/)).toBeInTheDocument();
   });
 
@@ -237,5 +242,6 @@ describe("App", () => {
       expect(screen.getByText("Overseer에 연결하지 못했습니다.")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "다시 시도" })).toBeEnabled();
+    expect(screen.queryByText("Lima 런타임이 준비되지 않았습니다.")).not.toBeInTheDocument();
   });
 });
