@@ -23,7 +23,7 @@ pnpm dev
 
 리소스는 독립 URL에서 관리합니다.
 
-- `/compose`: 실행 이력 또는 raw HTTPS URL 프로젝트, 업데이트 확인·적용, 실행·중지·재시작·로그·내리기
+- `/compose`: 폼 또는 raw HTTPS URL 프로젝트 등록, YAML 미리보기, 업데이트 확인·적용, 실행·중지·재시작·로그·내리기
 - `/containers`: 확장 설정으로 실행·수정, 시작·중지·재시작·로그·삭제
 - `/images`: pull·삭제
 - `/volumes`: 생성·삭제
@@ -71,6 +71,16 @@ Compose 페이지에서 GitHub Raw처럼 인증 없이 파일 내용이 열리�
 - 인증 정보가 없는 HTTPS만 허용하며 리다이렉트마다 DNS를 확인해 loopback·사설·link-local 주소를 거부합니다.
 - 응답 시간은 15초, 리다이렉트는 3회, 파일 크기는 1MiB로 제한합니다.
 - 실행 중인 URL 프로젝트는 먼저 내려야 등록을 해제할 수 있습니다.
+
+## 폼 Compose
+
+Compose 페이지의 **폼으로 추가**에서 복수 서비스와 image·tag, 명령 인수, 포트, 환경 변수, named volume, network, 재시작 정책을 입력할 수 있습니다. 폼과 **YAML 미리보기** 탭은 같은 생성기를 사용하므로 저장되는 `compose.yaml`을 등록 전에 확인할 수 있습니다.
+
+- 프로젝트 설정과 생성된 YAML은 `builder_compose_projects` SQLite 테이블에 저장합니다.
+- 저장된 설정은 수정할 수 있으며 config hash로 오래된 편집 요청을 거부합니다.
+- 호스트 포트는 지정하거나 Docker에 자동 배정을 맡길 수 있고, 항상 `127.0.0.1`에만 게시합니다.
+- 폼 Compose는 image 기반 서비스만 지원합니다. build context, bind mount, privileged, device와 host network는 생성하지 않습니다.
+- 등록은 프로젝트를 실행하지 않습니다. 목록의 **Compose 적용**으로 별도 실행하며, 실행 중인 프로젝트는 먼저 내려야 수정하거나 등록을 해제할 수 있습니다.
 
 ## 안전 경계
 

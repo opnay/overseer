@@ -3,6 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../src/client/app.tsx";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
+import {
+  emptyComposeBuilderService,
+  emptyComposeBuilderSpec,
+} from "../src/shared/compose-builder.ts";
 import type { DashboardSnapshot, OperationSnapshot } from "../src/shared/contracts.ts";
 
 function jsonResponse(value: unknown, status = 200) {
@@ -595,6 +599,167 @@ describe("App", () => {
     expect(submittedBody).toEqual({
       name: "remote-stack",
       url: "https://raw.githubusercontent.com/opnay/example/main/compose.yaml",
+    });
+  });
+
+  it("builds multiple services in a form and previews the generated YAML", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    let submittedBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith("/api/compose/builder") && init?.method === "POST") {
+          submittedBody = JSON.parse(String(init.body));
+          return jsonResponse(
+            {
+              operation: operation("queued", {
+                id: "builder-register-operation",
+                kind: "compose.builder.register",
+                target: { name: "demo-stack", resource: "compose" },
+                title: "폼 Compose 등록",
+              }),
+            },
+            202,
+          );
+        }
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/compose");
+    render(<App />);
+    await screen.findByRole("heading", { name: "Compose", level: 1 });
+
+    await user.click(await screen.findByRole("button", { name: "폼으로 추가" }));
+    const dialog = await screen.findByRole("dialog", { name: "폼 Compose 추가" });
+    await user.type(within(dialog).getByRole("textbox", { name: "프로젝트 이름" }), "demo-stack");
+    const serviceOne = within(dialog).getByRole("region", { name: "서비스 1" });
+    await user.type(within(serviceOne).getByRole("textbox", { name: "이미지" }), "nginx");
+    await user.click(within(dialog).getByRole("button", { name: "network 추가" }));
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Compose network 이름 1" }),
+      "frontend",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "volume 추가" }));
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Compose volume 이름 1" }),
+      "app-data",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "서비스 추가" }));
+    const serviceTwo = within(dialog).getByRole("region", { name: "서비스 2" });
+    await user.type(within(serviceTwo).getByRole("textbox", { name: "이미지" }), "node");
+    await user.clear(within(serviceTwo).getByRole("textbox", { name: "태그" }));
+    await user.type(within(serviceTwo).getByRole("textbox", { name: "태그" }), "22-alpine");
+
+    await user.click(within(dialog).getByRole("tab", { name: "YAML 미리보기" }));
+    const yaml = dialog.querySelector(".overseer-compose-yaml-preview code");
+    expect(yaml).toHaveTextContent('image: "nginx:latest"');
+    expect(yaml).toHaveTextContent('image: "node:22-alpine"');
+    expect(yaml?.textContent).toContain("networks:\n  frontend:");
+    await user.click(within(dialog).getByRole("button", { name: "Compose 저장" }));
+
+    await waitFor(() => expect(submittedBody).toMatchObject({ name: "demo-stack" }));
+    expect(submittedBody).toMatchObject({
+      networks: ["frontend"],
+      services: [
+        { image: "nginx", name: "service-1", tag: "latest" },
+        { image: "node", name: "service-2", tag: "22-alpine" },
+      ],
+      volumes: ["app-data"],
+    });
+  });
+
+  it("loads and updates a persisted form Compose project", async () => {
+    const user = userEvent.setup();
+    const spec = {
+      ...emptyComposeBuilderSpec(),
+      name: "form-stack",
+      services: [{ ...emptyComposeBuilderService(), image: "nginx", name: "web" }],
+    };
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [
+        {
+          builder: { configHash: "a".repeat(64) },
+          configFiles: ["/data/compose/form-stack/compose.yaml"],
+          name: "form-stack",
+          status: "registered",
+        },
+      ],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    let updateBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith("/api/compose/projects/form-stack/builder") && init?.method === "PATCH") {
+          updateBody = JSON.parse(String(init.body));
+          return jsonResponse(
+            {
+              operation: operation("queued", {
+                id: "builder-update-operation",
+                kind: "compose.builder.update",
+                target: { name: "form-stack", resource: "compose" },
+                title: "폼 Compose 수정",
+              }),
+            },
+            202,
+          );
+        }
+        if (url.endsWith("/api/compose/projects/form-stack/builder")) {
+          return jsonResponse({
+            project: {
+              configHash: "a".repeat(64),
+              spec,
+              yaml: 'services:\n  web:\n    image: "nginx:latest"\n',
+            },
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/compose");
+    render(<App />);
+    expect(await screen.findByText("폼 등록")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "폼 관리" }));
+    await user.click(await screen.findByRole("menuitem", { name: "구성 편집" }));
+    const dialog = await screen.findByRole("dialog", { name: "폼 Compose 수정" });
+    const tag = within(within(dialog).getByRole("region", { name: "서비스 1" })).getByRole(
+      "textbox",
+      { name: "태그" },
+    );
+    await user.clear(tag);
+    await user.type(tag, "1.29-alpine");
+    await user.click(within(dialog).getByRole("button", { name: "변경사항 저장" }));
+
+    await waitFor(() => expect(updateBody).toBeTruthy());
+    expect(updateBody).toMatchObject({
+      expectedConfigHash: "a".repeat(64),
+      spec: { services: [{ tag: "1.29-alpine" }] },
     });
   });
 

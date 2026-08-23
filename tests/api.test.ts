@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "../src/server/api.ts";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
+import {
+  emptyComposeBuilderService,
+  emptyComposeBuilderSpec,
+} from "../src/shared/compose-builder.ts";
 import { ExpectedError } from "../src/server/errors.ts";
 import type { RuntimeController } from "../src/server/lima-docker-runtime.ts";
 
@@ -12,6 +16,11 @@ function createController(): RuntimeController {
     containerAction: vi.fn(async () => undefined),
     createNetwork: vi.fn(async () => undefined),
     createVolume: vi.fn(async () => undefined),
+    getBuilderComposeProject: vi.fn(async (name) => ({
+      configHash: "a".repeat(64),
+      spec: { name, networks: [], services: [], volumes: [] },
+      yaml: "services: {}\n",
+    })),
     getContainer: vi.fn(async (id) => ({
       configHash: "a".repeat(64),
       id,
@@ -45,7 +54,9 @@ function createController(): RuntimeController {
     getNetworks: vi.fn(async () => []),
     getVolumes: vi.fn(async () => []),
     pullImage: vi.fn(async () => undefined),
+    registerBuilderCompose: vi.fn(async () => undefined),
     registerRemoteCompose: vi.fn(async () => undefined),
+    removeBuilderCompose: vi.fn(async () => undefined),
     removeContainer: vi.fn(async () => undefined),
     removeImage: vi.fn(async () => undefined),
     removeNetwork: vi.fn(async () => undefined),
@@ -63,6 +74,7 @@ function createController(): RuntimeController {
       phase: "stopped" as const,
     })),
     updateContainer: vi.fn(async () => undefined),
+    updateBuilderCompose: vi.fn(async () => undefined),
   };
 }
 
@@ -223,6 +235,40 @@ describe("API boundary", () => {
     });
     expect([check.status, update.status, remove.status]).toEqual([202, 202, 202]);
     await vi.waitFor(() => expect(controller.removeRemoteCompose).toHaveBeenCalled());
+  });
+
+  it("validates and accepts form Compose lifecycle operations", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const spec = {
+      ...emptyComposeBuilderSpec(),
+      name: "form-stack",
+      services: [{ ...emptyComposeBuilderService(), image: "nginx", name: "web" }],
+    };
+    const register = await app.request("/compose/builder", {
+      body: JSON.stringify(spec),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(register.status).toBe(202);
+    await vi.waitFor(() => expect(controller.registerBuilderCompose).toHaveBeenCalled());
+    expect(controller.registerBuilderCompose).toHaveBeenCalledWith(spec, expect.any(Object));
+
+    const detail = await app.request("/compose/projects/form-stack/builder", {
+      headers: localHeaders,
+    });
+    expect(detail.status).toBe(200);
+    const update = await app.request("/compose/projects/form-stack/builder", {
+      body: JSON.stringify({ expectedConfigHash: "a".repeat(64), spec }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+    const remove = await app.request("/compose/projects/form-stack/builder", {
+      headers: localHeaders,
+      method: "DELETE",
+    });
+    expect([update.status, remove.status]).toEqual([202, 202]);
+    await vi.waitFor(() => expect(controller.removeBuilderCompose).toHaveBeenCalled());
   });
 
   it("rejects an insecure remote Compose URL before queueing", async () => {

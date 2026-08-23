@@ -1,10 +1,15 @@
 import { Hono, type Context } from "hono";
 import type {
+  ComposeBuilderProjectDetail,
   OperationAccepted,
   PullImageInput,
   RegisterRemoteComposeInput,
 } from "../shared/contracts.ts";
 import { parseContainerSpec, parseUpdateContainerInput } from "./container-spec.ts";
+import {
+  parseComposeBuilderSpec,
+  parseUpdateComposeBuilderInput,
+} from "./compose-builder-input.ts";
 import { ExpectedError } from "./errors.ts";
 import { LimaDockerRuntime, type RuntimeController } from "./lima-docker-runtime.ts";
 import {
@@ -117,6 +122,57 @@ export function createApi(controller: RuntimeController, operations = new Operat
   app.get("/compose/projects", async (context) =>
     context.json({ projects: await controller.getComposeProjects() }),
   );
+  app.post("/compose/builder", async (context) => {
+    const spec = parseComposeBuilderSpec(await readObject(context));
+    const operation = enqueue(
+      context,
+      {
+        kind: "compose.builder.register",
+        locks: [`compose:${spec.name}`],
+        run: (progress) => controller.registerBuilderCompose(spec, progress),
+        successMessage: `${spec.name} 폼 Compose 프로젝트를 등록했습니다.`,
+        target: { name: spec.name, resource: "compose" },
+        title: "폼 Compose 등록",
+      },
+      spec,
+    );
+    return context.json({ operation }, 202);
+  });
+  app.get("/compose/projects/:name/builder", async (context) => {
+    const project: ComposeBuilderProjectDetail = await controller.getBuilderComposeProject(
+      requireResourceName(context.req.param("name")),
+    );
+    return context.json({ project });
+  });
+  app.patch("/compose/projects/:name/builder", async (context) => {
+    const name = requireResourceName(context.req.param("name"));
+    const input = parseUpdateComposeBuilderInput(await readObject(context));
+    const operation = enqueue(
+      context,
+      {
+        kind: "compose.builder.update",
+        locks: [`compose:${name}`],
+        run: (progress) => controller.updateBuilderCompose(name, input, progress),
+        successMessage: `${name} 폼 Compose 구성을 수정했습니다.`,
+        target: { name, resource: "compose" },
+        title: "폼 Compose 수정",
+      },
+      input,
+    );
+    return context.json({ operation }, 202);
+  });
+  app.delete("/compose/projects/:name/builder", (context) => {
+    const name = requireResourceName(context.req.param("name"));
+    const operation = enqueue(context, {
+      kind: "compose.builder.remove",
+      locks: [`compose:${name}`],
+      run: (progress) => controller.removeBuilderCompose(name, progress),
+      successMessage: `${name} 폼 Compose 등록을 해제했습니다.`,
+      target: { name, resource: "compose" },
+      title: "폼 Compose 등록 해제",
+    });
+    return context.json({ operation }, 202);
+  });
   app.post("/compose/remote", async (context) => {
     const body = await readObject(context);
     const requestedName = optionalComposeProjectName(body.name);

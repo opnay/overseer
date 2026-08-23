@@ -594,6 +594,55 @@ export function deriveRemoteComposeProjectName(source: string): string {
   return normalized && /^[a-z0-9]/.test(normalized) ? normalized : "remote-compose";
 }
 
+export async function validateComposeContent(
+  command: CommandRunner,
+  name: string,
+  content: string,
+): Promise<{ buildContext: boolean }> {
+  const directory = await mkdtemp(join(tmpdir(), "overseer-compose-"));
+  const file = join(directory, "compose.yaml");
+  try {
+    await writeFile(file, content, { encoding: "utf8", mode: 0o600 });
+    const result = await command(
+      "docker",
+      [
+        "compose",
+        "--project-name",
+        name,
+        "--file",
+        file,
+        "config",
+        "--format",
+        "json",
+        "--no-interpolate",
+        "--no-env-resolution",
+        "--no-path-resolution",
+      ],
+      { timeoutMs: 30_000 },
+    );
+    const config = JSON.parse(result.stdout) as {
+      services?: Record<string, { build?: unknown }>;
+    };
+    const services = Object.values(config.services ?? {});
+    if (services.length === 0) {
+      throw new ExpectedError("invalid_compose_content", "Compose 파일에 서비스가 없습니다.", 400);
+    }
+    return { buildContext: services.some(({ build }) => build !== undefined && build !== null) };
+  } catch (error) {
+    if (error instanceof ExpectedError) throw error;
+    if (error instanceof CommandError) {
+      throw new ExpectedError(
+        "invalid_compose_content",
+        error.stderr.trim() || "Compose 파일을 해석하지 못했습니다.",
+        400,
+      );
+    }
+    throw new ExpectedError("invalid_compose_content", "Compose 파일을 해석하지 못했습니다.", 400);
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+}
+
 export class RemoteComposeService implements RemoteComposeRegistry {
   private readonly command: CommandRunner;
   private readonly fetcher: RemoteComposeFetcher;
@@ -764,55 +813,6 @@ export class RemoteComposeService implements RemoteComposeRegistry {
 
   private async validate(name: string, content: string): Promise<{ buildContext: boolean }> {
     if (this.validateImplementation) return this.validateImplementation(name, content);
-    const directory = await mkdtemp(join(tmpdir(), "overseer-compose-"));
-    const file = join(directory, "compose.yaml");
-    try {
-      await writeFile(file, content, { encoding: "utf8", mode: 0o600 });
-      const result = await this.command(
-        "docker",
-        [
-          "compose",
-          "--project-name",
-          name,
-          "--file",
-          file,
-          "config",
-          "--format",
-          "json",
-          "--no-interpolate",
-          "--no-env-resolution",
-          "--no-path-resolution",
-        ],
-        { timeoutMs: 30_000 },
-      );
-      const config = JSON.parse(result.stdout) as {
-        services?: Record<string, { build?: unknown }>;
-      };
-      const services = Object.values(config.services ?? {});
-      if (services.length === 0) {
-        throw new ExpectedError(
-          "invalid_compose_content",
-          "Compose 파일에 서비스가 없습니다.",
-          400,
-        );
-      }
-      return { buildContext: services.some(({ build }) => build !== undefined && build !== null) };
-    } catch (error) {
-      if (error instanceof ExpectedError) throw error;
-      if (error instanceof CommandError) {
-        throw new ExpectedError(
-          "invalid_compose_content",
-          error.stderr.trim() || "Compose 파일을 해석하지 못했습니다.",
-          400,
-        );
-      }
-      throw new ExpectedError(
-        "invalid_compose_content",
-        "Compose 파일을 해석하지 못했습니다.",
-        400,
-      );
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
+    return validateComposeContent(this.command, name, content);
   }
 }

@@ -78,10 +78,46 @@ export interface UpdateContainerInput {
 }
 
 export interface ComposeProjectSummary {
+  builder?: ComposeBuilderSource;
   configFiles: string[];
   name: string;
   remote?: ComposeRemoteSource;
   status: string;
+}
+
+export interface ComposeBuilderSource {
+  configHash: string;
+}
+
+export interface ComposeBuilderService {
+  command: string[];
+  containerName?: string;
+  environment: ContainerKeyValue[];
+  image: string;
+  name: string;
+  networks: string[];
+  ports: ContainerPortMapping[];
+  restartPolicy: ContainerRestartPolicy;
+  tag: string;
+  volumes: ContainerVolumeMount[];
+}
+
+export interface ComposeBuilderSpec {
+  name: string;
+  networks: string[];
+  services: ComposeBuilderService[];
+  volumes: string[];
+}
+
+export interface ComposeBuilderProjectDetail {
+  configHash: string;
+  spec: ComposeBuilderSpec;
+  yaml: string;
+}
+
+export interface UpdateComposeBuilderInput {
+  expectedConfigHash: string;
+  spec: ComposeBuilderSpec;
 }
 
 export interface ComposeRemoteSource {
@@ -171,6 +207,9 @@ export interface ApiFailure {
 export type OperationStatus = "cancelled" | "failed" | "queued" | "running" | "succeeded";
 
 export type OperationKind =
+  | "compose.builder.register"
+  | "compose.builder.remove"
+  | "compose.builder.update"
   | "compose.down"
   | "compose.remote.check"
   | "compose.remote.register"

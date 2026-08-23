@@ -308,6 +308,12 @@
     gap: var(--city-space-3);
   }
 
+  .overseer-compose-create-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--city-space-2);
+  }
+
   .overseer-page-utilities {
     gap: var(--city-space-2);
   }
@@ -492,6 +498,57 @@
 
   .overseer-container-dialog > form {
     display: contents;
+  }
+
+  .overseer-compose-builder-panel {
+    display: grid;
+    padding-top: var(--city-space-5);
+    gap: var(--city-space-6);
+  }
+
+  .overseer-compose-services {
+    display: grid;
+    gap: var(--city-space-4);
+  }
+
+  .overseer-compose-service {
+    display: grid;
+    padding: var(--city-space-4);
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-md);
+    gap: var(--city-space-5);
+  }
+
+  .overseer-compose-service-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--city-space-3);
+  }
+
+  .overseer-compose-service-header > div {
+    display: grid;
+    gap: var(--city-space-0-5);
+  }
+
+  .overseer-compose-service-header span {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-compose-yaml-preview {
+    min-height: 28rem;
+    max-height: min(60vh, 48rem);
+    margin: 0;
+    padding: var(--city-space-4);
+    overflow: auto;
+    border-radius: var(--city-radius-sm);
+    background: var(--city-palette-neutral-950);
+    color: var(--city-palette-neutral-100);
+    font-family: var(--city-font-family-mono);
+    font-size: var(--city-font-size-xs);
+    line-height: var(--city-line-height-sm);
+    white-space: pre;
   }
 
   .overseer-container-form [data-city-fieldset-content] {
@@ -915,6 +972,11 @@
     }
 
     .overseer-primary-action > * {
+      width: 100%;
+    }
+
+    .overseer-compose-create-actions {
+      display: grid;
       width: 100%;
     }
 

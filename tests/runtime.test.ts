@@ -2,9 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
 import { LimaDockerRuntime, type CommandRunner } from "../src/server/lima-docker-runtime.ts";
 import { CommandError } from "../src/server/process.ts";
+import type { BuilderComposeRegistry } from "../src/server/builder-compose.ts";
 import type { RemoteComposeRegistry } from "../src/server/remote-compose.ts";
 
 const limaRow = "overseer\tRunning\t/tmp/overseer\n";
+
+function emptyBuilderRegistry(): BuilderComposeRegistry {
+  return {
+    get: vi.fn(async () => undefined),
+    list: vi.fn(async () => []),
+    register: vi.fn(async () => {
+      throw new Error("unused");
+    }),
+    remove: vi.fn(async () => undefined),
+    update: vi.fn(async () => {
+      throw new Error("unused");
+    }),
+  };
+}
 
 function inspectFixture() {
   return {
@@ -211,7 +226,7 @@ describe("LimaDockerRuntime remote Compose", () => {
       }),
       remove: vi.fn(async () => undefined),
     };
-    const runtime = new LimaDockerRuntime(command, registry);
+    const runtime = new LimaDockerRuntime(command, registry, emptyBuilderRegistry());
 
     await expect(runtime.getComposeProjects()).resolves.toMatchObject([
       {
@@ -259,7 +274,7 @@ describe("LimaDockerRuntime remote Compose", () => {
       }),
       remove: vi.fn(async () => undefined),
     };
-    const runtime = new LimaDockerRuntime(command, registry);
+    const runtime = new LimaDockerRuntime(command, registry, emptyBuilderRegistry());
 
     await runtime.composeProjectAction("remote-stack", "up");
 
@@ -326,10 +341,68 @@ describe("LimaDockerRuntime remote Compose", () => {
       }),
       remove: vi.fn(async () => undefined),
     };
-    const runtime = new LimaDockerRuntime(command, registry);
+    const runtime = new LimaDockerRuntime(command, registry, emptyBuilderRegistry());
 
     await expect(runtime.composeProjectAction("remote-stack", "up")).rejects.toMatchObject({
       message: "Error response from daemon: read-only file system",
+    });
+  });
+});
+
+describe("LimaDockerRuntime form Compose", () => {
+  it("lists a persisted form project and runs it from the Lima guest directory", async () => {
+    const commands: Array<{ args: readonly string[]; executable: string }> = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      commands.push({ args, executable });
+      if (executable === "limactl" && args[0] === "list") return { stderr: "", stdout: limaRow };
+      if (executable === "docker") return { stderr: "", stdout: "[]" };
+      if (executable === "limactl" && args.includes("printenv"))
+        return { stderr: "", stdout: "/home/test.guest\n" };
+      return { stderr: "", stdout: "" };
+    });
+    const remote: RemoteComposeRegistry = {
+      applyUpdate: vi.fn(async () => undefined),
+      checkUpdate: vi.fn(async () => undefined),
+      get: vi.fn(async () => undefined),
+      list: vi.fn(async () => []),
+      register: vi.fn(async () => {
+        throw new Error("unused");
+      }),
+      remove: vi.fn(async () => undefined),
+    };
+    const builder: BuilderComposeRegistry = {
+      get: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          configFile: "/host/compose/form-stack/compose.yaml",
+          configHash: "a".repeat(64),
+          name: "form-stack",
+          spec: { name: "form-stack", networks: [], services: [], volumes: [] },
+          yaml: "services: {}\n",
+        },
+      ]),
+      register: vi.fn(async () => {
+        throw new Error("unused");
+      }),
+      remove: vi.fn(async () => undefined),
+      update: vi.fn(async () => {
+        throw new Error("unused");
+      }),
+    };
+    const runtime = new LimaDockerRuntime(command, remote, builder);
+
+    await expect(runtime.getComposeProjects()).resolves.toMatchObject([
+      { builder: { configHash: "a".repeat(64) }, name: "form-stack", status: "registered" },
+    ]);
+    await runtime.composeProjectAction("form-stack", "up");
+    expect(commands).toContainEqual({
+      args: [
+        "copy",
+        "--backend=scp",
+        "/host/compose/form-stack/compose.yaml",
+        "overseer:/home/test.guest/.local/share/overseer/compose/form-stack/compose.yaml",
+      ],
+      executable: "limactl",
     });
   });
 });

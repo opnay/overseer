@@ -52,6 +52,7 @@ import {
 } from "react";
 import type {
   ComposeProjectAction,
+  ComposeBuilderSpec,
   ComposeProjectDetail,
   ComposeProjectSummary,
   ContainerDetail,
@@ -97,6 +98,16 @@ const RemoteComposeActions = lazy(() =>
 );
 const OperationsPage = lazy(() =>
   import("./operations-page.tsx").then((module) => ({ default: module.OperationsPage })),
+);
+const CreateBuilderComposeDialog = lazy(() =>
+  import("./builder-compose-dialog.tsx").then((module) => ({
+    default: module.CreateBuilderComposeDialog,
+  })),
+);
+const BuilderComposeActions = lazy(() =>
+  import("./builder-compose-actions.tsx").then((module) => ({
+    default: module.BuilderComposeActions,
+  })),
 );
 
 const resourceRouteIcon = {
@@ -626,6 +637,8 @@ function ComposeProjectDialog({
 function ComposePage({
   isBusy,
   onAction,
+  onBuilderRemove,
+  onBuilderUpdate,
   onInspect,
   onLogs,
   onRemoteCheck,
@@ -635,6 +648,12 @@ function ComposePage({
 }: {
   isBusy: (project: ComposeProjectSummary) => boolean;
   onAction: (project: ComposeProjectSummary, action: ComposeProjectAction) => Promise<void>;
+  onBuilderRemove: (project: ComposeProjectSummary) => Promise<void>;
+  onBuilderUpdate: (
+    project: ComposeProjectSummary,
+    spec: ComposeBuilderSpec,
+    expectedConfigHash: string,
+  ) => Promise<void>;
   onInspect: (project: ComposeProjectSummary) => void;
   onLogs: (project: ComposeProjectSummary) => void;
   onRemoteCheck: (project: ComposeProjectSummary) => Promise<void>;
@@ -674,7 +693,7 @@ function ComposePage({
                   </EmptyState.Icon>
                   <EmptyState.Title level={2}>Compose 프로젝트가 없습니다.</EmptyState.Title>
                   <EmptyState.Description>
-                    CLI 실행 이력 또는 raw compose.yaml URL을 등록하면 여기에 표시됩니다.
+                    CLI 실행 이력이나 폼·raw compose.yaml URL 프로젝트를 등록하면 여기에 표시됩니다.
                   </EmptyState.Description>
                 </EmptyState.Root>
               </Table.StateRow>
@@ -694,6 +713,8 @@ function ComposePage({
                         <strong>{project.name}</strong>
                         {project.remote ? (
                           <span className="overseer-primary-meta">URL 등록</span>
+                        ) : project.builder ? (
+                          <span className="overseer-primary-meta">폼 등록</span>
                         ) : null}
                       </div>
                     </Table.Cell>
@@ -740,7 +761,9 @@ function ComposePage({
                         title={project.remote?.url ?? project.configFiles.join(", ")}
                       >
                         {project.remote?.url ??
-                          project.configFiles.map(composeFileName).join(" · ")}
+                          (project.builder
+                            ? "SQLite 생성 compose.yaml"
+                            : project.configFiles.map(composeFileName).join(" · "))}
                       </code>
                     </Table.Cell>
                     <Table.Cell>
@@ -821,6 +844,21 @@ function ComposePage({
                               onCheck={() => onRemoteCheck(project)}
                               onRemove={() => onRemoteRemove(project)}
                               onUpdate={() => onRemoteUpdate(project)}
+                              project={project}
+                            />
+                          </Suspense>
+                        ) : null}
+                        {project.builder ? (
+                          <Suspense
+                            fallback={<Skeleton className="overseer-loading-topbar-action" />}
+                          >
+                            <BuilderComposeActions
+                              busy={rowBusy}
+                              onApply={() => onAction(project, "up")}
+                              onRemove={() => onBuilderRemove(project)}
+                              onUpdate={(spec, expectedConfigHash) =>
+                                onBuilderUpdate(project, spec, expectedConfigHash)
+                              }
                               project={project}
                             />
                           </Suspense>
@@ -1081,21 +1119,38 @@ function AppContent() {
   const runtimeBusy = activeOperations.some(({ target }) => target.resource === "runtime");
   const currentRoute = getResourceRoute(resourcePath);
   const pagePrimaryAction = !runtimeRunning ? null : resourcePath === "/compose" ? (
-    <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
-      <RemoteComposeDialog
-        disabled={Boolean(submitting) || runtimeBusy}
-        onSubmit={(input: RegisterRemoteComposeInput) =>
-          mutate({
-            key: "compose-remote-register",
-            request: () =>
-              apiRequest<OperationAccepted>("/compose/remote", {
-                body: JSON.stringify(input),
-                method: "POST",
-              }),
-          })
-        }
-      />
-    </Suspense>
+    <div className="overseer-compose-create-actions">
+      <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+        <CreateBuilderComposeDialog
+          disabled={Boolean(submitting) || runtimeBusy}
+          onSubmit={(spec: ComposeBuilderSpec) =>
+            mutate({
+              key: "compose-builder-register",
+              request: () =>
+                apiRequest<OperationAccepted>("/compose/builder", {
+                  body: JSON.stringify(spec),
+                  method: "POST",
+                }),
+            })
+          }
+        />
+      </Suspense>
+      <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+        <RemoteComposeDialog
+          disabled={Boolean(submitting) || runtimeBusy}
+          onSubmit={(input: RegisterRemoteComposeInput) =>
+            mutate({
+              key: "compose-remote-register",
+              request: () =>
+                apiRequest<OperationAccepted>("/compose/remote", {
+                  body: JSON.stringify(input),
+                  method: "POST",
+                }),
+            })
+          }
+        />
+      </Suspense>
+    </div>
   ) : resourcePath === "/containers" ? (
     <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
       <RunContainerDialog
@@ -1400,6 +1455,29 @@ function AppContent() {
                         apiRequest<OperationAccepted>(
                           `/compose/projects/${encodeURIComponent(project.name)}/actions/${action}`,
                           { method: "POST" },
+                        ),
+                    })
+                  }
+                  onBuilderRemove={(project) =>
+                    mutate({
+                      key: `compose-${project.name}-builder-remove`,
+                      request: () =>
+                        apiRequest<OperationAccepted>(
+                          `/compose/projects/${encodeURIComponent(project.name)}/builder`,
+                          { method: "DELETE" },
+                        ),
+                    })
+                  }
+                  onBuilderUpdate={(project, spec, expectedConfigHash) =>
+                    mutate({
+                      key: `compose-${project.name}-builder-update`,
+                      request: () =>
+                        apiRequest<OperationAccepted>(
+                          `/compose/projects/${encodeURIComponent(project.name)}/builder`,
+                          {
+                            body: JSON.stringify({ expectedConfigHash, spec }),
+                            method: "PATCH",
+                          },
                         ),
                     })
                   }

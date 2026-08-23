@@ -8,7 +8,7 @@ export type ResourceRouteGroup = (typeof RESOURCE_ROUTE_GROUPS)[number]["id"];
 
 export const RESOURCE_ROUTES = [
   {
-    description: "실행 이력과 URL Compose 프로젝트, 서비스 상태를 함께 관리합니다.",
+    description: "실행 이력과 폼·URL Compose 프로젝트, 서비스 상태를 함께 관리합니다.",
     eyebrow: "COMPOSE PROJECTS",
     group: "workloads",
     label: "Compose",

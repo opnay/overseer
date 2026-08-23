@@ -26,9 +26,11 @@ function validPublicHttpsUrl(value: string): boolean {
 export function RemoteComposeDialog({
   disabled,
   onSubmit,
+  variant = "outline",
 }: {
   disabled: boolean;
   onSubmit: (input: RegisterRemoteComposeInput) => Promise<void>;
+  variant?: "outline" | "primary";
 }) {
   const [errors, setErrors] = useState<{ form?: string; name?: string; url?: string }>({});
   const [name, setName] = useState("");
@@ -83,7 +85,7 @@ export function RemoteComposeDialog({
       }}
       open={open}
     >
-      <Dialog.Trigger disabled={disabled} render={<Button size="sm" />}>
+      <Dialog.Trigger disabled={disabled} render={<Button size="sm" variant={variant} />}>
         <Link2 aria-hidden="true" size={14} />
         URL로 등록
       </Dialog.Trigger>
