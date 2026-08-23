@@ -5,6 +5,8 @@ import type { RuntimeController } from "../src/server/lima-docker-runtime.ts";
 
 function createController(): RuntimeController {
   return {
+    applyRemoteComposeUpdate: vi.fn(async () => undefined),
+    checkRemoteComposeUpdate: vi.fn(async () => undefined),
     composeProjectAction: vi.fn(async () => undefined),
     containerAction: vi.fn(async () => undefined),
     createNetwork: vi.fn(async () => undefined),
@@ -42,9 +44,11 @@ function createController(): RuntimeController {
     getNetworks: vi.fn(async () => []),
     getVolumes: vi.fn(async () => []),
     pullImage: vi.fn(async () => undefined),
+    registerRemoteCompose: vi.fn(async () => undefined),
     removeContainer: vi.fn(async () => undefined),
     removeImage: vi.fn(async () => undefined),
     removeNetwork: vi.fn(async () => undefined),
+    removeRemoteCompose: vi.fn(async () => undefined),
     removeVolume: vi.fn(async () => undefined),
     runContainer: vi.fn(async () => undefined),
     startRuntime: vi.fn(async () => ({
@@ -181,6 +185,55 @@ describe("API boundary", () => {
       "stop",
       expect.any(Object),
     );
+  });
+
+  it("validates and accepts remote Compose lifecycle operations", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const register = await app.request("/compose/remote", {
+      body: JSON.stringify({
+        name: "remote-stack",
+        url: "https://raw.githubusercontent.com/opnay/example/main/compose.yaml",
+      }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(register.status).toBe(202);
+    await vi.waitFor(() => expect(controller.registerRemoteCompose).toHaveBeenCalled());
+    expect(controller.registerRemoteCompose).toHaveBeenCalledWith(
+      {
+        name: "remote-stack",
+        url: "https://raw.githubusercontent.com/opnay/example/main/compose.yaml",
+      },
+      expect.any(Object),
+    );
+
+    const check = await app.request("/compose/projects/remote-stack/remote/check", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    const update = await app.request("/compose/projects/remote-stack/remote/update", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    const remove = await app.request("/compose/projects/remote-stack/remote", {
+      headers: localHeaders,
+      method: "DELETE",
+    });
+    expect([check.status, update.status, remove.status]).toEqual([202, 202, 202]);
+    await vi.waitFor(() => expect(controller.removeRemoteCompose).toHaveBeenCalled());
+  });
+
+  it("rejects an insecure remote Compose URL before queueing", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/compose/remote", {
+      body: JSON.stringify({ url: "http://127.0.0.1/compose.yaml" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(response.status).toBe(400);
+    expect(controller.registerRemoteCompose).not.toHaveBeenCalled();
   });
 
   it("accepts a long operation before the Docker promise settles", async () => {

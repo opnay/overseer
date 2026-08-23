@@ -326,7 +326,7 @@
   }
 
   .overseer-table--compose-projects {
-    min-width: 46rem;
+    min-width: 58rem;
   }
 
   .overseer-table--compose-services {
@@ -396,7 +396,14 @@
   }
 
   .overseer-table--compose-projects .overseer-actions-column {
-    width: 12rem;
+    width: 17rem;
+  }
+
+  .overseer-compose-status-stack {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--city-space-1-5);
   }
 
   .overseer-compose-config {

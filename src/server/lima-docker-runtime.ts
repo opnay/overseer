@@ -16,6 +16,7 @@ import type {
   ImageSummary,
   NetworkSummary,
   PullImageInput,
+  RegisterRemoteComposeInput,
   RunContainerInput,
   RuntimeSnapshot,
   UpdateContainerInput,
@@ -25,8 +26,11 @@ import { containerSpecNeedsReplacement } from "../shared/container-spec.ts";
 import { ExpectedError } from "./errors.ts";
 import type { OperationProgress } from "./operations.ts";
 import { CommandError, parseJsonLines, runCommand } from "./process.ts";
+import { RemoteComposeService, type RemoteComposeRegistry } from "./remote-compose.ts";
 
 export interface RuntimeController {
+  applyRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void>;
+  checkRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void>;
   composeProjectAction(
     name: string,
     action: ComposeProjectAction,
@@ -50,10 +54,15 @@ export interface RuntimeController {
   getNetworks(): Promise<NetworkSummary[]>;
   getVolumes(): Promise<VolumeSummary[]>;
   pullImage(input: PullImageInput, progress?: OperationProgress): Promise<void>;
+  registerRemoteCompose(
+    input: RegisterRemoteComposeInput,
+    progress?: OperationProgress,
+  ): Promise<void>;
   removeContainer(id: string, progress?: OperationProgress): Promise<void>;
   removeImage(id: string, progress?: OperationProgress): Promise<void>;
   removeNetwork(name: string, progress?: OperationProgress): Promise<void>;
   removeVolume(name: string, progress?: OperationProgress): Promise<void>;
+  removeRemoteCompose(name: string, progress?: OperationProgress): Promise<void>;
   runContainer(input: RunContainerInput, progress?: OperationProgress): Promise<void>;
   startRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot>;
   stopRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot>;
@@ -229,10 +238,12 @@ function restartArgument(policy: ContainerSpecInput["restartPolicy"]): string {
 
 export class LimaDockerRuntime implements RuntimeController {
   private readonly command: CommandRunner;
+  private readonly remoteCompose: RemoteComposeRegistry;
   private transition?: Promise<RuntimeSnapshot>;
 
-  constructor(command: CommandRunner = runCommand) {
+  constructor(command: CommandRunner = runCommand, remoteCompose?: RemoteComposeRegistry) {
     this.command = command;
+    this.remoteCompose = remoteCompose ?? new RemoteComposeService(command);
   }
 
   async getDashboard(): Promise<DashboardSnapshot> {
@@ -469,6 +480,33 @@ export class LimaDockerRuntime implements RuntimeController {
   }
 
   async getComposeProjects(): Promise<ComposeProjectSummary[]> {
+    const [discovered, remoteProjects] = await Promise.all([
+      this.getDiscoveredComposeProjects(),
+      this.remoteCompose.list(),
+    ]);
+    const discoveredByName = new Map(discovered.map((project) => [project.name, project]));
+    const remote = remoteProjects.map((project): ComposeProjectSummary => {
+      const active = discoveredByName.get(project.name);
+      discoveredByName.delete(project.name);
+      return {
+        configFiles: [project.configFile],
+        name: project.name,
+        remote: {
+          buildContext: project.buildContext,
+          ...(project.checkError ? { checkError: project.checkError } : {}),
+          checkedAt: project.checkedAt,
+          updateAvailable: project.updateAvailable,
+          url: project.url,
+        },
+        status: active?.status ?? (project.buildContext ? "blocked" : "registered"),
+      };
+    });
+    return [...remote, ...discoveredByName.values()].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+  }
+
+  private async getDiscoveredComposeProjects(): Promise<ComposeProjectSummary[]> {
     const result = await this.docker(["compose", "ls", "--all", "--format", "json"]);
     return composeProjectRows(result.stdout).flatMap((row) => {
       const name = row.Name?.trim();
@@ -518,9 +556,51 @@ export class LimaDockerRuntime implements RuntimeController {
     progress?: OperationProgress,
   ): Promise<void> {
     const project = await this.requireComposeProject(name);
+    if (action === "up" && project.remote?.buildContext) {
+      throw new ExpectedError(
+        "compose_build_context_unsupported",
+        "URL Compose의 build context는 로컬 소스가 없어 실행할 수 없습니다.",
+        409,
+      );
+    }
     progress?.step(`Compose ${action} 실행 중`);
     const command = action === "up" ? ["up", "--detach"] : [action];
     await this.compose(project, command, action === "up" ? 10 * 60_000 : 120_000, progress);
+  }
+
+  async registerRemoteCompose(
+    input: RegisterRemoteComposeInput,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    const discovered = await this.getDiscoveredComposeProjects();
+    await this.remoteCompose.register(
+      input,
+      discovered.map(({ name }) => name),
+      progress,
+    );
+  }
+
+  async checkRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void> {
+    await this.remoteCompose.checkUpdate(name, progress);
+  }
+
+  async applyRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void> {
+    await this.remoteCompose.applyUpdate(name, progress);
+  }
+
+  async removeRemoteCompose(name: string, progress?: OperationProgress): Promise<void> {
+    const discovered = (await this.getDiscoveredComposeProjects()).find(
+      (project) => project.name === name,
+    );
+    if (discovered) {
+      throw new ExpectedError(
+        "remote_compose_active",
+        "URL Compose 프로젝트의 컨테이너와 네트워크를 먼저 내리십시오.",
+        409,
+      );
+    }
+    progress?.step("URL Compose 등록 해제 중");
+    await this.remoteCompose.remove(name);
   }
 
   async pullImage(input: PullImageInput, progress?: OperationProgress): Promise<void> {

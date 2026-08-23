@@ -80,7 +80,21 @@ export interface UpdateContainerInput {
 export interface ComposeProjectSummary {
   configFiles: string[];
   name: string;
+  remote?: ComposeRemoteSource;
   status: string;
+}
+
+export interface ComposeRemoteSource {
+  buildContext: boolean;
+  checkError?: string;
+  checkedAt: string;
+  updateAvailable: boolean;
+  url: string;
+}
+
+export interface RegisterRemoteComposeInput {
+  name?: string;
+  url: string;
 }
 
 export interface ComposeServiceSummary {
@@ -158,6 +172,10 @@ export type OperationStatus = "cancelled" | "failed" | "queued" | "running" | "s
 
 export type OperationKind =
   | "compose.down"
+  | "compose.remote.check"
+  | "compose.remote.register"
+  | "compose.remote.remove"
+  | "compose.remote.update"
   | "compose.restart"
   | "compose.stop"
   | "compose.up"

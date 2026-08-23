@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
 import { LimaDockerRuntime, type CommandRunner } from "../src/server/lima-docker-runtime.ts";
 import { CommandError } from "../src/server/process.ts";
+import type { RemoteComposeRegistry } from "../src/server/remote-compose.ts";
 
 const limaRow = "overseer\tRunning\t/tmp/overseer\n";
 
@@ -175,5 +176,53 @@ describe("LimaDockerRuntime container configuration", () => {
     expect(
       dockerCommands.filter(([first, second]) => first === "container" && second !== "inspect"),
     ).toHaveLength(0);
+  });
+});
+
+describe("LimaDockerRuntime remote Compose", () => {
+  it("lists a build project but blocks its up action before Docker Compose", async () => {
+    const dockerCommands: string[][] = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      const dockerArgs = args.slice(2);
+      dockerCommands.push(dockerArgs);
+      if (dockerArgs[0] === "compose" && dockerArgs[1] === "ls") {
+        return { stderr: "", stdout: "[]" };
+      }
+      return { stderr: "", stdout: "" };
+    });
+    const registry: RemoteComposeRegistry = {
+      applyUpdate: vi.fn(async () => undefined),
+      checkUpdate: vi.fn(async () => undefined),
+      get: vi.fn(async () => undefined),
+      list: vi.fn(async () => [
+        {
+          buildContext: true,
+          checkedAt: "2026-08-23T00:00:00.000Z",
+          configFile: "/tmp/remote-build/compose.yaml",
+          contentHash: "a".repeat(64),
+          name: "remote-build",
+          updateAvailable: false,
+          url: "https://example.com/compose.yaml",
+        },
+      ]),
+      register: vi.fn(async () => {
+        throw new Error("unused");
+      }),
+      remove: vi.fn(async () => undefined),
+    };
+    const runtime = new LimaDockerRuntime(command, registry);
+
+    await expect(runtime.getComposeProjects()).resolves.toMatchObject([
+      {
+        name: "remote-build",
+        remote: { buildContext: true },
+        status: "blocked",
+      },
+    ]);
+    await expect(runtime.composeProjectAction("remote-build", "up")).rejects.toThrow(
+      "build context",
+    );
+    expect(dockerCommands.some((args) => args.includes("up"))).toBe(false);
   });
 });

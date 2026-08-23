@@ -1,13 +1,16 @@
 import { Hono } from "hono";
-import type { PullImageInput } from "../shared/contracts.ts";
+import type { PullImageInput, RegisterRemoteComposeInput } from "../shared/contracts.ts";
 import { parseContainerSpec, parseUpdateContainerInput } from "./container-spec.ts";
 import { ExpectedError } from "./errors.ts";
 import { LimaDockerRuntime, type RuntimeController } from "./lima-docker-runtime.ts";
 import { OperationQueue } from "./operations.ts";
+import { deriveRemoteComposeProjectName } from "./remote-compose.ts";
 import { requireLocalRequest } from "./security.ts";
 import {
   requireContainerReference,
+  requireComposeUrl,
   requireImageReference,
+  optionalComposeProjectName,
   requireResourceName,
 } from "./validation.ts";
 
@@ -71,6 +74,60 @@ export function createApi(controller: RuntimeController, operations = new Operat
   app.get("/compose/projects", async (context) =>
     context.json({ projects: await controller.getComposeProjects() }),
   );
+  app.post("/compose/remote", async (context) => {
+    const body = await readObject(context);
+    const requestedName = optionalComposeProjectName(body.name);
+    const input: RegisterRemoteComposeInput = {
+      ...(requestedName ? { name: requestedName } : {}),
+      url: requireComposeUrl(body.url),
+    };
+    const name = input.name ?? deriveRemoteComposeProjectName(input.url);
+    const operation = operations.enqueue({
+      kind: "compose.remote.register",
+      locks: [`compose:${name}`],
+      run: (progress) => controller.registerRemoteCompose(input, progress),
+      successMessage: `${name} URL Compose 프로젝트를 등록했습니다.`,
+      target: { name, resource: "compose" },
+      title: "URL Compose 등록",
+    });
+    return context.json({ operation }, 202);
+  });
+  app.post("/compose/projects/:name/remote/check", (context) => {
+    const name = requireResourceName(context.req.param("name"));
+    const operation = operations.enqueue({
+      kind: "compose.remote.check",
+      locks: [`compose:${name}`],
+      run: (progress) => controller.checkRemoteComposeUpdate(name, progress),
+      successMessage: `${name} Compose 업데이트를 확인했습니다.`,
+      target: { name, resource: "compose" },
+      title: "Compose 업데이트 확인",
+    });
+    return context.json({ operation }, 202);
+  });
+  app.post("/compose/projects/:name/remote/update", (context) => {
+    const name = requireResourceName(context.req.param("name"));
+    const operation = operations.enqueue({
+      kind: "compose.remote.update",
+      locks: [`compose:${name}`],
+      run: (progress) => controller.applyRemoteComposeUpdate(name, progress),
+      successMessage: `${name} Compose 파일을 업데이트했습니다.`,
+      target: { name, resource: "compose" },
+      title: "Compose 업데이트 적용",
+    });
+    return context.json({ operation }, 202);
+  });
+  app.delete("/compose/projects/:name/remote", (context) => {
+    const name = requireResourceName(context.req.param("name"));
+    const operation = operations.enqueue({
+      kind: "compose.remote.remove",
+      locks: [`compose:${name}`],
+      run: (progress) => controller.removeRemoteCompose(name, progress),
+      successMessage: `${name} URL Compose 등록을 해제했습니다.`,
+      target: { name, resource: "compose" },
+      title: "URL Compose 등록 해제",
+    });
+    return context.json({ operation }, 202);
+  });
   app.get("/compose/projects/:name/logs", async (context) => {
     const logs = await controller.getComposeProjectLogs(
       requireResourceName(context.req.param("name")),

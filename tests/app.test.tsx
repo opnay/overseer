@@ -12,7 +12,10 @@ function jsonResponse(value: unknown, status = 200) {
   });
 }
 
-function operation(status: OperationSnapshot["status"] = "queued"): OperationSnapshot {
+function operation(
+  status: OperationSnapshot["status"] = "queued",
+  overrides: Partial<OperationSnapshot> = {},
+): OperationSnapshot {
   return {
     createdAt: "2026-08-23T10:00:00.000Z",
     id: "operation-id",
@@ -23,6 +26,7 @@ function operation(status: OperationSnapshot["status"] = "queued"): OperationSna
     successMessage: "app-data 볼륨을 만들었습니다.",
     target: { name: "app-data", resource: "volume" },
     title: "볼륨 만들기",
+    ...overrides,
   };
 }
 
@@ -394,6 +398,132 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "demo-stack 서비스" })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: /demo-stack-web-1/ })).toBeInTheDocument();
+  });
+
+  it("registers a raw HTTPS Compose URL through the async operation API", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    let submittedBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (String(input).endsWith("/api/compose/remote") && init?.method === "POST") {
+          submittedBody = JSON.parse(String(init.body));
+          return jsonResponse({
+            operation: operation("queued", {
+              id: "remote-register-operation",
+              kind: "compose.remote.register",
+              successMessage: "remote-stack URL Compose 프로젝트를 등록했습니다.",
+              target: { name: "remote-stack", resource: "compose" },
+              title: "URL Compose 등록",
+            }),
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/compose");
+    render(<App />);
+    await screen.findByRole("heading", { name: "Compose", level: 1 });
+
+    await user.click(await screen.findByRole("button", { name: "URL로 등록" }));
+    const urlInput = screen.getByRole("textbox", { name: "Compose URL" });
+    await user.type(urlInput, "http://127.0.0.1/compose.yaml");
+    await user.click(screen.getByRole("button", { name: "URL 등록" }));
+    expect(screen.getByText("인증 정보가 없는 공개 HTTPS URL을 입력하십시오.")).toBeInTheDocument();
+    await user.clear(urlInput);
+    await user.type(urlInput, "https://raw.githubusercontent.com/opnay/example/main/compose.yaml");
+    await user.type(screen.getByRole("textbox", { name: /프로젝트 이름/ }), "remote-stack");
+    await user.click(screen.getByRole("button", { name: "URL 등록" }));
+
+    expect(await screen.findByRole("dialog", { name: "작업을 시작했습니다." })).toHaveTextContent(
+      "URL Compose 등록",
+    );
+    expect(submittedBody).toEqual({
+      name: "remote-stack",
+      url: "https://raw.githubusercontent.com/opnay/example/main/compose.yaml",
+    });
+  });
+
+  it("shows remote update and build context states with URL management actions", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [
+        {
+          configFiles: ["/data/compose/remote-build/compose.yaml"],
+          name: "remote-build",
+          remote: {
+            buildContext: true,
+            checkedAt: "2026-08-23T10:00:00.000Z",
+            updateAvailable: true,
+            url: "https://example.com/compose.yaml",
+          },
+          status: "blocked",
+        },
+      ],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (init?.method === "POST") {
+        return jsonResponse({
+          operation: operation("queued", {
+            id: "remote-update-operation",
+            kind: "compose.remote.update",
+            successMessage: "업데이트했습니다.",
+            target: { name: "remote-build", resource: "compose" },
+            title: "Compose 업데이트 적용",
+          }),
+        });
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/compose");
+    render(<App />);
+
+    expect(await screen.findByText("실행 제한")).toBeInTheDocument();
+    expect(screen.getByText("build context")).toBeInTheDocument();
+    expect(screen.getByText("업데이트 있음")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "URL 관리" }));
+    await user.click(await screen.findByRole("menuitem", { name: "등록 해제" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "URL Compose 등록을 해제하시겠습니까?" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "취소" }));
+
+    await user.click(await screen.findByRole("button", { name: "URL 관리" }));
+    await user.click(await screen.findByRole("menuitem", { name: "업데이트 적용" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).includes("/remote-build/remote/update") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
   });
 
   it("renders volumes and networks as direct pages", async () => {

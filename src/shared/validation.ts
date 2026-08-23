@@ -4,9 +4,14 @@ const RESOURCE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const ENVIRONMENT_NAME = /^[a-zA-Z_][a-zA-Z0-9_]{0,127}$/;
 const HOSTNAME = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]{0,61}[a-zA-Z0-9])?$/;
 const LABEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,127}$/;
+const COMPOSE_PROJECT_NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 
 export function isContainerReference(value: string): boolean {
   return CONTAINER_REFERENCE.test(value);
+}
+
+export function isComposeProjectName(value: string): boolean {
+  return COMPOSE_PROJECT_NAME.test(value);
 }
 
 export function isImageReference(value: string): boolean {

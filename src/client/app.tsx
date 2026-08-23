@@ -62,6 +62,7 @@ import type {
   OperationAccepted,
   OperationSnapshot,
   OperationResource,
+  RegisterRemoteComposeInput,
   RuntimePhase,
   VolumeSummary,
 } from "../shared/contracts.ts";
@@ -77,6 +78,16 @@ const EditContainerDialog = lazy(() =>
 );
 const OperationsDrawer = lazy(() =>
   import("./operations-drawer.tsx").then((module) => ({ default: module.OperationsDrawer })),
+);
+const RemoteComposeDialog = lazy(() =>
+  import("./remote-compose-dialog.tsx").then((module) => ({
+    default: module.RemoteComposeDialog,
+  })),
+);
+const RemoteComposeActions = lazy(() =>
+  import("./remote-compose-actions.tsx").then((module) => ({
+    default: module.RemoteComposeActions,
+  })),
 );
 
 const runtimePresentation: Record<
@@ -440,7 +451,15 @@ function composeStatusLabel(status: string): string {
   if (running) return `${running}개 실행 중`;
   const exited = status.match(/^exited\((\d+)\)$/)?.[1];
   if (exited) return `${exited}개 중지됨`;
+  if (status === "registered") return "등록됨";
+  if (status === "blocked") return "실행 제한";
   return status;
+}
+
+function composeStatusTone(project: ComposeProjectSummary): "neutral" | "success" | "warning" {
+  if (composeIsRunning(project.status)) return "success";
+  if (project.status === "blocked") return "warning";
+  return "neutral";
 }
 
 function composeFileName(file: string): string {
@@ -582,12 +601,18 @@ function ComposePage({
   onAction,
   onInspect,
   onLogs,
+  onRemoteCheck,
+  onRemoteRemove,
+  onRemoteUpdate,
   projects,
 }: {
   isBusy: (project: ComposeProjectSummary) => boolean;
   onAction: (project: ComposeProjectSummary, action: ComposeProjectAction) => Promise<void>;
   onInspect: (project: ComposeProjectSummary) => void;
   onLogs: (project: ComposeProjectSummary) => void;
+  onRemoteCheck: (project: ComposeProjectSummary) => Promise<void>;
+  onRemoteRemove: (project: ComposeProjectSummary) => Promise<void>;
+  onRemoteUpdate: (project: ComposeProjectSummary) => Promise<void>;
   projects: ComposeProjectSummary[];
 }) {
   return (
@@ -622,7 +647,7 @@ function ComposePage({
                   </EmptyState.Icon>
                   <EmptyState.Title level={2}>Compose 프로젝트가 없습니다.</EmptyState.Title>
                   <EmptyState.Description>
-                    CLI에서 한 번 실행한 Compose 프로젝트가 여기에 표시됩니다.
+                    CLI 실행 이력 또는 raw compose.yaml URL을 등록하면 여기에 표시됩니다.
                   </EmptyState.Description>
                 </EmptyState.Root>
               </Table.StateRow>
@@ -633,25 +658,59 @@ function ComposePage({
                 return (
                   <Table.Row key={project.name}>
                     <Table.Cell>
-                      <strong>{project.name}</strong>
+                      <div className="overseer-primary-cell">
+                        <strong>{project.name}</strong>
+                        {project.remote ? (
+                          <Badge appearance="outline" size="sm" tone="neutral">
+                            URL
+                          </Badge>
+                        ) : null}
+                      </div>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="overseer-container-status">
-                        <Badge
-                          aria-label={running ? "실행 중" : "중지됨"}
-                          dot
-                          size="sm"
-                          tone={running ? "success" : "neutral"}
-                        />
-                        <span>{composeStatusLabel(project.status)}</span>
-                      </span>
+                      <div className="overseer-compose-status-stack">
+                        <span className="overseer-container-status">
+                          <Badge
+                            aria-label={composeStatusLabel(project.status)}
+                            dot
+                            size="sm"
+                            tone={composeStatusTone(project)}
+                          />
+                          <span>{composeStatusLabel(project.status)}</span>
+                        </span>
+                        {project.remote?.buildContext ? (
+                          <Badge appearance="outline" size="sm" tone="warning">
+                            build context
+                          </Badge>
+                        ) : null}
+                        {project.remote?.updateAvailable ? (
+                          <Badge appearance="outline" size="sm" tone="info">
+                            업데이트 있음
+                          </Badge>
+                        ) : null}
+                        {project.remote?.checkError ? (
+                          <Badge
+                            appearance="outline"
+                            size="sm"
+                            title={project.remote.checkError}
+                            tone="destructive"
+                          >
+                            확인 실패
+                          </Badge>
+                        ) : project.remote && !project.remote.updateAvailable ? (
+                          <Badge appearance="outline" size="sm" tone="neutral">
+                            최신
+                          </Badge>
+                        ) : null}
+                      </div>
                     </Table.Cell>
                     <Table.Cell>
                       <code
                         className="overseer-compose-config"
-                        title={project.configFiles.join(", ")}
+                        title={project.remote?.url ?? project.configFiles.join(", ")}
                       >
-                        {project.configFiles.map(composeFileName).join(" · ")}
+                        {project.remote?.url ??
+                          project.configFiles.map(composeFileName).join(" · ")}
                       </code>
                     </Table.Cell>
                     <Table.Cell>
@@ -722,6 +781,20 @@ function ComposePage({
                         >
                           <Trash2 aria-hidden="true" size={14} />
                         </ConfirmAction>
+                        {project.remote ? (
+                          <Suspense
+                            fallback={<Skeleton className="overseer-loading-topbar-action" />}
+                          >
+                            <RemoteComposeActions
+                              busy={rowBusy}
+                              onApply={() => onAction(project, "up")}
+                              onCheck={() => onRemoteCheck(project)}
+                              onRemove={() => onRemoteRemove(project)}
+                              onUpdate={() => onRemoteUpdate(project)}
+                              project={project}
+                            />
+                          </Suspense>
+                        ) : null}
                       </div>
                     </Table.Cell>
                   </Table.Row>
@@ -968,78 +1041,93 @@ function AppContent() {
     );
   const runtimeBusy = activeOperations.some(({ target }) => target.resource === "runtime");
   const currentRoute = getResourceRoute(resourcePath);
-  const pagePrimaryAction =
-    !runtimeRunning || resourcePath === "/compose" ? null : resourcePath === "/containers" ? (
-      <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
-        <RunContainerDialog
-          disabled={Boolean(submitting) || runtimeBusy}
-          images={dashboard?.images ?? []}
-          networks={dashboard?.networks ?? []}
-          onSubmit={async (spec) =>
-            mutate({
-              key: "container-run",
-              request: () =>
-                apiRequest<OperationAccepted>("/containers", {
-                  body: JSON.stringify(spec),
-                  method: "POST",
-                }),
-            })
-          }
-          volumes={dashboard?.volumes ?? []}
-        />
-      </Suspense>
-    ) : resourcePath === "/images" ? (
-      <PullImageDialog
-        busy={submitting === "image-pull"}
+  const pagePrimaryAction = !runtimeRunning ? null : resourcePath === "/compose" ? (
+    <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+      <RemoteComposeDialog
         disabled={Boolean(submitting) || runtimeBusy}
-        onSubmit={async (image) =>
+        onSubmit={(input: RegisterRemoteComposeInput) =>
           mutate({
-            key: "image-pull",
+            key: "compose-remote-register",
             request: () =>
-              apiRequest<OperationAccepted>("/images/pull", {
-                body: JSON.stringify({ image }),
+              apiRequest<OperationAccepted>("/compose/remote", {
+                body: JSON.stringify(input),
                 method: "POST",
               }),
           })
         }
       />
-    ) : resourcePath === "/volumes" ? (
-      <CreateNamedResourceDialog
-        busy={submitting === "volume-create"}
-        description="local 드라이버를 사용하는 named volume을 만듭니다."
+    </Suspense>
+  ) : resourcePath === "/containers" ? (
+    <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+      <RunContainerDialog
         disabled={Boolean(submitting) || runtimeBusy}
-        label="볼륨"
-        onSubmit={(name) =>
+        images={dashboard?.images ?? []}
+        networks={dashboard?.networks ?? []}
+        onSubmit={async (spec) =>
           mutate({
-            key: "volume-create",
+            key: "container-run",
             request: () =>
-              apiRequest<OperationAccepted>("/volumes", {
-                body: JSON.stringify({ name }),
+              apiRequest<OperationAccepted>("/containers", {
+                body: JSON.stringify(spec),
                 method: "POST",
               }),
           })
         }
-        placeholder="app-data"
+        volumes={dashboard?.volumes ?? []}
       />
-    ) : resourcePath === "/networks" ? (
-      <CreateNamedResourceDialog
-        busy={submitting === "network-create"}
-        description="기본 bridge 드라이버를 사용하는 네트워크를 만듭니다."
-        disabled={Boolean(submitting) || runtimeBusy}
-        label="네트워크"
-        onSubmit={(name) =>
-          mutate({
-            key: "network-create",
-            request: () =>
-              apiRequest<OperationAccepted>("/networks", {
-                body: JSON.stringify({ name }),
-                method: "POST",
-              }),
-          })
-        }
-        placeholder="app-network"
-      />
-    ) : null;
+    </Suspense>
+  ) : resourcePath === "/images" ? (
+    <PullImageDialog
+      busy={submitting === "image-pull"}
+      disabled={Boolean(submitting) || runtimeBusy}
+      onSubmit={async (image) =>
+        mutate({
+          key: "image-pull",
+          request: () =>
+            apiRequest<OperationAccepted>("/images/pull", {
+              body: JSON.stringify({ image }),
+              method: "POST",
+            }),
+        })
+      }
+    />
+  ) : resourcePath === "/volumes" ? (
+    <CreateNamedResourceDialog
+      busy={submitting === "volume-create"}
+      description="local 드라이버를 사용하는 named volume을 만듭니다."
+      disabled={Boolean(submitting) || runtimeBusy}
+      label="볼륨"
+      onSubmit={(name) =>
+        mutate({
+          key: "volume-create",
+          request: () =>
+            apiRequest<OperationAccepted>("/volumes", {
+              body: JSON.stringify({ name }),
+              method: "POST",
+            }),
+        })
+      }
+      placeholder="app-data"
+    />
+  ) : resourcePath === "/networks" ? (
+    <CreateNamedResourceDialog
+      busy={submitting === "network-create"}
+      description="기본 bridge 드라이버를 사용하는 네트워크를 만듭니다."
+      disabled={Boolean(submitting) || runtimeBusy}
+      label="네트워크"
+      onSubmit={(name) =>
+        mutate({
+          key: "network-create",
+          request: () =>
+            apiRequest<OperationAccepted>("/networks", {
+              body: JSON.stringify({ name }),
+              method: "POST",
+            }),
+        })
+      }
+      placeholder="app-network"
+    />
+  ) : null;
 
   return (
     <div className="overseer-shell">
@@ -1268,6 +1356,36 @@ function AppContent() {
                       description: "프로젝트 전체 서비스의 최근 300줄을 표시합니다.",
                       requestPath: `/compose/projects/${encodeURIComponent(project.name)}/logs`,
                       title: `${project.name} 로그`,
+                    })
+                  }
+                  onRemoteCheck={(project) =>
+                    mutate({
+                      key: `compose-${project.name}-remote-check`,
+                      request: () =>
+                        apiRequest<OperationAccepted>(
+                          `/compose/projects/${encodeURIComponent(project.name)}/remote/check`,
+                          { method: "POST" },
+                        ),
+                    })
+                  }
+                  onRemoteRemove={(project) =>
+                    mutate({
+                      key: `compose-${project.name}-remote-remove`,
+                      request: () =>
+                        apiRequest<OperationAccepted>(
+                          `/compose/projects/${encodeURIComponent(project.name)}/remote`,
+                          { method: "DELETE" },
+                        ),
+                    })
+                  }
+                  onRemoteUpdate={(project) =>
+                    mutate({
+                      key: `compose-${project.name}-remote-update`,
+                      request: () =>
+                        apiRequest<OperationAccepted>(
+                          `/compose/projects/${encodeURIComponent(project.name)}/remote/update`,
+                          { method: "POST" },
+                        ),
                     })
                   }
                   projects={dashboard.composeProjects}

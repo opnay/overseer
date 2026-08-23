@@ -23,7 +23,7 @@ pnpm dev
 
 리소스는 독립 URL에서 관리합니다.
 
-- `/compose`: 실행 이력이 있는 프로젝트·서비스 상태, 실행·중지·재시작·로그·내리기
+- `/compose`: 실행 이력 또는 raw HTTPS URL 프로젝트, 업데이트 확인·적용, 실행·중지·재시작·로그·내리기
 - `/containers`: 확장 설정으로 실행·수정, 시작·중지·재시작·로그·삭제
 - `/images`: pull·삭제
 - `/volumes`: 생성·삭제
@@ -58,12 +58,24 @@ pnpm check
 - `GET /api/containers/:id`: 수정용 설정과 config hash
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
 
+## URL Compose
+
+Compose 페이지에서 GitHub Raw처럼 인증 없이 파일 내용이 열리는 공개 HTTPS `compose.yaml` URL을 등록할 수 있습니다. 원본 URL과 현재·대기 중인 파일, ETag·Last-Modified, content hash와 업데이트 확인 결과는 `~/Library/Application Support/Overseer/overseer.sqlite`에 저장하며 materialized 파일은 같은 디렉터리의 `compose/<project>/compose.yaml`에 둡니다. `OVERSEER_DATA_DIR`과 `OVERSEER_DATABASE_PATH`로 위치를 바꿀 수 있습니다.
+
+- URL 등록은 비동기 작업이며 Docker Compose JSON config로 검증합니다.
+- **업데이트 확인**은 조건부 HTTP 요청과 content hash를 사용하고, 변경된 파일은 사용자가 **업데이트 적용**을 실행할 때 현재 파일이 됩니다.
+- `build.context`가 포함된 파일도 등록·업데이트할 수 있지만 로컬 소스가 없으므로 **Compose 적용**은 명시적으로 실패합니다.
+- 인증 정보가 없는 HTTPS만 허용하며 리다이렉트마다 DNS를 확인해 loopback·사설·link-local 주소를 거부합니다.
+- 응답 시간은 15초, 리다이렉트는 3회, 파일 크기는 1MiB로 제한합니다.
+- 실행 중인 URL 프로젝트는 먼저 내려야 등록을 해제할 수 있습니다.
+
 ## 안전 경계
 
 - 서버는 `127.0.0.1`에만 바인딩합니다.
 - 컨테이너 포트는 기본적으로 `127.0.0.1`의 빈 포트에 게시합니다.
 - 컨테이너 설정은 named volume만 연결하며 bind mount, privileged, device와 host network를 노출하지 않습니다.
 - 브라우저 요청으로 임의 셸 명령을 실행할 수 없습니다.
+- URL Compose fetch는 공개 HTTPS와 1MiB 이하 raw 문서로 제한합니다.
 - Compose 작업은 Docker가 보고한 프로젝트명과 구성 파일만 사용합니다.
 - Compose 프로젝트 내리기는 named volume과 구성 파일을 삭제하지 않습니다.
 - 전역 Docker context와 `/var/run/docker.sock`을 변경하지 않습니다.

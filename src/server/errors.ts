@@ -1,6 +1,6 @@
 export class ExpectedError extends Error {
   readonly code: string;
-  readonly status: 400 | 404 | 409 | 503;
+  readonly status: 400 | 404 | 409 | 413 | 502 | 503;
 
   constructor(code: string, message: string, status: ExpectedError["status"]) {
     super(message);

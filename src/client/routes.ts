@@ -1,6 +1,6 @@
 export const RESOURCE_ROUTES = [
   {
-    description: "Compose 프로젝트와 서비스의 실행 상태를 함께 관리합니다.",
+    description: "실행 이력과 URL Compose 프로젝트, 서비스 상태를 함께 관리합니다.",
     eyebrow: "COMPOSE PROJECTS",
     label: "Compose",
     path: "/compose",
