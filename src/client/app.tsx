@@ -451,6 +451,8 @@ function composeStatusLabel(status: string): string {
   if (running) return `${running}개 실행 중`;
   const exited = status.match(/^exited\((\d+)\)$/)?.[1];
   if (exited) return `${exited}개 중지됨`;
+  const created = status.match(/^created\((\d+)\)$/)?.[1];
+  if (created) return `${created}개 생성됨`;
   if (status === "registered") return "등록됨";
   if (status === "blocked") return "실행 제한";
   return status;
@@ -655,15 +657,18 @@ function ComposePage({
               projects.map((project) => {
                 const running = composeIsRunning(project.status);
                 const rowBusy = isBusy(project);
+                const hasRemoteFlag = Boolean(
+                  project.remote?.buildContext ||
+                  project.remote?.updateAvailable ||
+                  project.remote?.checkError,
+                );
                 return (
                   <Table.Row key={project.name}>
                     <Table.Cell>
                       <div className="overseer-primary-cell">
                         <strong>{project.name}</strong>
                         {project.remote ? (
-                          <Badge appearance="outline" size="sm" tone="neutral">
-                            URL
-                          </Badge>
+                          <span className="overseer-primary-meta">URL 등록</span>
                         ) : null}
                       </div>
                     </Table.Cell>
@@ -678,29 +683,29 @@ function ComposePage({
                           />
                           <span>{composeStatusLabel(project.status)}</span>
                         </span>
-                        {project.remote?.buildContext ? (
-                          <Badge appearance="outline" size="sm" tone="warning">
-                            build context
-                          </Badge>
-                        ) : null}
-                        {project.remote?.updateAvailable ? (
-                          <Badge appearance="outline" size="sm" tone="info">
-                            업데이트 있음
-                          </Badge>
-                        ) : null}
-                        {project.remote?.checkError ? (
-                          <Badge
-                            appearance="outline"
-                            size="sm"
-                            title={project.remote.checkError}
-                            tone="destructive"
-                          >
-                            확인 실패
-                          </Badge>
-                        ) : project.remote && !project.remote.updateAvailable ? (
-                          <Badge appearance="outline" size="sm" tone="neutral">
-                            최신
-                          </Badge>
+                        {hasRemoteFlag ? (
+                          <div className="overseer-compose-flags">
+                            {project.remote?.buildContext ? (
+                              <Badge appearance="outline" size="sm" tone="warning">
+                                build context
+                              </Badge>
+                            ) : null}
+                            {project.remote?.updateAvailable ? (
+                              <Badge appearance="outline" size="sm" tone="info">
+                                업데이트 있음
+                              </Badge>
+                            ) : null}
+                            {project.remote?.checkError ? (
+                              <Badge
+                                appearance="outline"
+                                size="sm"
+                                title={project.remote.checkError}
+                                tone="destructive"
+                              >
+                                확인 실패
+                              </Badge>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     </Table.Cell>
@@ -1759,9 +1764,7 @@ function NetworksPage({
                     <div className="overseer-primary-cell">
                       <strong>{network.name}</strong>
                       {network.builtIn ? (
-                        <Badge appearance="outline" size="sm" tone="neutral">
-                          기본
-                        </Badge>
+                        <span className="overseer-primary-meta">Docker 기본 네트워크</span>
                       ) : null}
                     </div>
                   </Table.Cell>
@@ -1861,13 +1864,24 @@ function ContainerTable({
                   <Table.Cell>
                     <div className="overseer-primary-cell">
                       <strong>{container.name}</strong>
-                      {container.composeProject ? (
-                        <Badge appearance="outline" size="sm" tone="neutral">
-                          {container.composeProject}
-                          {container.composeService ? ` · ${container.composeService}` : ""}
-                        </Badge>
-                      ) : null}
-                      <code>{container.id}</code>
+                      <div className="overseer-primary-meta">
+                        {container.composeProject ? (
+                          <span
+                            title={`Compose 프로젝트 ${container.composeProject}${
+                              container.composeService
+                                ? ` · 서비스 ${container.composeService}`
+                                : ""
+                            }`}
+                          >
+                            Compose · {container.composeProject}
+                            {container.composeService &&
+                            container.composeService !== container.composeProject
+                              ? ` / ${container.composeService}`
+                              : ""}
+                          </span>
+                        ) : null}
+                        <code>{container.id}</code>
+                      </div>
                     </div>
                   </Table.Cell>
                   <Table.Cell>{container.image}</Table.Cell>
@@ -2017,9 +2031,7 @@ function ImageTable({
                   <strong>{image.repository}</strong>
                 </Table.Cell>
                 <Table.Cell>
-                  <Badge appearance="outline" size="sm" tone="neutral">
-                    {image.tag}
-                  </Badge>
+                  <code>{image.tag}</code>
                 </Table.Cell>
                 <Table.Cell>
                   <code>{image.id}</code>

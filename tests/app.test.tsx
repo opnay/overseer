@@ -505,6 +505,9 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("실행 제한")).toBeInTheDocument();
+    expect(
+      screen.getByText("URL 등록", { selector: ".overseer-primary-meta" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("build context")).toBeInTheDocument();
     expect(screen.getByText("업데이트 있음")).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "URL 관리" }));
@@ -524,6 +527,94 @@ describe("App", () => {
         ),
       ).toBe(true),
     );
+  });
+
+  it("uses text hierarchy instead of badges for table metadata and image tags", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [
+        {
+          configFiles: ["/data/compose/remote-stack/compose.yaml"],
+          name: "remote-stack",
+          remote: {
+            buildContext: false,
+            checkedAt: "2026-08-23T10:00:00.000Z",
+            updateAvailable: false,
+            url: "https://example.com/compose.yaml",
+          },
+          status: "created(1)",
+        },
+      ],
+      containers: [
+        {
+          composeProject: "remote-stack",
+          composeService: "web",
+          id: "container-id",
+          image: "nginx:alpine",
+          name: "remote-stack-web-1",
+          ports: "",
+          state: "created",
+          status: "Created",
+        },
+      ],
+      images: [
+        {
+          createdSince: "today",
+          id: "image-id",
+          repository: "nginx",
+          size: "20MB",
+          tag: "alpine",
+        },
+      ],
+      networks: [
+        {
+          builtIn: true,
+          createdAt: "today",
+          driver: "bridge",
+          id: "network-id",
+          internal: false,
+          ipv4: true,
+          ipv6: false,
+          labels: "",
+          name: "bridge",
+          scope: "local",
+        },
+      ],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/api/operations")
+          ? jsonResponse({ operations: [] })
+          : jsonResponse(dashboard),
+      ),
+    );
+    window.history.replaceState(null, "", "/containers");
+    render(<App />);
+
+    const composeContext = await screen.findByText("Compose · remote-stack / web");
+    expect(composeContext.closest(".overseer-primary-meta")).toBeInTheDocument();
+    expect(screen.queryByText("remote-stack · web")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Compose" }));
+    expect(screen.getByText("1개 생성됨")).toBeInTheDocument();
+    expect(
+      screen.getByText("URL 등록", { selector: ".overseer-primary-meta" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("최신")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "이미지" }));
+    expect(screen.getByText("alpine").tagName).toBe("CODE");
+
+    await user.click(screen.getByRole("link", { name: "네트워크" }));
+    expect(screen.getByText("Docker 기본 네트워크")).toHaveClass("overseer-primary-meta");
   });
 
   it("renders volumes and networks as direct pages", async () => {

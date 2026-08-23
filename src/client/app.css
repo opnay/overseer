@@ -386,6 +386,17 @@
     justify-items: start;
   }
 
+  .overseer-primary-meta {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+    line-height: var(--city-line-height-sm);
+    gap: var(--city-space-2);
+  }
+
   .overseer-actions-column {
     width: 5rem;
     text-align: right;
@@ -400,8 +411,13 @@
   }
 
   .overseer-compose-status-stack {
+    display: grid;
+    justify-items: start;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-compose-flags {
     display: flex;
-    align-items: center;
     flex-wrap: wrap;
     gap: var(--city-space-1-5);
   }
