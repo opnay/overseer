@@ -1,4 +1,8 @@
 import type {
+  ComposeProjectAction,
+  ComposeProjectDetail,
+  ComposeProjectSummary,
+  ComposeServiceSummary,
   ContainerSummary,
   CreateNamedResourceInput,
   DashboardSnapshot,
@@ -13,10 +17,14 @@ import { ExpectedError } from "./errors.ts";
 import { CommandError, parseJsonLines, runCommand } from "./process.ts";
 
 export interface RuntimeController {
+  composeProjectAction(name: string, action: ComposeProjectAction): Promise<void>;
   containerAction(id: string, action: "restart" | "start" | "stop"): Promise<void>;
   createNetwork(input: CreateNamedResourceInput): Promise<void>;
   createVolume(input: CreateNamedResourceInput): Promise<void>;
   getContainerLogs(id: string): Promise<string>;
+  getComposeProject(name: string): Promise<ComposeProjectDetail>;
+  getComposeProjectLogs(name: string): Promise<string>;
+  getComposeProjects(): Promise<ComposeProjectSummary[]>;
   getDashboard(): Promise<DashboardSnapshot>;
   pullImage(input: PullImageInput): Promise<void>;
   removeContainer(id: string): Promise<void>;
@@ -36,8 +44,26 @@ interface LimaInstance {
 interface DockerContainerRow {
   ID: string;
   Image: string;
+  Labels: string;
   Names: string;
   Ports: string;
+  State: string;
+  Status: string;
+}
+
+interface DockerComposeProjectRow {
+  ConfigFiles: string;
+  Name: string;
+  Status: string;
+}
+
+interface DockerComposeServiceRow {
+  Health: string;
+  ID: string;
+  Image: string;
+  Name: string;
+  Ports: string;
+  Service: string;
   State: string;
   Status: string;
 }
@@ -77,22 +103,50 @@ const VOLUME_ROW_FORMAT = "{{json .}}";
 const NETWORK_ROW_FORMAT = "{{json .}}";
 const BUILT_IN_NETWORKS = new Set(["bridge", "host", "none"]);
 
+function composeProjectRows(stdout: string): DockerComposeProjectRow[] {
+  try {
+    const value = JSON.parse(stdout || "[]") as unknown;
+    if (Array.isArray(value)) return value as DockerComposeProjectRow[];
+  } catch {
+    // Fall through to the stable local error below.
+  }
+  throw new ExpectedError(
+    "invalid_compose_output",
+    "Docker Compose 프로젝트 목록을 해석하지 못했습니다.",
+    503,
+  );
+}
+
+function dockerLabel(labels: string, name: string): string | undefined {
+  const prefix = `${name}=`;
+  const value = labels.split(",").find((label) => label.startsWith(prefix));
+  return value?.slice(prefix.length) || undefined;
+}
+
 export class LimaDockerRuntime implements RuntimeController {
   private transition?: Promise<RuntimeSnapshot>;
 
   async getDashboard(): Promise<DashboardSnapshot> {
     const runtime = await this.getRuntimeSnapshot();
     if (runtime.phase !== "running") {
-      return { containers: [], images: [], networks: [], runtime, volumes: [] };
+      return {
+        composeProjects: [],
+        containers: [],
+        images: [],
+        networks: [],
+        runtime,
+        volumes: [],
+      };
     }
 
-    const [containers, images, volumes, networks] = await Promise.all([
+    const [composeProjects, containers, images, volumes, networks] = await Promise.all([
+      this.getComposeProjects(),
       this.listContainers(),
       this.listImages(),
       this.listVolumes(),
       this.listNetworks(),
     ]);
-    return { containers, images, networks, runtime, volumes };
+    return { composeProjects, containers, images, networks, runtime, volumes };
   }
 
   startRuntime(): Promise<RuntimeSnapshot> {
@@ -138,6 +192,54 @@ export class LimaDockerRuntime implements RuntimeController {
   async getContainerLogs(id: string): Promise<string> {
     const result = await this.docker(["logs", "--tail", "300", "--timestamps", id]);
     return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+  }
+
+  async getComposeProjects(): Promise<ComposeProjectSummary[]> {
+    const result = await this.docker(["compose", "ls", "--all", "--format", "json"]);
+    return composeProjectRows(result.stdout).flatMap((row) => {
+      const name = row.Name?.trim();
+      const status = row.Status?.trim();
+      const configFiles = row.ConfigFiles?.split(",")
+        .map((file) => file.trim())
+        .filter(Boolean);
+      return name && status && configFiles.length > 0 ? [{ configFiles, name, status }] : [];
+    });
+  }
+
+  async getComposeProject(name: string): Promise<ComposeProjectDetail> {
+    const project = await this.requireComposeProject(name);
+    const result = await this.compose(project, ["ps", "--all", "--format", "json"]);
+    const services = parseJsonLines<DockerComposeServiceRow>(result.stdout).map(
+      (row): ComposeServiceSummary => ({
+        health: row.Health,
+        id: row.ID,
+        image: row.Image,
+        name: row.Name,
+        ports: row.Ports,
+        service: row.Service,
+        state: row.State,
+        status: row.Status,
+      }),
+    );
+    return { ...project, services };
+  }
+
+  async getComposeProjectLogs(name: string): Promise<string> {
+    const project = await this.requireComposeProject(name);
+    const result = await this.compose(project, [
+      "logs",
+      "--tail",
+      "300",
+      "--timestamps",
+      "--no-color",
+    ]);
+    return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+  }
+
+  async composeProjectAction(name: string, action: ComposeProjectAction): Promise<void> {
+    const project = await this.requireComposeProject(name);
+    const command = action === "up" ? ["up", "--detach"] : [action];
+    await this.compose(project, command, action === "up" ? 10 * 60_000 : 120_000);
   }
 
   async pullImage(input: PullImageInput): Promise<void> {
@@ -255,6 +357,31 @@ export class LimaDockerRuntime implements RuntimeController {
     return { directory, status };
   }
 
+  private async requireComposeProject(name: string): Promise<ComposeProjectSummary> {
+    const project = (await this.getComposeProjects()).find((candidate) => candidate.name === name);
+    if (!project) {
+      throw new ExpectedError(
+        "compose_project_not_found",
+        "Compose 프로젝트를 찾을 수 없습니다.",
+        404,
+      );
+    }
+    return project;
+  }
+
+  private compose(project: ComposeProjectSummary, args: readonly string[], timeoutMs?: number) {
+    return this.docker(
+      [
+        "compose",
+        "--project-name",
+        project.name,
+        ...project.configFiles.flatMap((file) => ["--file", file]),
+        ...args,
+      ],
+      timeoutMs,
+    );
+  }
+
   private async docker(args: readonly string[], timeoutMs?: number) {
     const instance = await this.getInstance();
     if (!instance || instance.status.toLowerCase() !== "running") {
@@ -280,14 +407,20 @@ export class LimaDockerRuntime implements RuntimeController {
       "--format",
       CONTAINER_ROW_FORMAT,
     ]);
-    return parseJsonLines<DockerContainerRow>(result.stdout).map((row) => ({
-      id: row.ID,
-      image: row.Image,
-      name: row.Names,
-      ports: row.Ports,
-      state: row.State,
-      status: row.Status,
-    }));
+    return parseJsonLines<DockerContainerRow>(result.stdout).map((row) => {
+      const composeProject = dockerLabel(row.Labels, "com.docker.compose.project");
+      const composeService = dockerLabel(row.Labels, "com.docker.compose.service");
+      return {
+        ...(composeProject ? { composeProject } : {}),
+        ...(composeService ? { composeService } : {}),
+        id: row.ID,
+        image: row.Image,
+        name: row.Names,
+        ports: row.Ports,
+        state: row.State,
+        status: row.Status,
+      };
+    });
   }
 
   private async listImages(): Promise<ImageSummary[]> {

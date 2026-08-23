@@ -8,6 +8,8 @@ export interface RuntimeSnapshot {
 }
 
 export interface ContainerSummary {
+  composeProject?: string;
+  composeService?: string;
   id: string;
   image: string;
   name: string;
@@ -15,6 +17,29 @@ export interface ContainerSummary {
   state: string;
   status: string;
 }
+
+export interface ComposeProjectSummary {
+  configFiles: string[];
+  name: string;
+  status: string;
+}
+
+export interface ComposeServiceSummary {
+  health: string;
+  id: string;
+  image: string;
+  name: string;
+  ports: string;
+  service: string;
+  state: string;
+  status: string;
+}
+
+export interface ComposeProjectDetail extends ComposeProjectSummary {
+  services: ComposeServiceSummary[];
+}
+
+export type ComposeProjectAction = "down" | "restart" | "stop" | "up";
 
 export interface ImageSummary {
   createdSince: string;
@@ -45,6 +70,7 @@ export interface NetworkSummary {
 }
 
 export interface DashboardSnapshot {
+  composeProjects: ComposeProjectSummary[];
   containers: ContainerSummary[];
   images: ImageSummary[];
   networks: NetworkSummary[];

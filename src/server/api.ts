@@ -39,6 +39,33 @@ export function createApi(controller: RuntimeController) {
     context.json({ runtime: await controller.stopRuntime() }),
   );
 
+  app.get("/compose/projects", async (context) =>
+    context.json({ projects: await controller.getComposeProjects() }),
+  );
+
+  app.get("/compose/projects/:name/logs", async (context) => {
+    const logs = await controller.getComposeProjectLogs(
+      requireResourceName(context.req.param("name")),
+    );
+    return context.json({ logs });
+  });
+
+  app.get("/compose/projects/:name", async (context) =>
+    context.json({
+      project: await controller.getComposeProject(requireResourceName(context.req.param("name"))),
+    }),
+  );
+
+  app.post("/compose/projects/:name/actions/:action", async (context) => {
+    const name = requireResourceName(context.req.param("name"));
+    const action = context.req.param("action");
+    if (action !== "up" && action !== "stop" && action !== "restart" && action !== "down") {
+      throw new ExpectedError("invalid_action", "지원하지 않는 Compose 작업입니다.", 400);
+    }
+    await controller.composeProjectAction(name, action);
+    return context.json({ ok: true });
+  });
+
   app.post("/containers", async (context) => {
     const body = await readObject(context);
     const input: RunContainerInput = {

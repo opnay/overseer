@@ -1,5 +1,11 @@
 export const RESOURCE_ROUTES = [
   {
+    description: "Compose 프로젝트와 서비스의 실행 상태를 함께 관리합니다.",
+    eyebrow: "COMPOSE PROJECTS",
+    label: "Compose",
+    path: "/compose",
+  },
+  {
     description: "실행 상태와 로컬 공개 포트를 확인하고 컨테이너를 제어합니다.",
     eyebrow: "CONTAINER OPERATIONS",
     label: "컨테이너",
@@ -28,5 +34,8 @@ export const RESOURCE_ROUTES = [
 export type ResourcePath = (typeof RESOURCE_ROUTES)[number]["path"];
 
 export function getResourceRoute(pathname: string) {
-  return RESOURCE_ROUTES.find((route) => route.path === pathname) ?? RESOURCE_ROUTES[0];
+  return (
+    RESOURCE_ROUTES.find((route) => route.path === pathname) ??
+    RESOURCE_ROUTES.find((route) => route.path === "/containers")!
+  );
 }

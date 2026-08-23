@@ -4,11 +4,21 @@ import type { RuntimeController } from "../src/server/lima-docker-runtime.ts";
 
 function createController(): RuntimeController {
   return {
+    composeProjectAction: vi.fn(async () => undefined),
     containerAction: vi.fn(async () => undefined),
     createNetwork: vi.fn(async () => undefined),
     createVolume: vi.fn(async () => undefined),
+    getComposeProject: vi.fn(async (name) => ({
+      configFiles: ["/workspace/compose.yaml"],
+      name,
+      services: [],
+      status: "running(1)",
+    })),
+    getComposeProjectLogs: vi.fn(async () => "compose logs"),
+    getComposeProjects: vi.fn(async () => []),
     getContainerLogs: vi.fn(async () => "hello"),
     getDashboard: vi.fn(async () => ({
+      composeProjects: [],
       containers: [],
       images: [],
       networks: [],
@@ -107,5 +117,30 @@ describe("API boundary", () => {
 
     expect(response.status).toBe(201);
     expect(controller.createVolume).toHaveBeenCalledWith({ name: "app-data" });
+  });
+
+  it("lists Compose projects and forwards project actions", async () => {
+    const controller = createController();
+    vi.mocked(controller.getComposeProjects).mockResolvedValue([
+      {
+        configFiles: ["/workspace/compose.yaml"],
+        name: "demo-stack",
+        status: "running(1)",
+      },
+    ]);
+    const app = createApi(controller);
+
+    const listResponse = await app.request("/compose/projects", { headers: localHeaders });
+    expect(listResponse.status).toBe(200);
+    await expect(listResponse.json()).resolves.toMatchObject({
+      projects: [{ name: "demo-stack", status: "running(1)" }],
+    });
+
+    const actionResponse = await app.request("/compose/projects/demo-stack/actions/stop", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(actionResponse.status).toBe(200);
+    expect(controller.composeProjectAction).toHaveBeenCalledWith("demo-stack", "stop");
   });
 });

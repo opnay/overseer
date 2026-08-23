@@ -6,7 +6,7 @@ Lima의 공식 Docker 템플릿으로 만든 전용 VM을 브라우저에서 관
 
 - macOS
 - Lima 2.0 이상
-- Docker CLI
+- Docker CLI와 Compose 플러그인
 - Node.js 24 이상
 - pnpm 11
 
@@ -23,6 +23,7 @@ pnpm dev
 
 리소스는 독립 URL에서 관리합니다.
 
+- `/compose`: 실행 이력이 있는 프로젝트·서비스 상태, 실행·중지·재시작·로그·내리기
 - `/containers`: 실행·중지·재시작·로그·삭제
 - `/images`: pull·삭제
 - `/volumes`: 생성·삭제
@@ -46,5 +47,7 @@ pnpm check
 - 서버는 `127.0.0.1`에만 바인딩합니다.
 - 컨테이너 포트는 기본적으로 `127.0.0.1`의 빈 포트에 게시합니다.
 - 브라우저 요청으로 임의 셸 명령을 실행할 수 없습니다.
+- Compose 작업은 Docker가 보고한 프로젝트명과 구성 파일만 사용합니다.
+- Compose 프로젝트 내리기는 named volume과 구성 파일을 삭제하지 않습니다.
 - 전역 Docker context와 `/var/run/docker.sock`을 변경하지 않습니다.
 - 컨테이너·이미지 삭제에는 명시적인 확인이 필요합니다.

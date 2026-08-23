@@ -20,13 +20,14 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(4);
+    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(5);
     expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
   });
 
   it("explains the first-run Lima state", async () => {
     const dashboard: DashboardSnapshot = {
+      composeProjects: [],
       containers: [],
       images: [],
       networks: [],
@@ -51,6 +52,7 @@ describe("App", () => {
 
   it("shows the running empty state and primary actions", async () => {
     const dashboard: DashboardSnapshot = {
+      composeProjects: [],
       containers: [],
       images: [],
       networks: [],
@@ -82,6 +84,7 @@ describe("App", () => {
   it("navigates to the images page from the sidebar", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
+      composeProjects: [],
       containers: [],
       images: [],
       networks: [],
@@ -109,9 +112,71 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/images");
   });
 
+  it("renders discovered Compose projects and service details", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [
+        {
+          configFiles: ["/workspace/compose.yaml"],
+          name: "demo-stack",
+          status: "running(1)",
+        },
+      ],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "Lima와 Docker가 정상적으로 실행 중입니다.",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("/api/compose/projects/demo-stack")
+          ? jsonResponse({
+              project: {
+                configFiles: ["/workspace/compose.yaml"],
+                name: "demo-stack",
+                services: [
+                  {
+                    health: "",
+                    id: "container-id",
+                    image: "nginx:alpine",
+                    name: "demo-stack-web-1",
+                    ports: "127.0.0.1:8080->80/tcp",
+                    service: "web",
+                    state: "running",
+                    status: "Up 1 minute",
+                  },
+                ],
+                status: "running(1)",
+              },
+            })
+          : jsonResponse(dashboard),
+      ),
+    );
+    window.history.replaceState(null, "", "/compose");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Compose", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /demo-stack/ })).toBeInTheDocument();
+    expect(screen.getByText("1개 실행 중")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "demo-stack 서비스 보기" }));
+
+    expect(await screen.findByRole("heading", { name: "demo-stack 서비스" })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /demo-stack-web-1/ })).toBeInTheDocument();
+  });
+
   it("renders volumes and networks as direct pages", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
+      composeProjects: [],
       containers: [],
       images: [],
       networks: [
@@ -161,6 +226,7 @@ describe("App", () => {
   it("shows invalid resource names beside the City DS field", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
+      composeProjects: [],
       containers: [],
       images: [],
       networks: [],
@@ -197,6 +263,7 @@ describe("App", () => {
   it("reports successful resource creation with a City DS toast", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
+      composeProjects: [],
       containers: [],
       images: [],
       networks: [],

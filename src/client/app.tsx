@@ -20,6 +20,8 @@ import {
   Download,
   FileText,
   HardDrive,
+  Layers3,
+  ListTree,
   Moon,
   Network as NetworkIcon,
   Play,
@@ -40,6 +42,9 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  ComposeProjectAction,
+  ComposeProjectDetail,
+  ComposeProjectSummary,
   ContainerSummary,
   DashboardSnapshot,
   ImageSummary,
@@ -73,7 +78,7 @@ function LoadingScreen() {
       <aside aria-hidden="true" className="overseer-sidebar overseer-loading-sidebar">
         <Skeleton className="overseer-loading-brand" />
         <div className="overseer-loading-nav">
-          {[0, 1, 2, 3].map((item) => (
+          {[0, 1, 2, 3, 4].map((item) => (
             <Skeleton className="overseer-loading-nav-item" key={item} />
           ))}
         </div>
@@ -399,39 +404,45 @@ function PullImageDialog({
   );
 }
 
-function LogsDialog({ container, onClose }: { container?: ContainerSummary; onClose: () => void }) {
+interface LogsTarget {
+  description: string;
+  requestPath: string;
+  title: string;
+}
+
+function LogsDialog({ onClose, target }: { onClose: () => void; target?: LogsTarget }) {
   const [logs, setLogs] = useState("");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!container) return;
+    if (!target) return;
     setLoading(true);
     setError(undefined);
     try {
-      const result = await apiRequest<{ logs: string }>(`/containers/${container.id}/logs`);
+      const result = await apiRequest<{ logs: string }>(target.requestPath);
       setLogs(result.logs || "출력된 로그가 없습니다.");
     } catch (loadError) {
       setError(actionError(loadError));
     } finally {
       setLoading(false);
     }
-  }, [container]);
+  }, [target]);
 
   useEffect(() => {
-    if (container) void load();
-  }, [container, load]);
+    if (target) void load();
+  }, [target, load]);
 
   return (
-    <Dialog.Root onOpenChange={(open) => !open && onClose()} open={Boolean(container)}>
+    <Dialog.Root onOpenChange={(open) => !open && onClose()} open={Boolean(target)}>
       <Dialog.Portal>
         <Dialog.Backdrop />
         <Dialog.Viewport>
           <Dialog.Popup size="xl">
             <Dialog.Header>
               <div>
-                <Dialog.Title>{container?.name} 로그</Dialog.Title>
-                <Dialog.Description>최근 300줄을 시간 정보와 함께 표시합니다.</Dialog.Description>
+                <Dialog.Title>{target?.title}</Dialog.Title>
+                <Dialog.Description>{target?.description}</Dialog.Description>
               </div>
               <Button disabled={loading} onClick={() => void load()} size="sm" variant="outline">
                 <RefreshCw aria-hidden="true" size={14} />
@@ -460,6 +471,320 @@ function LogsDialog({ container, onClose }: { container?: ContainerSummary; onCl
   );
 }
 
+function composeIsRunning(status: string): boolean {
+  return status.startsWith("running");
+}
+
+function composeStatusLabel(status: string): string {
+  const running = status.match(/^running\((\d+)\)$/)?.[1];
+  if (running) return `${running}개 실행 중`;
+  const exited = status.match(/^exited\((\d+)\)$/)?.[1];
+  if (exited) return `${exited}개 중지됨`;
+  return status;
+}
+
+function composeActionSuccess(name: string, action: ComposeProjectAction): string {
+  const labels: Record<ComposeProjectAction, string> = {
+    down: "내렸습니다",
+    restart: "재시작했습니다",
+    stop: "중지했습니다",
+    up: "실행했습니다",
+  };
+  return `${name} 프로젝트를 ${labels[action]}.`;
+}
+
+function composeFileName(file: string): string {
+  return file.split("/").filter(Boolean).at(-1) ?? file;
+}
+
+function ComposeProjectDialog({
+  onClose,
+  project,
+}: {
+  onClose: () => void;
+  project?: ComposeProjectSummary;
+}) {
+  const [detail, setDetail] = useState<ComposeProjectDetail>();
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!project) return;
+    setLoading(true);
+    setError(undefined);
+    try {
+      const result = await apiRequest<{ project: ComposeProjectDetail }>(
+        `/compose/projects/${encodeURIComponent(project.name)}`,
+      );
+      setDetail(result.project);
+    } catch (loadError) {
+      setError(actionError(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }, [project]);
+
+  useEffect(() => {
+    setDetail(undefined);
+    if (project) void load();
+  }, [project, load]);
+
+  return (
+    <Dialog.Root onOpenChange={(open) => !open && onClose()} open={Boolean(project)}>
+      <Dialog.Portal>
+        <Dialog.Backdrop />
+        <Dialog.Viewport>
+          <Dialog.Popup size="xl">
+            <Dialog.Header>
+              <div>
+                <Dialog.Title>{project?.name} 서비스</Dialog.Title>
+                <Dialog.Description>
+                  {project?.configFiles.map(composeFileName).join(" · ")}
+                </Dialog.Description>
+              </div>
+              <Button disabled={loading} onClick={() => void load()} size="sm" variant="outline">
+                <RefreshCw aria-hidden="true" size={14} />
+                새로고침
+              </Button>
+            </Dialog.Header>
+            <Dialog.Body>
+              {error ? (
+                <Alert.Root tone="destructive">
+                  <Alert.Title level={3}>서비스 상태를 불러오지 못했습니다.</Alert.Title>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Root>
+              ) : loading && !detail ? (
+                <div aria-live="polite" role="status">
+                  서비스 상태를 불러오는 중…
+                </div>
+              ) : detail ? (
+                <DataTableRegion
+                  hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+                  label={`${detail.name} 서비스 표`}
+                >
+                  <Table.Root
+                    aria-label={`${detail.name} 서비스 목록`}
+                    className="overseer-table overseer-table--compose-services"
+                    size="sm"
+                  >
+                    <Table.Caption className="overseer-table-caption">
+                      {detail.name} Compose 서비스
+                    </Table.Caption>
+                    <Table.Header>
+                      <Table.Row>
+                        <Table.Head>서비스</Table.Head>
+                        <Table.Head>컨테이너</Table.Head>
+                        <Table.Head>이미지</Table.Head>
+                        <Table.Head>상태</Table.Head>
+                        <Table.Head>포트</Table.Head>
+                      </Table.Row>
+                    </Table.Header>
+                    <Table.Body>
+                      {detail.services.length === 0 ? (
+                        <Table.StateRow colSpan={5}>
+                          등록된 서비스 컨테이너가 없습니다.
+                        </Table.StateRow>
+                      ) : (
+                        detail.services.map((service) => {
+                          const running = service.state === "running";
+                          return (
+                            <Table.Row key={service.id || service.name}>
+                              <Table.Cell>
+                                <strong>{service.service}</strong>
+                              </Table.Cell>
+                              <Table.Cell>{service.name}</Table.Cell>
+                              <Table.Cell>{service.image}</Table.Cell>
+                              <Table.Cell>
+                                <span className="overseer-container-status">
+                                  <Badge
+                                    aria-label={running ? "실행 중" : "중지됨"}
+                                    dot
+                                    size="sm"
+                                    tone={running ? "success" : "neutral"}
+                                  />
+                                  <span>{service.health || service.status}</span>
+                                </span>
+                              </Table.Cell>
+                              <Table.Cell>
+                                <code>{service.ports || "—"}</code>
+                              </Table.Cell>
+                            </Table.Row>
+                          );
+                        })
+                      )}
+                    </Table.Body>
+                  </Table.Root>
+                </DataTableRegion>
+              ) : null}
+            </Dialog.Body>
+            <Dialog.Footer>
+              <Dialog.Close render={<Button variant="outline" />}>닫기</Dialog.Close>
+            </Dialog.Footer>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function ComposePage({
+  busy,
+  onAction,
+  onInspect,
+  onLogs,
+  projects,
+}: {
+  busy?: string;
+  onAction: (project: ComposeProjectSummary, action: ComposeProjectAction) => Promise<void>;
+  onInspect: (project: ComposeProjectSummary) => void;
+  onLogs: (project: ComposeProjectSummary) => void;
+  projects: ComposeProjectSummary[];
+}) {
+  return (
+    <section className="overseer-panel" id="compose">
+      <DataTableRegion
+        className="overseer-data-table-region"
+        hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+        label="Compose 프로젝트 표"
+      >
+        <Table.Root
+          aria-label="Compose 프로젝트 목록"
+          className="overseer-table overseer-table--compose-projects"
+          size="sm"
+        >
+          <Table.Caption className="overseer-table-caption">
+            Lima overseer 인스턴스의 Compose 프로젝트
+          </Table.Caption>
+          <Table.Header>
+            <Table.Row>
+              <Table.Head>프로젝트</Table.Head>
+              <Table.Head>상태</Table.Head>
+              <Table.Head>구성 파일</Table.Head>
+              <Table.Head className="overseer-actions-column">작업</Table.Head>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {projects.length === 0 ? (
+              <Table.StateRow colSpan={4}>
+                <EmptyState.Root className="overseer-table-empty-state" density="compact">
+                  <EmptyState.Icon>
+                    <Layers3 aria-hidden="true" />
+                  </EmptyState.Icon>
+                  <EmptyState.Title level={2}>Compose 프로젝트가 없습니다.</EmptyState.Title>
+                  <EmptyState.Description>
+                    CLI에서 한 번 실행한 Compose 프로젝트가 여기에 표시됩니다.
+                  </EmptyState.Description>
+                </EmptyState.Root>
+              </Table.StateRow>
+            ) : (
+              projects.map((project) => {
+                const running = composeIsRunning(project.status);
+                const rowBusy = busy?.startsWith(`compose-${project.name}-`) ?? false;
+                return (
+                  <Table.Row key={project.name}>
+                    <Table.Cell>
+                      <strong>{project.name}</strong>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="overseer-container-status">
+                        <Badge
+                          aria-label={running ? "실행 중" : "중지됨"}
+                          dot
+                          size="sm"
+                          tone={running ? "success" : "neutral"}
+                        />
+                        <span>{composeStatusLabel(project.status)}</span>
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <code
+                        className="overseer-compose-config"
+                        title={project.configFiles.join(", ")}
+                      >
+                        {project.configFiles.map(composeFileName).join(" · ")}
+                      </code>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="overseer-row-actions">
+                        <Button
+                          aria-label={`${project.name} 서비스 보기`}
+                          disabled={rowBusy}
+                          iconOnly
+                          onClick={() => onInspect(project)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <ListTree aria-hidden="true" size={14} />
+                        </Button>
+                        {running ? (
+                          <Button
+                            aria-label={`${project.name} 중지`}
+                            disabled={rowBusy}
+                            iconOnly
+                            onClick={() => void onAction(project, "stop").catch(() => undefined)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            <Square aria-hidden="true" size={14} />
+                          </Button>
+                        ) : (
+                          <Button
+                            aria-label={`${project.name} 실행`}
+                            disabled={rowBusy}
+                            iconOnly
+                            onClick={() => void onAction(project, "up").catch(() => undefined)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            <Play aria-hidden="true" size={14} />
+                          </Button>
+                        )}
+                        {running ? (
+                          <Button
+                            aria-label={`${project.name} 재시작`}
+                            disabled={rowBusy}
+                            iconOnly
+                            onClick={() => void onAction(project, "restart").catch(() => undefined)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            <RotateCcw aria-hidden="true" size={14} />
+                          </Button>
+                        ) : null}
+                        <Button
+                          aria-label={`${project.name} 로그 보기`}
+                          disabled={rowBusy}
+                          iconOnly
+                          onClick={() => onLogs(project)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <FileText aria-hidden="true" size={14} />
+                        </Button>
+                        <ConfirmAction
+                          actionLabel="프로젝트 내리기"
+                          ariaLabel={`${project.name} 프로젝트 내리기`}
+                          disabled={rowBusy}
+                          description="프로젝트 컨테이너와 기본 네트워크를 제거합니다. named volume과 구성 파일은 유지됩니다."
+                          onConfirm={() => void onAction(project, "down").catch(() => undefined)}
+                          iconOnly
+                          title={`${project.name} 프로젝트를 내리시겠습니까?`}
+                        >
+                          <Trash2 aria-hidden="true" size={14} />
+                        </ConfirmAction>
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                );
+              })
+            )}
+          </Table.Body>
+        </Table.Root>
+      </DataTableRegion>
+    </section>
+  );
+}
+
 interface MutationOptions {
   key: string;
   request: () => Promise<unknown>;
@@ -483,7 +808,8 @@ function AppContent() {
   const [loadError, setLoadError] = useState<string>();
   const [operationError, setOperationError] = useState<string>();
   const [busy, setBusy] = useState<string>();
-  const [logsContainer, setLogsContainer] = useState<ContainerSummary>();
+  const [composeDetailProject, setComposeDetailProject] = useState<ComposeProjectSummary>();
+  const [logsTarget, setLogsTarget] = useState<LogsTarget>();
   const [dark, setDark] = useState(() => window.localStorage.getItem("overseer-theme") === "dark");
   const [resourcePath, setResourcePath] = useState<ResourcePath>(resourcePathFromLocation);
   const toastManager = Toast.useToastManager();
@@ -554,77 +880,78 @@ function AppContent() {
   const runtimeStatus = runtime ? runtimePresentation[runtime.phase] : runtimePresentation.error;
   const runtimeRunning = runtime?.phase === "running";
   const currentRoute = getResourceRoute(resourcePath);
-  const pagePrimaryAction = !runtimeRunning ? null : resourcePath === "/containers" ? (
-    <RunContainerDialog
-      busy={busy === "container-run"}
-      disabled={Boolean(busy)}
-      onSubmit={async (input) =>
-        mutate({
-          key: "container-run",
-          request: () =>
-            apiRequest("/containers", {
-              body: JSON.stringify(input),
-              method: "POST",
-            }),
-          success: "컨테이너를 실행했습니다.",
-        })
-      }
-    />
-  ) : resourcePath === "/images" ? (
-    <PullImageDialog
-      busy={busy === "image-pull"}
-      disabled={Boolean(busy)}
-      onSubmit={async (image) =>
-        mutate({
-          key: "image-pull",
-          request: () =>
-            apiRequest("/images/pull", {
-              body: JSON.stringify({ image }),
-              method: "POST",
-            }),
-          success: `${image} 이미지를 받았습니다.`,
-        })
-      }
-    />
-  ) : resourcePath === "/volumes" ? (
-    <CreateNamedResourceDialog
-      busy={busy === "volume-create"}
-      description="local 드라이버를 사용하는 named volume을 만듭니다."
-      disabled={Boolean(busy)}
-      label="볼륨"
-      onSubmit={(name) =>
-        mutate({
-          key: "volume-create",
-          request: () =>
-            apiRequest("/volumes", {
-              body: JSON.stringify({ name }),
-              method: "POST",
-            }),
-          success: `${name} 볼륨을 만들었습니다.`,
-        })
-      }
-      placeholder="app-data"
-    />
-  ) : (
-    <CreateNamedResourceDialog
-      busy={busy === "network-create"}
-      description="기본 bridge 드라이버를 사용하는 네트워크를 만듭니다."
-      disabled={Boolean(busy)}
-      label="네트워크"
-      onSubmit={(name) =>
-        mutate({
-          key: "network-create",
-          request: () =>
-            apiRequest("/networks", {
-              body: JSON.stringify({ name }),
-              method: "POST",
-            }),
-          success: `${name} 네트워크를 만들었습니다.`,
-        })
-      }
-      placeholder="app-network"
-    />
-  );
+  const pagePrimaryAction =
+    !runtimeRunning || resourcePath === "/compose" ? null : resourcePath === "/containers" ? (
+      <RunContainerDialog
+        busy={busy === "container-run"}
+        disabled={Boolean(busy)}
+        onSubmit={async (input) =>
+          mutate({
+            key: "container-run",
+            request: () =>
+              apiRequest("/containers", {
+                body: JSON.stringify(input),
+                method: "POST",
+              }),
+            success: "컨테이너를 실행했습니다.",
+          })
+        }
+      />
+    ) : resourcePath === "/images" ? (
+      <PullImageDialog
+        busy={busy === "image-pull"}
+        disabled={Boolean(busy)}
+        onSubmit={async (image) =>
+          mutate({
+            key: "image-pull",
+            request: () =>
+              apiRequest("/images/pull", {
+                body: JSON.stringify({ image }),
+                method: "POST",
+              }),
+            success: `${image} 이미지를 받았습니다.`,
+          })
+        }
+      />
+    ) : resourcePath === "/volumes" ? (
+      <CreateNamedResourceDialog
+        busy={busy === "volume-create"}
+        description="local 드라이버를 사용하는 named volume을 만듭니다."
+        disabled={Boolean(busy)}
+        label="볼륨"
+        onSubmit={(name) =>
+          mutate({
+            key: "volume-create",
+            request: () =>
+              apiRequest("/volumes", {
+                body: JSON.stringify({ name }),
+                method: "POST",
+              }),
+            success: `${name} 볼륨을 만들었습니다.`,
+          })
+        }
+        placeholder="app-data"
+      />
+    ) : resourcePath === "/networks" ? (
+      <CreateNamedResourceDialog
+        busy={busy === "network-create"}
+        description="기본 bridge 드라이버를 사용하는 네트워크를 만듭니다."
+        disabled={Boolean(busy)}
+        label="네트워크"
+        onSubmit={(name) =>
+          mutate({
+            key: "network-create",
+            request: () =>
+              apiRequest("/networks", {
+                body: JSON.stringify({ name }),
+                method: "POST",
+              }),
+            success: `${name} 네트워크를 만들었습니다.`,
+          })
+        }
+        placeholder="app-network"
+      />
+    ) : null;
 
   return (
     <div className="overseer-shell">
@@ -642,6 +969,14 @@ function AppContent() {
           </div>
         </div>
         <nav aria-label="주요 메뉴">
+          <a
+            aria-current={resourcePath === "/compose" ? "page" : undefined}
+            href="/compose"
+            onClick={(event) => handleResourceLink(event, "/compose")}
+          >
+            <Layers3 aria-hidden="true" size={16} />
+            Compose
+          </a>
           <a
             aria-current={resourcePath === "/containers" ? "page" : undefined}
             href="/containers"
@@ -831,6 +1166,32 @@ function AppContent() {
 
           {dashboard && runtimeRunning ? (
             <>
+              {resourcePath === "/compose" ? (
+                <ComposePage
+                  busy={busy}
+                  onAction={(project, action) =>
+                    mutate({
+                      key: `compose-${project.name}-${action}`,
+                      request: () =>
+                        apiRequest(
+                          `/compose/projects/${encodeURIComponent(project.name)}/actions/${action}`,
+                          { method: "POST" },
+                        ),
+                      success: composeActionSuccess(project.name, action),
+                    })
+                  }
+                  onInspect={setComposeDetailProject}
+                  onLogs={(project) =>
+                    setLogsTarget({
+                      description: "프로젝트 전체 서비스의 최근 300줄을 표시합니다.",
+                      requestPath: `/compose/projects/${encodeURIComponent(project.name)}/logs`,
+                      title: `${project.name} 로그`,
+                    })
+                  }
+                  projects={dashboard.composeProjects}
+                />
+              ) : null}
+
               {resourcePath === "/containers" ? (
                 <section className="overseer-panel" id="containers">
                   <ContainerTable
@@ -846,7 +1207,13 @@ function AppContent() {
                         success: `${container.name} 컨테이너 작업을 완료했습니다.`,
                       }).catch(() => undefined)
                     }
-                    onLogs={setLogsContainer}
+                    onLogs={(container) =>
+                      setLogsTarget({
+                        description: "최근 300줄을 시간 정보와 함께 표시합니다.",
+                        requestPath: `/containers/${container.id}/logs`,
+                        title: `${container.name} 로그`,
+                      })
+                    }
                     onRemove={(container) =>
                       void mutate({
                         key: `${container.id}-remove`,
@@ -912,7 +1279,11 @@ function AppContent() {
           ) : null}
         </main>
       </div>
-      <LogsDialog container={logsContainer} onClose={() => setLogsContainer(undefined)} />
+      <ComposeProjectDialog
+        onClose={() => setComposeDetailProject(undefined)}
+        project={composeDetailProject}
+      />
+      <LogsDialog onClose={() => setLogsTarget(undefined)} target={logsTarget} />
       <Toast.Portal>
         <Toast.Viewport>
           {toastManager.toasts.map((toast) => (
@@ -1265,6 +1636,12 @@ function ContainerTable({
                   <Table.Cell>
                     <div className="overseer-primary-cell">
                       <strong>{container.name}</strong>
+                      {container.composeProject ? (
+                        <Badge appearance="outline" size="sm" tone="neutral">
+                          {container.composeProject}
+                          {container.composeService ? ` · ${container.composeService}` : ""}
+                        </Badge>
+                      ) : null}
                       <code>{container.id}</code>
                     </div>
                   </Table.Cell>
