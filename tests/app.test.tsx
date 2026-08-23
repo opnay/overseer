@@ -120,11 +120,14 @@ describe("App", () => {
 
     expect(await screen.findByRole("region", { name: "web 로그 터미널" })).toBeInTheDocument();
     expect(screen.getByText("tail -n 300")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "로그 복사" })).toBeEnabled();
+    expect(screen.getByRole("toolbar", { name: "로그 명령" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "복사" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "맨 아래" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "자동 갱신 켜짐" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
+    expect(screen.getByRole("button", { name: "새로고침" })).toBeEnabled();
     expect(await screen.findByText("first line")).toBeInTheDocument();
     expect(document.querySelectorAll(".overseer-terminal-lines li")).toHaveLength(2);
   });

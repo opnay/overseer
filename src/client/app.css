@@ -471,16 +471,14 @@
 
   .overseer-terminal {
     overflow: hidden;
-    border: 1px solid var(--city-palette-neutral-700);
+    border: 1px solid var(--city-color-border);
     border-radius: var(--city-radius-sm);
     background: var(--city-palette-neutral-950);
     color: var(--city-palette-neutral-100);
-    box-shadow: inset 0 1px 0 var(--city-palette-neutral-800);
   }
 
   .overseer-terminal-toolbar,
-  .overseer-terminal-context,
-  .overseer-terminal-actions {
+  .overseer-terminal-context {
     display: flex;
     align-items: center;
   }
@@ -488,8 +486,8 @@
   .overseer-terminal-toolbar {
     min-height: var(--city-control-lg);
     padding: var(--city-space-1-5) var(--city-space-2);
-    border-bottom: 1px solid var(--city-palette-neutral-800);
-    background: var(--city-palette-neutral-900);
+    border-bottom: 1px solid var(--city-color-border);
+    background: var(--city-color-surface);
     justify-content: space-between;
     gap: var(--city-space-3);
     flex-wrap: wrap;
@@ -497,12 +495,12 @@
 
   .overseer-terminal-context {
     min-width: 0;
-    color: var(--city-palette-neutral-400);
+    color: var(--city-color-muted-foreground);
     gap: var(--city-space-2);
   }
 
   .overseer-terminal-context code {
-    color: var(--city-palette-neutral-200);
+    color: var(--city-color-foreground);
     font-family: var(--city-font-family-mono);
     font-size: var(--city-font-size-xs);
     white-space: nowrap;
@@ -515,16 +513,6 @@
 
   .overseer-terminal-actions {
     margin-left: auto;
-    gap: var(--city-space-1);
-  }
-
-  .overseer-terminal .city-button {
-    color: var(--city-palette-neutral-100);
-  }
-
-  .overseer-terminal .city-button:hover,
-  .overseer-terminal .city-button[aria-pressed="true"] {
-    background: var(--city-palette-neutral-800);
   }
 
   .overseer-terminal-scroll {
@@ -699,7 +687,8 @@
 
   @media (pointer: coarse) {
     .overseer-sidebar nav a,
-    .city-button {
+    .city-button,
+    .overseer-terminal-actions button {
       min-height: var(--city-hit-target-min);
     }
   }

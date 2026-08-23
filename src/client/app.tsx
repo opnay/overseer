@@ -10,6 +10,7 @@ import { Input } from "@opnay/city-ds-react/input";
 import { NumberField } from "@opnay/city-ds-react/number-field";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
+import { Toolbar } from "@opnay/city-ds-react/toolbar";
 import { Toast } from "@opnay/city-ds-react/toast";
 import {
   ArrowDownToLine,
@@ -499,56 +500,50 @@ function LogsDialog({ onClose, target }: { onClose: () => void; target?: LogsTar
                     <code>tail -n 300</code>
                     <span aria-live="polite">{loading ? "동기화 중…" : `${lines.length}줄`}</span>
                   </div>
-                  <div className="overseer-terminal-actions">
-                    <Button
-                      aria-label={copied ? "로그 복사 완료" : "로그 복사"}
+                  <Toolbar.Root
+                    appearance="plain"
+                    aria-label="로그 명령"
+                    className="overseer-terminal-actions"
+                    size="sm"
+                  >
+                    <Toolbar.Button
                       disabled={!logs}
-                      iconOnly
                       onClick={() => void copyLogs()}
-                      size="xsm"
                       variant="ghost"
                     >
                       {copied ? (
-                        <Check aria-hidden="true" size={13} />
+                        <Check aria-hidden="true" size={14} />
                       ) : (
-                        <Copy aria-hidden="true" size={13} />
+                        <Copy aria-hidden="true" size={14} />
                       )}
-                    </Button>
-                    <Button
-                      aria-label="맨 아래로 이동"
+                      {copied ? "복사됨" : "복사"}
+                    </Toolbar.Button>
+                    <Toolbar.Button
                       disabled={!logs}
-                      iconOnly
                       onClick={() => {
                         if (scrollRef.current) {
                           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
                         }
                       }}
-                      size="xsm"
                       variant="ghost"
                     >
-                      <ArrowDownToLine aria-hidden="true" size={13} />
-                    </Button>
-                    <Button
+                      <ArrowDownToLine aria-hidden="true" size={14} />
+                      맨 아래
+                    </Toolbar.Button>
+                    <Toolbar.Toggle
                       aria-label={following ? "자동 갱신 켜짐" : "자동 갱신 꺼짐"}
-                      aria-pressed={following}
-                      iconOnly
-                      onClick={() => setFollowing((value) => !value)}
-                      size="xsm"
+                      onPressedChange={setFollowing}
+                      pressed={following}
                       variant="ghost"
                     >
-                      <Radio aria-hidden="true" size={13} />
-                    </Button>
-                    <Button
-                      aria-label="로그 새로고침"
-                      disabled={loading}
-                      iconOnly
-                      onClick={() => void load()}
-                      size="xsm"
-                      variant="ghost"
-                    >
-                      <RefreshCw aria-hidden="true" size={13} />
-                    </Button>
-                  </div>
+                      <Radio aria-hidden="true" size={14} />
+                      자동 갱신
+                    </Toolbar.Toggle>
+                    <Toolbar.Button disabled={loading} onClick={() => void load()} variant="ghost">
+                      <RefreshCw aria-hidden="true" size={14} />
+                      새로고침
+                    </Toolbar.Button>
+                  </Toolbar.Root>
                 </div>
                 <div
                   aria-busy={loading}
