@@ -51,7 +51,7 @@ export const APP_ROUTES = [
     path: "/operations",
   },
   {
-    description: "단일 Docker Engine의 실행 환경과 Lima VM 자원을 구성합니다.",
+    description: "Overseer의 기본 동작과 Docker Engine 실행 환경을 구성합니다.",
     eyebrow: "SYSTEM SETTINGS",
     group: "system",
     label: "설정",

@@ -7,7 +7,7 @@ import { Fieldset } from "@opnay/city-ds-react/fieldset";
 import { Input } from "@opnay/city-ds-react/input";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
-import { RotateCcw, ServerCog } from "lucide-react";
+import { ArrowRight, PackageCheck, RotateCcw, ServerCog } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type {
   DashboardSnapshot,
@@ -34,7 +34,28 @@ interface SettingsPageProps {
   refreshToken: string;
 }
 
-type SettingsSection = "engine" | "environment";
+type SettingsSection = "engine" | "environment" | "general";
+
+const sectionPresentation: Record<
+  SettingsSection,
+  { category: string; description: string; title: string }
+> = {
+  engine: {
+    category: "Docker Engine",
+    description: "Docker Engine 상태와 단일 overseer VM의 자원을 관리합니다.",
+    title: "엔진 설정",
+  },
+  environment: {
+    category: "Docker Engine",
+    description: "Docker Engine을 실행할 환경과 Lima VM 드라이버를 선택합니다.",
+    title: "실행 환경",
+  },
+  general: {
+    category: "Overseer",
+    description: "Overseer의 기본 동작을 관리합니다.",
+    title: "일반",
+  },
+};
 
 const runtimeStatus: Record<
   RuntimePhase,
@@ -62,7 +83,7 @@ export function SettingsPage({
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [confirmationError, setConfirmationError] = useState<string>();
-  const [section, setSection] = useState<SettingsSection>("engine");
+  const [section, setSection] = useState<SettingsSection>("general");
 
   const load = useCallback(async () => {
     setLoadError(undefined);
@@ -128,12 +149,31 @@ export function SettingsPage({
   const qemu = snapshot?.vmTypes.find(({ value }) => value === "qemu");
   const status = runtimeStatus[dashboard.runtime.phase];
   const customNetworks = dashboard.networks.filter(({ builtIn }) => !builtIn).length;
+  const presentation = sectionPresentation[section];
 
   return (
     <section className="overseer-settings" aria-label="설정">
       <div className="overseer-settings-layout">
         <aside className="overseer-settings-sidebar">
           <nav aria-label="설정 상세 메뉴">
+            <div
+              aria-labelledby="overseer-settings-general"
+              className="overseer-settings-nav-group"
+              role="group"
+            >
+              <span className="overseer-settings-nav-label" id="overseer-settings-general">
+                Overseer
+              </span>
+              <div className="overseer-settings-nav-items">
+                <button
+                  aria-current={section === "general" ? "page" : undefined}
+                  onClick={() => setSection("general")}
+                  type="button"
+                >
+                  일반
+                </button>
+              </div>
+            </div>
             <div
               aria-labelledby="overseer-settings-docker-engine"
               className="overseer-settings-nav-group"
@@ -164,19 +204,34 @@ export function SettingsPage({
 
         <div className="overseer-settings-content">
           <header className="overseer-settings-content-header">
-            <p>Docker Engine</p>
-            <h2 className="city-text-section-title">
-              {section === "engine" ? "엔진 설정" : "실행 환경"}
-            </h2>
-            <span className="city-text-supporting">
-              {section === "engine"
-                ? "Docker Engine 상태와 단일 overseer VM의 자원을 관리합니다."
-                : "Docker Engine을 실행할 환경과 Lima VM 드라이버를 선택합니다."}
-            </span>
+            <p>{presentation.category}</p>
+            <h2 className="city-text-section-title">{presentation.title}</h2>
+            <span className="city-text-supporting">{presentation.description}</span>
           </header>
 
           <div className="overseer-settings-panel">
-            {!snapshot && !loadError ? (
+            {section === "general" ? (
+              <section
+                aria-labelledby="overseer-settings-startup"
+                className="overseer-settings-general-section"
+              >
+                <div className="overseer-settings-general-copy">
+                  <span aria-hidden="true">
+                    <PackageCheck size={18} strokeWidth={1.8} />
+                  </span>
+                  <div>
+                    <h3 id="overseer-settings-startup">시작 준비</h3>
+                    <p>필수 도구와 Docker Engine 준비 과정을 다시 확인합니다.</p>
+                  </div>
+                </div>
+                <Button nativeButton={false} render={<a href="/startup" />} variant="outline">
+                  시작 준비 열기
+                  <ArrowRight aria-hidden="true" size={15} />
+                </Button>
+              </section>
+            ) : null}
+
+            {section !== "general" && !snapshot && !loadError ? (
               <div
                 aria-label="Docker Engine 설정 불러오는 중"
                 className="overseer-settings-loading"
@@ -187,7 +242,7 @@ export function SettingsPage({
               </div>
             ) : null}
 
-            {loadError ? (
+            {section !== "general" && loadError ? (
               <Alert.Root tone="destructive">
                 <Alert.Title level={2}>Docker Engine 설정을 불러오지 못했습니다.</Alert.Title>
                 <Alert.Description>{loadError}</Alert.Description>
@@ -199,7 +254,7 @@ export function SettingsPage({
               </Alert.Root>
             ) : null}
 
-            {snapshot && form ? (
+            {section !== "general" && snapshot && form ? (
               <form className="overseer-settings-form" onSubmit={submit}>
                 {section === "engine" ? (
                   <>

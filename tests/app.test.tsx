@@ -924,9 +924,24 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "설정", level: 1 })).toBeInTheDocument();
     const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    const overseer = within(settingsNavigation).getByRole("group", { name: "Overseer" });
     const dockerEngine = within(settingsNavigation).getByRole("group", {
       name: "Docker Engine",
     });
+    expect(within(overseer).getByRole("button", { name: "일반" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("heading", { name: "일반", level: 2 })).toBeInTheDocument();
+    expect(
+      screen.getByText("필수 도구와 Docker Engine 준비 과정을 다시 확인합니다."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "시작 준비 열기" })).toHaveAttribute(
+      "href",
+      "/startup",
+    );
+
+    await user.click(within(dockerEngine).getByRole("button", { name: "엔진 설정" }));
     expect(within(dockerEngine).getByRole("button", { name: "엔진 설정" })).toHaveAttribute(
       "aria-current",
       "page",
@@ -1029,6 +1044,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState(null, "", "/settings");
     render(<App />);
+    const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(within(settingsNavigation).getByRole("button", { name: "엔진 설정" }));
     await screen.findByRole("button", { name: "Docker Engine 재생성" });
 
     await user.click(screen.getByRole("button", { name: "Docker Engine 재생성" }));

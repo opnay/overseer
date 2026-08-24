@@ -465,6 +465,10 @@
     font-weight: var(--city-font-weight-semibold);
   }
 
+  .overseer-settings-nav-group + .overseer-settings-nav-group {
+    margin-top: var(--city-space-4);
+  }
+
   .overseer-settings-nav-items button,
   .overseer-detail-nav-items button {
     display: flex;
@@ -544,6 +548,61 @@
 
   .overseer-settings-loading > * {
     min-height: var(--city-control-lg);
+  }
+
+  .overseer-settings-general-section {
+    display: flex;
+    min-width: 0;
+    padding: var(--city-space-5);
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-md);
+    background: var(--city-color-surface-raised);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--city-space-5);
+  }
+
+  .overseer-settings-general-copy {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--city-space-3);
+  }
+
+  .overseer-settings-general-copy > span {
+    display: inline-flex;
+    width: var(--city-control-lg);
+    height: var(--city-control-lg);
+    border-radius: var(--city-radius-sm);
+    background: var(--city-color-muted);
+    color: var(--city-color-muted-foreground);
+    align-items: center;
+    justify-content: center;
+    flex: none;
+  }
+
+  .overseer-settings-general-copy > div {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-settings-general-copy h3,
+  .overseer-settings-general-copy p {
+    margin: 0;
+  }
+
+  .overseer-settings-general-copy h3 {
+    font-size: var(--city-font-size-sm);
+  }
+
+  .overseer-settings-general-copy p {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-sm);
+  }
+
+  .overseer-settings-general-section > .city-button {
+    flex: none;
   }
 
   .overseer-settings-status {
@@ -1986,6 +2045,16 @@
     .overseer-detail-layout {
       grid-template-columns: 1fr;
       gap: var(--city-space-5);
+    }
+
+    .overseer-settings-general-section {
+      align-items: stretch;
+      flex-direction: column;
+      gap: var(--city-space-4);
+    }
+
+    .overseer-settings-general-section > .city-button {
+      width: 100%;
     }
 
     .overseer-settings-sidebar,
