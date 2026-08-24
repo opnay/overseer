@@ -1084,7 +1084,11 @@ describe("App", () => {
     expect(docker).toHaveTextContent("현재29.7.2");
     expect(docker).toHaveTextContent("최신30.0.0");
     expect(docker).toHaveTextContent("업데이트 있음");
-    expect(screen.getByRole("listitem", { name: "Docker Compose" })).toHaveTextContent("최신");
+    const compose = screen.getByRole("listitem", { name: "Docker Compose" });
+    expect(compose).toHaveTextContent("최신");
+    expect(
+      within(compose).getByText("최신", { selector: "[data-city-badge]" }).querySelector("svg"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("listitem", { name: "Lima" })).toHaveTextContent(
       "Homebrew로 설치된 도구만 자동 업데이트할 수 있습니다.",
     );

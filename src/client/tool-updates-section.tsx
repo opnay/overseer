@@ -2,7 +2,7 @@ import { Alert } from "@opnay/city-ds-react/alert";
 import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
-import { RefreshCw } from "lucide-react";
+import { Check, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
   OperationSnapshot,
@@ -192,6 +192,9 @@ export function ToolUpdatesSection({
                 <div className="overseer-tool-update-controls">
                   <div className="overseer-tool-update-state">
                     <Badge appearance="subtle" size="sm" tone={status.tone}>
+                      {status.label === "최신" ? (
+                        <Check aria-hidden="true" size={12} strokeWidth={2.25} />
+                      ) : null}
                       {status.label}
                     </Badge>
                     {!item.automaticUpdate && item.automaticUpdateUnavailableReason ? (

@@ -725,6 +725,10 @@
     justify-items: start;
   }
 
+  .overseer-tool-update-state [data-city-badge] {
+    gap: var(--city-space-1);
+  }
+
   .overseer-tool-update-controls {
     display: grid;
     max-width: 11rem;
