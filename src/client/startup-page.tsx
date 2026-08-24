@@ -2,6 +2,7 @@ import { Alert } from "@opnay/city-ds-react/alert";
 import { Accordion } from "@opnay/city-ds-react/accordion";
 import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
+import { Checkbox } from "@opnay/city-ds-react/checkbox";
 import { Progress } from "@opnay/city-ds-react/progress";
 import { Check, Copy, Download, PackageCheck, RefreshCw } from "lucide-react";
 import { useState } from "react";
@@ -33,6 +34,7 @@ export function StartupPage({
   snapshot,
 }: StartupPageProps) {
   const [copied, setCopied] = useState(false);
+  const [includeCompose, setIncludeCompose] = useState(!composeSkipped);
   const requiredPrerequisites = snapshot.prerequisites.filter(({ required }) => required);
   const compose = snapshot.prerequisites.find(({ id }) => id === "compose");
   const firstMissingRequired = requiredPrerequisites.find(({ installed }) => !installed);
@@ -50,12 +52,22 @@ export function StartupPage({
 
   const composeOptional = prerequisite.id === "compose";
   const currentStepId = composeOptional ? "docker" : prerequisite.id;
+  const dockerWithCompose = prerequisite.id === "docker" && includeCompose;
+  const displayedInstallCommand = dockerWithCompose
+    ? "brew install docker docker-compose"
+    : prerequisite.installCommand;
+  const installTarget: StartupInstallTarget = dockerWithCompose
+    ? "docker-with-compose"
+    : prerequisite.id;
+  const automaticInstallLabel = dockerWithCompose
+    ? "Docker CLI와 Compose 자동 설치"
+    : `${prerequisite.label} 자동 설치`;
   const active = operation?.status === "queued" || operation?.status === "running";
   const failed = operation?.status === "failed";
   const copyCommand = async () => {
     try {
       if (!navigator.clipboard) return;
-      await navigator.clipboard.writeText(prerequisite.installCommand);
+      await navigator.clipboard.writeText(displayedInstallCommand);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1_500);
     } catch {
@@ -75,9 +87,6 @@ export function StartupPage({
           </div>
           <p>STARTUP</p>
           <h1 className="city-text-page-title">시작 준비</h1>
-          <span className="city-text-supporting">
-            로컬 Docker Engine을 만들기 전에 필수 도구를 순서대로 준비합니다.
-          </span>
         </header>
 
         <div className="overseer-startup-workflow">
@@ -172,95 +181,99 @@ export function StartupPage({
               </Alert.Root>
             ) : null}
 
-            <div className="overseer-startup-command">
-              <div>
-                <span>Terminal에서 실행</span>
-                <Button onClick={() => void copyCommand()} size="sm" variant="ghost">
-                  {copied ? (
-                    <Check aria-hidden="true" size={14} />
-                  ) : (
-                    <Copy aria-hidden="true" size={14} />
-                  )}
-                  {copied ? "복사됨" : "복사"}
-                </Button>
-              </div>
-              <pre aria-label={`${prerequisite.label} 설치 명령`} tabIndex={0}>
-                <code>{prerequisite.installCommand}</code>
-              </pre>
-            </div>
-
             {prerequisite.id === "docker" ? (
               <Accordion.Root className="overseer-startup-compose-option">
                 <Accordion.Item value="compose">
                   <Accordion.Header>
-                    <Accordion.Trigger>Docker Compose도 함께 설치</Accordion.Trigger>
+                    <Accordion.Trigger>Docker 설치 옵션</Accordion.Trigger>
                   </Accordion.Header>
                   <Accordion.Panel>
-                    <div className="overseer-startup-compose-option-content">
-                      <p>
-                        Compose 프로젝트를 사용할 계획이라면 함께 설치할 수 있습니다. 나중에 별도로
-                        설치하거나 건너뛰어도 됩니다.
-                      </p>
-                      <code>brew install docker docker-compose</code>
-                      <Button
+                    <div className="overseer-startup-compose-option-control">
+                      <Checkbox
+                        aria-labelledby="overseer-compose-option-label"
+                        checked={includeCompose}
                         disabled={active}
-                        onClick={() => void onInstall("docker-with-compose").catch(() => undefined)}
-                        size="sm"
-                        variant="outline"
-                      >
-                        <Download aria-hidden="true" size={14} />
-                        Docker CLI와 Compose 자동 설치
-                      </Button>
+                        onCheckedChange={(checked) => {
+                          setIncludeCompose(checked === true);
+                          setCopied(false);
+                        }}
+                      />
+                      <div id="overseer-compose-option-label">
+                        <strong>Docker Compose</strong>
+                        <span>Compose 화면과 프로젝트 관리 기능을 바로 사용할 수 있습니다.</span>
+                      </div>
                     </div>
                   </Accordion.Panel>
                 </Accordion.Item>
               </Accordion.Root>
             ) : null}
 
-            <div aria-hidden="true" className="overseer-startup-divider">
-              <span>또는</span>
-            </div>
-
-            {prerequisite.automaticInstall ? (
-              <div
-                className={
-                  composeOptional
-                    ? "overseer-startup-decision-actions"
-                    : "overseer-startup-primary-action"
-                }
-              >
-                {composeOptional ? (
-                  <Button disabled={active} onClick={onSkipCompose} variant="outline">
-                    건너뛰기
-                  </Button>
-                ) : null}
-                <Button
-                  disabled={active}
-                  onClick={() => {
-                    if (prerequisite.id === "docker") onSkipCompose();
-                    void onInstall(prerequisite.id).catch(() => undefined);
-                  }}
-                >
-                  <Download aria-hidden="true" size={16} />
-                  {active ? `${prerequisite.label} 설치 중…` : `${prerequisite.label} 자동 설치`}
-                </Button>
-              </div>
-            ) : (
-              <div className="overseer-startup-manual">
-                <Alert.Root appearance="subtle" tone="info">
-                  <Alert.Title level={3}>Terminal에서 설치하십시오.</Alert.Title>
-                  <Alert.Description>
-                    {prerequisite.automaticInstallUnavailableReason}
-                  </Alert.Description>
-                </Alert.Root>
-                <div className="overseer-startup-primary-action">
-                  <Button disabled={active} onClick={() => void onRefresh()}>
-                    <RefreshCw aria-hidden="true" size={16} />
-                    설치 확인
+            <div className="overseer-startup-install-group">
+              <div className="overseer-startup-command">
+                <div>
+                  <span>Terminal에서 실행</span>
+                  <Button onClick={() => void copyCommand()} size="sm" variant="ghost">
+                    {copied ? (
+                      <Check aria-hidden="true" size={14} />
+                    ) : (
+                      <Copy aria-hidden="true" size={14} />
+                    )}
+                    {copied ? "복사됨" : "복사"}
                   </Button>
                 </div>
+                <pre
+                  aria-label={`${dockerWithCompose ? "Docker CLI와 Compose" : prerequisite.label} 설치 명령`}
+                  tabIndex={0}
+                >
+                  <code>{displayedInstallCommand}</code>
+                </pre>
               </div>
-            )}
+
+              <div aria-hidden="true" className="overseer-startup-divider">
+                <span>또는</span>
+              </div>
+
+              {prerequisite.automaticInstall ? (
+                <div
+                  className={
+                    composeOptional
+                      ? "overseer-startup-decision-actions"
+                      : "overseer-startup-primary-action"
+                  }
+                >
+                  {composeOptional ? (
+                    <Button disabled={active} onClick={onSkipCompose} variant="outline">
+                      건너뛰기
+                    </Button>
+                  ) : null}
+                  <Button
+                    disabled={active}
+                    onClick={() => {
+                      if (prerequisite.id === "docker" && !includeCompose) onSkipCompose();
+                      void onInstall(installTarget).catch(() => undefined);
+                    }}
+                  >
+                    <Download aria-hidden="true" size={16} />
+                    {active ? `${prerequisite.label} 설치 중…` : automaticInstallLabel}
+                  </Button>
+                </div>
+              ) : (
+                <div className="overseer-startup-manual">
+                  <Alert.Root appearance="subtle" tone="info">
+                    <Alert.Title level={3}>Terminal에서 설치하십시오.</Alert.Title>
+                    <Alert.Description>
+                      {prerequisite.automaticInstallUnavailableReason}
+                    </Alert.Description>
+                  </Alert.Root>
+                  <div className="overseer-startup-primary-action">
+                    <Button disabled={active} onClick={() => void onRefresh()}>
+                      <RefreshCw aria-hidden="true" size={16} />
+                      설치 확인
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {active && operation ? (
               <section aria-live="polite" className="overseer-startup-progress">

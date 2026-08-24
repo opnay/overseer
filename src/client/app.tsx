@@ -1077,14 +1077,19 @@ function AppContent() {
         }),
     });
 
-  const installStartupTarget = (target: StartupInstallTarget) =>
-    mutate({
+  const installStartupTarget = (target: StartupInstallTarget) => {
+    if (target === "compose" || target === "docker-with-compose") {
+      window.localStorage.removeItem("overseer-compose-setup");
+      setComposeSkipped(false);
+    }
+    return mutate({
       key: `startup-install-${target}`,
       request: () =>
         apiRequest<OperationAccepted>(`/startup/prerequisites/${target}/install`, {
           method: "POST",
         }),
     });
+  };
 
   const createDockerEngine = (configuration: DockerEngineConfiguration) =>
     mutate({

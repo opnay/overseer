@@ -211,7 +211,7 @@ describe("App", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App />);
+    const { container } = render(<App />);
 
     expect(
       await screen.findByRole("heading", {
@@ -219,12 +219,28 @@ describe("App", () => {
         level: 2,
       }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Docker CLI 설치 명령")).toHaveTextContent("brew install docker");
-    expect(screen.getByRole("button", { name: "Docker CLI 자동 설치" })).toBeEnabled();
+    const installGroup = container.querySelector(".overseer-startup-install-group");
+    expect(installGroup).not.toBeNull();
+    expect(
+      within(installGroup as HTMLElement).getByLabelText("Docker CLI와 Compose 설치 명령"),
+    ).toHaveTextContent("brew install docker docker-compose");
+    expect(
+      within(installGroup as HTMLElement).getByRole("button", {
+        name: "Docker CLI와 Compose 자동 설치",
+      }),
+    ).toBeEnabled();
+    expect(within(installGroup as HTMLElement).getByText("또는")).toBeInTheDocument();
     expect(screen.queryByText(/cli-plugins/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Docker Compose도 함께 설치" }));
-    expect(screen.getByText("brew install docker docker-compose")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Docker 설치 옵션" }));
+    const includeCompose = screen.getByRole("checkbox", { name: /^Docker Compose/ });
+    expect(includeCompose).toBeChecked();
+
+    await user.click(includeCompose);
+    expect(screen.getByLabelText("Docker CLI 설치 명령")).toHaveTextContent("brew install docker");
+    expect(screen.getByRole("button", { name: "Docker CLI 자동 설치" })).toBeEnabled();
+
+    await user.click(includeCompose);
 
     await user.click(screen.getByRole("button", { name: "Docker CLI와 Compose 자동 설치" }));
 

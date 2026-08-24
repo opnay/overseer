@@ -1501,25 +1501,36 @@
     gap: var(--city-space-4);
   }
 
-  .overseer-startup-compose-option-content {
+  .overseer-startup-compose-option-control {
     display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
     gap: var(--city-space-3);
   }
 
-  .overseer-startup-compose-option-content p {
-    margin: 0;
+  .overseer-startup-compose-option-control > [role="checkbox"] {
+    margin-top: var(--city-space-1);
   }
 
-  .overseer-startup-compose-option-content code {
-    width: fit-content;
-    max-width: 100%;
-    padding: var(--city-space-2) var(--city-space-3);
-    overflow-x: auto;
-    border-radius: var(--city-radius-sm);
-    background: var(--city-color-muted);
+  .overseer-startup-compose-option-control > div {
+    display: grid;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-startup-compose-option-control strong {
     color: var(--city-color-foreground);
+    font-size: var(--city-font-size-sm);
+    line-height: var(--city-line-height-sm);
+  }
+
+  .overseer-startup-compose-option-control span {
+    color: var(--city-color-muted-foreground);
     font-size: var(--city-font-size-xs);
-    white-space: nowrap;
+  }
+
+  .overseer-startup-install-group {
+    display: grid;
+    gap: var(--city-space-3);
   }
 
   .overseer-startup-primary-action {
