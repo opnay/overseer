@@ -50,12 +50,32 @@ function createController(): RuntimeController {
       },
       volumes: [],
     })),
+    getDockerEngineConfiguration: vi.fn(async () => ({
+      configuration: {
+        cpus: 4,
+        diskGiB: 100,
+        memoryGiB: 4,
+        provider: "lima" as const,
+        vmType: "vz" as const,
+      },
+      providers: [{ available: true, label: "Lima VM", value: "lima" as const }],
+      source: "default" as const,
+      vmTypes: [
+        { available: true, label: "Apple Virtualization (VZ)", value: "vz" as const },
+        { available: false, label: "QEMU", value: "qemu" as const },
+      ],
+    })),
     getImages: vi.fn(async () => []),
     getNetworks: vi.fn(async () => []),
     getVolumes: vi.fn(async () => []),
     pullImage: vi.fn(async () => undefined),
     registerBuilderCompose: vi.fn(async () => undefined),
     registerRemoteCompose: vi.fn(async () => undefined),
+    recreateRuntime: vi.fn(async () => ({
+      instance: "overseer",
+      message: "정상 실행 중",
+      phase: "running" as const,
+    })),
     removeBuilderCompose: vi.fn(async () => undefined),
     removeContainer: vi.fn(async () => undefined),
     removeImage: vi.fn(async () => undefined),
@@ -79,6 +99,13 @@ function createController(): RuntimeController {
 }
 
 const localHeaders = { host: "overseer.localhost:1355", origin: "http://overseer.localhost:1355" };
+const dockerEngineConfiguration = {
+  cpus: 4,
+  diskGiB: 100,
+  memoryGiB: 4,
+  provider: "lima" as const,
+  vmType: "vz" as const,
+};
 
 describe("API boundary", () => {
   it("returns the dashboard to a local request", async () => {
@@ -87,6 +114,93 @@ describe("API boundary", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ runtime: { phase: "missing" } });
+  });
+
+  it("returns Docker Engine configuration and capabilities", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/configuration", { headers: localHeaders });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      configuration: dockerEngineConfiguration,
+      source: "default",
+      vmTypes: [{ value: "vz" }, { available: false, value: "qemu" }],
+    });
+  });
+
+  it("validates and forwards Docker Engine creation settings", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/start", {
+      body: JSON.stringify({ configuration: dockerEngineConfiguration }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(controller.startRuntime).toHaveBeenCalled());
+    expect(controller.startRuntime).toHaveBeenCalledWith(
+      expect.any(Object),
+      dockerEngineConfiguration,
+    );
+  });
+
+  it("rejects invalid Docker Engine settings before enqueueing", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/start", {
+      body: JSON.stringify({
+        configuration: { ...dockerEngineConfiguration, diskGiB: 9 },
+      }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(controller.startRuntime).not.toHaveBeenCalled();
+  });
+
+  it("requires the exact instance name before recreating", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/recreate", {
+      body: JSON.stringify({
+        configuration: dockerEngineConfiguration,
+        confirmation: "wrong",
+      }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(controller.recreateRuntime).not.toHaveBeenCalled();
+  });
+
+  it("enqueues recreation without an automatic retry contract", async () => {
+    const controller = createController();
+    vi.mocked(controller.recreateRuntime).mockRejectedValueOnce(new Error("create failed"));
+    const app = createApi(controller);
+    const response = await app.request("/runtime/recreate", {
+      body: JSON.stringify({
+        configuration: dockerEngineConfiguration,
+        confirmation: "overseer",
+      }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(controller.recreateRuntime).toHaveBeenCalled());
+    expect(controller.recreateRuntime).toHaveBeenCalledWith(
+      dockerEngineConfiguration,
+      expect.any(Object),
+    );
+    await vi.waitFor(async () => {
+      const operations = await app.request("/operations", { headers: localHeaders });
+      const body = (await operations.json()) as { operations: Array<{ retryable: boolean }> };
+      expect(body.operations[0]?.retryable).toBe(false);
+    });
   });
 
   it("rejects a non-local Host header", async () => {

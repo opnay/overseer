@@ -7,6 +7,36 @@ export interface RuntimeSnapshot {
   phase: RuntimePhase;
 }
 
+export type DockerEngineProvider = "lima";
+export type LimaVmType = "qemu" | "vz";
+
+export interface DockerEngineConfiguration {
+  cpus: number;
+  diskGiB: number;
+  memoryGiB: number;
+  provider: DockerEngineProvider;
+  vmType: LimaVmType;
+}
+
+export interface DockerEngineConfigurationOption<T extends string> {
+  available: boolean;
+  label: string;
+  unavailableReason?: string;
+  value: T;
+}
+
+export interface DockerEngineConfigurationSnapshot {
+  configuration: DockerEngineConfiguration;
+  providers: DockerEngineConfigurationOption<DockerEngineProvider>[];
+  source: "default" | "instance";
+  vmTypes: DockerEngineConfigurationOption<LimaVmType>[];
+}
+
+export interface RecreateDockerEngineInput {
+  configuration: DockerEngineConfiguration;
+  confirmation: string;
+}
+
 export interface ContainerSummary {
   composeProject?: string;
   composeService?: string;
@@ -229,6 +259,7 @@ export type OperationKind =
   | "network.create"
   | "network.remove"
   | "runtime.start"
+  | "runtime.recreate"
   | "runtime.stop"
   | "volume.create"
   | "volume.remove";

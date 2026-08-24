@@ -7,6 +7,18 @@ import type { RemoteComposeRegistry } from "../src/server/remote-compose.ts";
 
 const limaRow = "overseer\tRunning\t/tmp/overseer\n";
 
+function commandFailure(command: string, stderr: string) {
+  return new CommandError(command, Object.assign(new Error("command failed"), { code: 1 }), stderr);
+}
+
+const dockerEngineConfiguration = {
+  cpus: 4,
+  diskGiB: 100,
+  memoryGiB: 4,
+  provider: "lima" as const,
+  vmType: "vz" as const,
+};
+
 function emptyBuilderRegistry(): BuilderComposeRegistry {
   return {
     get: vi.fn(async () => undefined),
@@ -404,5 +416,198 @@ describe("LimaDockerRuntime form Compose", () => {
       ],
       executable: "limactl",
     });
+  });
+});
+
+describe("LimaDockerRuntime Docker Engine configuration", () => {
+  it("returns defaults and reports a missing QEMU dependency", async () => {
+    const command: CommandRunner = vi.fn(async (executable) => {
+      if (executable === "limactl") {
+        throw commandFailure("limactl list", "No instance matching overseer found.");
+      }
+      throw commandFailure(executable, "command not found");
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getDockerEngineConfiguration()).resolves.toMatchObject({
+      configuration: dockerEngineConfiguration,
+      source: "default",
+      vmTypes: [
+        { available: true, value: "vz" },
+        { available: false, unavailableReason: expect.stringContaining("brew install qemu") },
+      ],
+    });
+  });
+
+  it("maps the current Lima JSON configuration", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable.startsWith("qemu-system-")) {
+        return { stderr: "", stdout: "QEMU emulator version 10.1.0\n" };
+      }
+      expect(args).toEqual(["list", "overseer", "--json"]);
+      return {
+        stderr: "",
+        stdout: JSON.stringify({
+          cpus: 6,
+          dir: "/tmp/overseer",
+          disk: 120 * 1024 ** 3,
+          memory: 8 * 1024 ** 3,
+          name: "overseer",
+          status: "Running",
+          vmType: "qemu",
+        }),
+      };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getDockerEngineConfiguration()).resolves.toMatchObject({
+      configuration: {
+        cpus: 6,
+        diskGiB: 120,
+        memoryGiB: 8,
+        provider: "lima",
+        vmType: "qemu",
+      },
+      source: "instance",
+      vmTypes: [{ value: "vz" }, { available: true, value: "qemu" }],
+    });
+  });
+
+  it.each(["vz", "qemu"] as const)(
+    "creates a missing %s engine with explicit resource settings",
+    async (vmType) => {
+      let exists = false;
+      const commands: Array<{ args: readonly string[]; executable: string }> = [];
+      const command: CommandRunner = vi.fn(async (executable, args) => {
+        commands.push({ args, executable });
+        if (executable.startsWith("qemu-system-")) {
+          return { stderr: "", stdout: "QEMU emulator version 10.1.0\n" };
+        }
+        if (executable === "limactl" && args[0] === "list") {
+          if (!exists) throw commandFailure("limactl list", "No instance matching overseer found.");
+          return { stderr: "", stdout: limaRow };
+        }
+        if (executable === "limactl" && args[0] === "start") {
+          exists = true;
+          return { stderr: "", stdout: "" };
+        }
+        return { stderr: "", stdout: "29.7.2\n" };
+      });
+      const runtime = new LimaDockerRuntime(command);
+
+      await expect(
+        runtime.startRuntime(undefined, { ...dockerEngineConfiguration, vmType }),
+      ).resolves.toMatchObject({ dockerVersion: "29.7.2", phase: "running" });
+      expect(commands).toContainEqual({
+        args: [
+          "start",
+          "--name=overseer",
+          `--vm-type=${vmType}`,
+          "--cpus=4",
+          "--memory=4",
+          "--disk=100",
+          "template:docker",
+          "--tty=false",
+          "--progress",
+        ],
+        executable: "limactl",
+      });
+    },
+  );
+
+  it("recreates the single VM in stop, delete, create order", async () => {
+    let exists = true;
+    const lifecycle: string[] = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list") {
+        if (!exists) throw commandFailure("limactl list", "No instance matching overseer found.");
+        return { stderr: "", stdout: limaRow };
+      }
+      if (executable === "limactl" && args[0] === "stop") lifecycle.push("stop");
+      if (executable === "limactl" && args[0] === "delete") {
+        lifecycle.push("delete");
+        exists = false;
+      }
+      if (executable === "limactl" && args[0] === "start") {
+        lifecycle.push("start");
+        exists = true;
+      }
+      return { stderr: "", stdout: executable === "docker" ? "29.7.2\n" : "" };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.recreateRuntime(dockerEngineConfiguration)).resolves.toMatchObject({
+      dockerVersion: "29.7.2",
+      phase: "running",
+    });
+    expect(lifecycle).toEqual(["stop", "delete", "start"]);
+  });
+
+  it("rejects unavailable QEMU before stopping the existing VM", async () => {
+    const command: CommandRunner = vi.fn(async (executable) => {
+      if (executable.startsWith("qemu-system-")) {
+        throw commandFailure(executable, "command not found");
+      }
+      return { stderr: "", stdout: limaRow };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(
+      runtime.recreateRuntime({ ...dockerEngineConfiguration, vmType: "qemu" }),
+    ).rejects.toThrow("brew install qemu");
+    expect(
+      vi
+        .mocked(command)
+        .mock.calls.some(
+          ([executable, args]) =>
+            executable === "limactl" && (args[0] === "stop" || args[0] === "delete"),
+        ),
+    ).toBe(false);
+  });
+
+  it("does not create a replacement when deletion fails", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list") {
+        return { stderr: "", stdout: limaRow };
+      }
+      if (executable === "limactl" && args[0] === "delete") {
+        throw commandFailure("limactl delete", "delete failed");
+      }
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.recreateRuntime(dockerEngineConfiguration)).rejects.toThrow(
+      "delete failed",
+    );
+    expect(
+      vi
+        .mocked(command)
+        .mock.calls.some(([executable, args]) => executable === "limactl" && args[0] === "start"),
+    ).toBe(false);
+  });
+
+  it("reports the runtime as missing when replacement creation fails after deletion", async () => {
+    let exists = true;
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list") {
+        if (!exists) throw commandFailure("limactl list", "No instance matching overseer found.");
+        return { stderr: "", stdout: limaRow };
+      }
+      if (executable === "limactl" && args[0] === "delete") {
+        exists = false;
+        return { stderr: "", stdout: "" };
+      }
+      if (executable === "limactl" && args[0] === "start") {
+        throw commandFailure("limactl start", "create failed");
+      }
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.recreateRuntime(dockerEngineConfiguration)).rejects.toThrow(
+      "create failed",
+    );
+    await expect(runtime.getDashboard()).resolves.toMatchObject({ runtime: { phase: "missing" } });
   });
 });

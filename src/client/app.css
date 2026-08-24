@@ -340,6 +340,191 @@
     place-items: center;
   }
 
+  .overseer-settings,
+  .overseer-settings-content,
+  .overseer-settings-content-header,
+  .overseer-settings-panel,
+  .overseer-settings-form,
+  .overseer-settings-loading {
+    display: grid;
+    min-width: 0;
+  }
+
+  .overseer-settings-layout {
+    display: grid;
+    min-width: 0;
+    align-items: start;
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: var(--city-space-6);
+  }
+
+  .overseer-settings-sidebar {
+    min-width: 0;
+    min-height: 28rem;
+    padding-right: var(--city-space-4);
+    border-right: 1px solid var(--city-color-border);
+  }
+
+  .overseer-settings-sidebar nav,
+  .overseer-settings-nav-group,
+  .overseer-settings-nav-items {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-settings-nav-label {
+    padding: var(--city-space-1) var(--city-space-2-5);
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+    font-weight: var(--city-font-weight-semibold);
+  }
+
+  .overseer-settings-nav-items button {
+    display: flex;
+    width: 100%;
+    min-height: var(--city-control-md);
+    padding: var(--city-space-2) var(--city-space-2-5);
+    border: 1px solid transparent;
+    border-radius: var(--city-radius-sm);
+    background: transparent;
+    color: var(--city-color-muted-foreground);
+    align-items: center;
+    font-size: var(--city-font-size-sm);
+    font-weight: var(--city-font-weight-medium);
+    text-align: left;
+  }
+
+  .overseer-settings-nav-items button:hover {
+    background: var(--city-color-accent);
+    color: var(--city-color-foreground);
+  }
+
+  .overseer-settings-nav-items button:focus-visible {
+    outline: 2px solid var(--city-color-ring);
+    outline-offset: 2px;
+  }
+
+  .overseer-settings-nav-items button[aria-current="page"] {
+    border-color: var(--city-color-border);
+    background: var(--city-color-muted);
+    color: var(--city-color-foreground);
+  }
+
+  .overseer-settings-content {
+    gap: var(--city-space-5);
+  }
+
+  .overseer-settings-content-header {
+    gap: var(--city-space-1);
+  }
+
+  .overseer-settings-content-header p,
+  .overseer-settings-content-header h2 {
+    margin: 0;
+  }
+
+  .overseer-settings-content-header p {
+    color: var(--city-color-muted-foreground);
+    font-family: var(--city-font-family-mono);
+    font-size: var(--city-font-size-2xs);
+    font-weight: var(--city-font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .overseer-settings-content-header > span {
+    color: var(--city-color-muted-foreground);
+  }
+
+  .overseer-settings-panel,
+  .overseer-settings-form,
+  .overseer-settings-loading {
+    gap: var(--city-space-6);
+  }
+
+  .overseer-settings-loading > * {
+    min-height: var(--city-control-lg);
+  }
+
+  .overseer-settings-status {
+    display: grid;
+    padding: var(--city-space-4);
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-md);
+    background: var(--city-color-surface-raised);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--city-space-4);
+  }
+
+  .overseer-settings-status > div {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-settings-status span {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-settings-status strong {
+    overflow: hidden;
+    font-size: var(--city-font-size-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .overseer-settings-status-value {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--city-space-2);
+  }
+
+  .overseer-settings-grid,
+  .overseer-settings-resource-grid {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-4);
+  }
+
+  .overseer-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overseer-settings-resource-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .overseer-settings-grid [role="combobox"] {
+    width: 100%;
+  }
+
+  .overseer-settings-actions,
+  .overseer-settings-environment-actions {
+    display: flex;
+    padding-top: var(--city-space-4);
+    border-top: 1px solid var(--city-color-border);
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--city-space-2);
+  }
+
+  .overseer-recreate-impact {
+    display: grid;
+    margin: var(--city-space-4) 0;
+    padding-left: var(--city-space-5);
+    color: var(--city-color-foreground);
+    font-size: var(--city-font-size-sm);
+    list-style: disc;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-recreate-preserved {
+    margin: 0 0 var(--city-space-4);
+    color: var(--city-color-muted-foreground);
+  }
+
   .overseer-table {
     width: 100%;
     min-width: 100%;
@@ -944,7 +1129,7 @@
       display: grid;
       width: 100%;
       margin-left: 0;
-      grid-template-columns: repeat(6, minmax(3rem, 1fr));
+      grid-template-columns: repeat(7, minmax(3rem, 1fr));
     }
 
     .overseer-sidebar nav a {
@@ -992,11 +1177,48 @@
     }
 
     .overseer-form-section-grid,
+    .overseer-settings-grid,
+    .overseer-settings-resource-grid,
+    .overseer-settings-status,
     .overseer-operation-detail-meta,
     .overseer-repeatable-row,
     .overseer-port-row,
     .overseer-volume-row {
       grid-template-columns: 1fr;
+    }
+
+    .overseer-settings-layout {
+      grid-template-columns: 1fr;
+      gap: var(--city-space-5);
+    }
+
+    .overseer-settings-sidebar {
+      min-height: 0;
+      padding-right: 0;
+      padding-bottom: var(--city-space-4);
+      border-right: 0;
+      border-bottom: 1px solid var(--city-color-border);
+    }
+
+    .overseer-settings-nav-items {
+      display: flex;
+      overflow-x: auto;
+    }
+
+    .overseer-settings-nav-items button {
+      width: auto;
+      flex: none;
+    }
+
+    .overseer-settings-actions,
+    .overseer-settings-environment-actions {
+      align-items: stretch;
+      flex-direction: column-reverse;
+    }
+
+    .overseer-settings-actions > *,
+    .overseer-settings-environment-actions > * {
+      width: 100%;
     }
 
     .overseer-repeatable-row-single {
@@ -1010,6 +1232,7 @@
 
   @media (pointer: coarse) {
     .overseer-sidebar nav a,
+    .overseer-settings-nav-items button,
     .city-button,
     .overseer-terminal-actions button {
       min-height: var(--city-hit-target-min);

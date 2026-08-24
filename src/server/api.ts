@@ -19,6 +19,7 @@ import {
 } from "./operation-history.ts";
 import { OperationQueue, type EnqueueOperation } from "./operations.ts";
 import { deriveRemoteComposeProjectName } from "./remote-compose.ts";
+import { parseRecreateDockerEngineInput, parseRuntimeStartInput } from "./runtime-configuration.ts";
 import { requireLocalRequest } from "./security.ts";
 import {
   requireContainerReference,
@@ -31,6 +32,21 @@ import {
 async function readObject(context: { req: { json: () => Promise<unknown> } }) {
   try {
     const value = await context.req.json();
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new ExpectedError("invalid_body", "요청 본문은 객체여야 합니다.", 400);
+    }
+    return value as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof ExpectedError) throw error;
+    throw new ExpectedError("invalid_json", "JSON 요청 본문을 확인하십시오.", 400);
+  }
+}
+
+async function readOptionalObject(context: Context): Promise<Record<string, unknown> | undefined> {
+  const source = await context.req.text();
+  if (!source.trim()) return undefined;
+  try {
+    const value = JSON.parse(source) as unknown;
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       throw new ExpectedError("invalid_body", "요청 본문은 객체여야 합니다.", 400);
     }
@@ -61,12 +77,20 @@ export function createApi(controller: RuntimeController, operations = new Operat
     context: Context,
     input: Omit<EnqueueOperation, "retryRequest">,
     body?: unknown,
-  ) => operations.enqueue({ ...input, retryRequest: retryRequest(context, body) });
+    retryable = true,
+  ) =>
+    operations.enqueue({
+      ...input,
+      ...(retryable ? { retryRequest: retryRequest(context, body) } : {}),
+    });
 
   app.use("*", requireLocalRequest);
 
   app.get("/health", (context) => context.json({ ok: true }));
   app.get("/dashboard", async (context) => context.json(await controller.getDashboard()));
+  app.get("/runtime/configuration", async (context) =>
+    context.json(await controller.getDockerEngineConfiguration()),
+  );
 
   app.get("/operations", (context) => context.json({ operations: operations.list() }));
   app.get("/operations/:id", (context) => {
@@ -93,16 +117,44 @@ export function createApi(controller: RuntimeController, operations = new Operat
     return context.json({ operation: operations.markRetried(value.operation.id, sourceId) }, 202);
   });
 
-  app.post("/runtime/start", (context) => {
-    const operation = enqueue(context, {
-      exclusive: true,
-      kind: "runtime.start",
-      locks: [],
-      run: async (progress) => void (await controller.startRuntime(progress)),
-      successMessage: "Lima 런타임을 시작했습니다.",
-      target: { name: "overseer", resource: "runtime" },
-      title: "런타임 시작",
-    });
+  app.post("/runtime/start", async (context) => {
+    const body = await readOptionalObject(context);
+    const configuration = body ? parseRuntimeStartInput(body) : undefined;
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.start",
+        locks: [],
+        run: async (progress) => void (await controller.startRuntime(progress, configuration)),
+        successMessage: configuration
+          ? "Docker Engine을 만들었습니다."
+          : "Lima 런타임을 시작했습니다.",
+        target: { name: "overseer", resource: "runtime" },
+        title: configuration ? "Docker Engine 만들기" : "런타임 시작",
+      },
+      configuration ? { configuration } : undefined,
+    );
+    return context.json({ operation }, 202);
+  });
+
+  app.post("/runtime/recreate", async (context) => {
+    const input = parseRecreateDockerEngineInput(await readObject(context));
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.recreate",
+        locks: [],
+        run: async (progress) =>
+          void (await controller.recreateRuntime(input.configuration, progress)),
+        successMessage: "Docker Engine을 재생성했습니다.",
+        target: { name: "overseer", resource: "runtime" },
+        title: "Docker Engine 재생성",
+      },
+      undefined,
+      false,
+    );
     return context.json({ operation }, 202);
   });
 

@@ -10,6 +10,12 @@ Lima의 공식 Docker 템플릿으로 만든 전용 VM을 브라우저에서 관
 - Node.js 24 이상
 - pnpm 11
 
+QEMU VM 드라이버를 사용하려면 QEMU도 설치하십시오. 기본 VZ 드라이버에는 필요하지 않습니다.
+
+```bash
+brew install qemu
+```
+
 City DS는 `opnay/city-ds`의 `1dd3d58772831fb70562d88c752805a3b9d1ee59`에서 빌드한 패키지를 `vendor/opnay-city-ds-react-0.1.0-1dd3d58.tgz`로 고정합니다.
 
 ## 시작
@@ -21,6 +27,8 @@ pnpm dev
 
 기본 주소는 `http://overseer.localhost:1355`입니다. Portless가 실제 앱에 비어 있는 포트를 자동 배정합니다. Portless를 통하지 않으려면 `pnpm dev:direct`를 사용하십시오.
 
+첫 실행에서는 **설정 > Docker Engine**의 **실행 환경**에서 VM 드라이버를 선택하고, **엔진 설정**에서 단일 `overseer` VM의 자원을 구성하십시오. 기본값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB입니다. QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
+
 리소스는 독립 URL에서 관리합니다.
 
 - `/compose`: 폼 또는 raw HTTPS URL 프로젝트 등록, YAML 미리보기, 업데이트 확인·적용, 실행·중지·재시작·로그·내리기
@@ -30,7 +38,9 @@ pnpm dev
 - `/networks`: 생성·삭제, 기본 네트워크 보호
 - `/operations`: Overseer에서 요청한 전체 작업 히스토리·상세 출력·실패 작업 재시도
 
-첫 화면에서 **Lima 환경 만들기**를 실행하면 `overseer` 인스턴스를 공식 `template:docker`로 생성합니다. Docker CLI에서 같은 런타임을 사용하려면 다음 환경 변수를 설정하십시오.
+**Docker Engine 만들기**를 실행하면 선택한 설정과 공식 `template:docker`로 `overseer` 인스턴스를 생성합니다. 기존 인스턴스 설정을 바꾸려면 화면에서 `overseer`를 입력하고 재생성해야 합니다. 재생성하면 VM의 컨테이너·이미지·볼륨·사용자 네트워크와 VM 내부 데이터가 삭제되며, 호스트 SQLite의 Compose 등록 정보와 작업 기록은 유지됩니다.
+
+Docker CLI에서 같은 런타임을 사용하려면 다음 환경 변수를 설정하십시오.
 
 ```bash
 export DOCKER_HOST="$(limactl list overseer --format 'unix://{{.Dir}}/sock/docker.sock')"
@@ -59,6 +69,9 @@ pnpm check
 - `POST /api/operations/:id/retry`: 실패 작업을 새 작업으로 재접수
 - `GET /api/containers/:id`: 수정용 설정과 config hash
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
+- `GET /api/runtime/configuration`: 실제 VM 설정 또는 기본 설정과 드라이버 가용성
+- `POST /api/runtime/start`: 중지된 VM 시작 또는 선택 설정으로 첫 VM 생성
+- `POST /api/runtime/recreate`: 확인 문자열과 선택 설정으로 단일 VM 재생성
 
 ## URL Compose
 

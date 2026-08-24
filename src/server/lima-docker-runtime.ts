@@ -16,6 +16,8 @@ import type {
   ContainerVolumeMount,
   CreateNamedResourceInput,
   DashboardSnapshot,
+  DockerEngineConfiguration,
+  DockerEngineConfigurationSnapshot,
   ImageSummary,
   NetworkSummary,
   PullImageInput,
@@ -56,6 +58,7 @@ export interface RuntimeController {
   getComposeProjectLogs(name: string): Promise<string>;
   getComposeProjects(): Promise<ComposeProjectSummary[]>;
   getDashboard(): Promise<DashboardSnapshot>;
+  getDockerEngineConfiguration(): Promise<DockerEngineConfigurationSnapshot>;
   getImages(): Promise<ImageSummary[]>;
   getNetworks(): Promise<NetworkSummary[]>;
   getVolumes(): Promise<VolumeSummary[]>;
@@ -71,8 +74,15 @@ export interface RuntimeController {
   removeVolume(name: string, progress?: OperationProgress): Promise<void>;
   removeRemoteCompose(name: string, progress?: OperationProgress): Promise<void>;
   removeBuilderCompose(name: string, progress?: OperationProgress): Promise<void>;
+  recreateRuntime(
+    configuration: DockerEngineConfiguration,
+    progress?: OperationProgress,
+  ): Promise<RuntimeSnapshot>;
   runContainer(input: RunContainerInput, progress?: OperationProgress): Promise<void>;
-  startRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot>;
+  startRuntime(
+    progress?: OperationProgress,
+    configuration?: DockerEngineConfiguration,
+  ): Promise<RuntimeSnapshot>;
   stopRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot>;
   updateContainer(
     id: string,
@@ -91,6 +101,16 @@ export type CommandRunner = typeof runCommand;
 interface LimaInstance {
   directory: string;
   status: string;
+}
+
+interface LimaInstanceDetails {
+  cpus: number;
+  dir: string;
+  disk: number;
+  memory: number;
+  name: string;
+  status: string;
+  vmType: string;
 }
 
 interface DockerContainerRow {
@@ -188,6 +208,14 @@ interface DockerInspectContainer {
 
 const LIMA_INSTANCE = process.env.OVERSEER_LIMA_INSTANCE ?? "overseer";
 const LIMA_ROW_FORMAT = "{{.Name}}\t{{.Status}}\t{{.Dir}}";
+const DEFAULT_DOCKER_ENGINE_CONFIGURATION: DockerEngineConfiguration = {
+  cpus: 4,
+  diskGiB: 100,
+  memoryGiB: 4,
+  provider: "lima",
+  vmType: "vz",
+};
+const GIBIBYTE = 1024 ** 3;
 const CONTAINER_ROW_FORMAT = "{{json .}}";
 const IMAGE_ROW_FORMAT = "{{json .}}";
 const VOLUME_ROW_FORMAT = "{{json .}}";
@@ -288,9 +316,49 @@ export class LimaDockerRuntime implements RuntimeController {
     return { composeProjects, containers, images, networks, runtime, volumes };
   }
 
-  startRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot> {
+  async getDockerEngineConfiguration(): Promise<DockerEngineConfigurationSnapshot> {
+    const [instance, qemuAvailable] = await Promise.all([
+      this.getInstanceDetails(),
+      this.isQemuAvailable(),
+    ]);
+    return {
+      configuration: instance
+        ? this.configurationFromInstance(instance)
+        : { ...DEFAULT_DOCKER_ENGINE_CONFIGURATION },
+      providers: [{ available: true, label: "Lima VM", value: "lima" }],
+      source: instance ? "instance" : "default",
+      vmTypes: [
+        { available: true, label: "Apple Virtualization (VZ)", value: "vz" },
+        {
+          available: qemuAvailable,
+          label: "QEMU",
+          ...(qemuAvailable
+            ? {}
+            : { unavailableReason: "QEMU가 설치되지 않았습니다. brew install qemu" }),
+          value: "qemu",
+        },
+      ],
+    };
+  }
+
+  startRuntime(
+    progress?: OperationProgress,
+    configuration?: DockerEngineConfiguration,
+  ): Promise<RuntimeSnapshot> {
     if (this.transition) return this.transition;
-    this.transition = this.startRuntimeOnce(progress).finally(() => {
+    this.transition = this.startRuntimeOnce(progress, configuration).finally(() => {
+      this.transition = undefined;
+    });
+    return this.transition;
+  }
+
+  recreateRuntime(
+    configuration: DockerEngineConfiguration,
+    progress?: OperationProgress,
+  ): Promise<RuntimeSnapshot> {
+    if (this.transition)
+      throw new ExpectedError("runtime_busy", "다른 런타임 작업이 진행 중입니다.", 409);
+    this.transition = this.recreateRuntimeOnce(configuration, progress).finally(() => {
       this.transition = undefined;
     });
     return this.transition;
@@ -922,24 +990,88 @@ export class LimaDockerRuntime implements RuntimeController {
     }
   }
 
-  private async startRuntimeOnce(progress?: OperationProgress): Promise<RuntimeSnapshot> {
+  private async startRuntimeOnce(
+    progress?: OperationProgress,
+    configuration?: DockerEngineConfiguration,
+  ): Promise<RuntimeSnapshot> {
     const instance = await this.getInstance();
-    progress?.step(instance ? "Lima 런타임 시작 중" : "Lima 환경 만드는 중");
     if (!instance) {
-      await this.command(
-        "limactl",
-        ["start", `--name=${LIMA_INSTANCE}`, "template:docker", "--tty=false", "--progress"],
-        {
-          onOutput: progress?.output,
-          timeoutMs: 20 * 60_000,
-        },
+      return this.createRuntime(configuration ?? DEFAULT_DOCKER_ENGINE_CONFIGURATION, progress);
+    }
+    if (configuration) {
+      throw new ExpectedError(
+        "runtime_exists",
+        "기존 Docker Engine 설정은 재생성으로 변경하십시오.",
+        409,
       );
-    } else if (instance.status.toLowerCase() !== "running") {
+    }
+    if (instance.status.toLowerCase() !== "running") {
+      progress?.step("Lima 런타임 시작 중");
       await this.command("limactl", ["start", LIMA_INSTANCE, "--tty=false", "--progress"], {
         onOutput: progress?.output,
         timeoutMs: 10 * 60_000,
       });
     }
+    return this.waitForDockerReady(progress);
+  }
+
+  private async recreateRuntimeOnce(
+    configuration: DockerEngineConfiguration,
+    progress?: OperationProgress,
+  ): Promise<RuntimeSnapshot> {
+    await this.requireAvailableVmType(configuration);
+    const instance = await this.getInstance();
+    if (!instance) {
+      throw new ExpectedError(
+        "runtime_missing",
+        "재생성할 Lima 인스턴스가 없습니다. Docker Engine을 먼저 만드십시오.",
+        409,
+      );
+    }
+    if (instance.status.toLowerCase() === "running") {
+      progress?.step("Lima 런타임 중지 중");
+      await this.command("limactl", ["stop", LIMA_INSTANCE], {
+        onOutput: progress?.output,
+        timeoutMs: 120_000,
+      });
+    }
+    this.remoteComposeGuestHome = undefined;
+    progress?.step("Lima 환경 삭제 중");
+    await this.command("limactl", ["delete", "--force", LIMA_INSTANCE], {
+      onOutput: progress?.output,
+      timeoutMs: 120_000,
+    });
+    return this.createRuntime(configuration, progress);
+  }
+
+  private async createRuntime(
+    configuration: DockerEngineConfiguration,
+    progress?: OperationProgress,
+  ): Promise<RuntimeSnapshot> {
+    await this.requireAvailableVmType(configuration);
+    progress?.step("Lima 환경 만드는 중");
+    await this.command(
+      "limactl",
+      [
+        "start",
+        `--name=${LIMA_INSTANCE}`,
+        `--vm-type=${configuration.vmType}`,
+        `--cpus=${configuration.cpus}`,
+        `--memory=${configuration.memoryGiB}`,
+        `--disk=${configuration.diskGiB}`,
+        "template:docker",
+        "--tty=false",
+        "--progress",
+      ],
+      {
+        onOutput: progress?.output,
+        timeoutMs: 20 * 60_000,
+      },
+    );
+    return this.waitForDockerReady(progress);
+  }
+
+  private async waitForDockerReady(progress?: OperationProgress): Promise<RuntimeSnapshot> {
     progress?.step("Docker 준비 확인 중");
     for (let attempt = 0; attempt < 30; attempt += 1) {
       const runtime = await this.getRuntimeSnapshot();
@@ -951,6 +1083,32 @@ export class LimaDockerRuntime implements RuntimeController {
       "Lima는 실행 중이지만 Docker가 준비되지 않았습니다. 잠시 후 다시 시도하십시오.",
       503,
     );
+  }
+
+  private async requireAvailableVmType(configuration: DockerEngineConfiguration): Promise<void> {
+    if (configuration.vmType === "qemu" && !(await this.isQemuAvailable())) {
+      throw new ExpectedError(
+        "runtime_driver_unavailable",
+        "QEMU를 찾을 수 없습니다. brew install qemu로 설치한 뒤 다시 시도하십시오.",
+        409,
+      );
+    }
+  }
+
+  private async isQemuAvailable(): Promise<boolean> {
+    const executable =
+      process.arch === "arm64"
+        ? (process.env.QEMU_SYSTEM_AARCH64 ?? "qemu-system-aarch64")
+        : process.arch === "x64"
+          ? (process.env.QEMU_SYSTEM_X86_64 ?? "qemu-system-x86_64")
+          : undefined;
+    if (!executable) return false;
+    try {
+      await this.command(executable, ["--version"], { timeoutMs: 5_000 });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async getRuntimeSnapshot(): Promise<RuntimeSnapshot> {
@@ -1005,6 +1163,79 @@ export class LimaDockerRuntime implements RuntimeController {
     const [name, status, directory] = row.split("\t");
     if (name !== LIMA_INSTANCE || !status || !directory) return undefined;
     return { directory, status };
+  }
+
+  private async getInstanceDetails(): Promise<LimaInstanceDetails | undefined> {
+    let result;
+    try {
+      result = await this.command("limactl", ["list", LIMA_INSTANCE, "--json"]);
+    } catch (error) {
+      if (
+        error instanceof CommandError &&
+        (error.stderr.includes("No instance matching") ||
+          error.stderr.includes("unmatched instances"))
+      ) {
+        return undefined;
+      }
+      throw error;
+    }
+    try {
+      const instance = JSON.parse(result.stdout) as Partial<LimaInstanceDetails>;
+      if (
+        instance.name !== LIMA_INSTANCE ||
+        typeof instance.status !== "string" ||
+        typeof instance.dir !== "string" ||
+        typeof instance.vmType !== "string" ||
+        typeof instance.cpus !== "number" ||
+        typeof instance.memory !== "number" ||
+        typeof instance.disk !== "number"
+      ) {
+        throw new Error("invalid Lima instance data");
+      }
+      return instance as LimaInstanceDetails;
+    } catch {
+      throw new ExpectedError(
+        "invalid_lima_output",
+        "Lima 인스턴스 설정을 해석하지 못했습니다.",
+        503,
+      );
+    }
+  }
+
+  private configurationFromInstance(instance: LimaInstanceDetails): DockerEngineConfiguration {
+    if (instance.vmType !== "vz" && instance.vmType !== "qemu") {
+      throw new ExpectedError(
+        "unsupported_runtime_driver",
+        `지원하지 않는 Lima VM 드라이버입니다: ${instance.vmType}`,
+        503,
+      );
+    }
+    if (!Number.isSafeInteger(instance.cpus) || instance.cpus < 1) {
+      throw new ExpectedError(
+        "invalid_lima_output",
+        "Lima 인스턴스의 CPU 설정을 해석하지 못했습니다.",
+        503,
+      );
+    }
+    return {
+      cpus: instance.cpus,
+      diskGiB: this.integerGibibytes(instance.disk, "디스크"),
+      memoryGiB: this.integerGibibytes(instance.memory, "메모리"),
+      provider: "lima",
+      vmType: instance.vmType,
+    };
+  }
+
+  private integerGibibytes(value: number, label: string): number {
+    const gibibytes = value / GIBIBYTE;
+    if (!Number.isSafeInteger(gibibytes) || gibibytes < 1) {
+      throw new ExpectedError(
+        "unsupported_runtime_configuration",
+        `${label}가 정수 GiB 단위가 아니어서 설정 화면에서 변경할 수 없습니다.`,
+        503,
+      );
+    }
+    return gibibytes;
   }
 
   private async requireComposeProject(name: string): Promise<ComposeProjectSummary> {

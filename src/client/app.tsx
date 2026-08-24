@@ -59,23 +59,20 @@ import type {
   ContainerSpecInput,
   ContainerSummary,
   DashboardSnapshot,
+  DockerEngineConfiguration,
   ImageSummary,
   NetworkSummary,
   OperationAccepted,
   OperationSnapshot,
   OperationResource,
   RegisterRemoteComposeInput,
+  RecreateDockerEngineInput,
   RuntimePhase,
   VolumeSummary,
 } from "../shared/contracts.ts";
 import { isImageReference, isResourceName } from "../shared/validation.ts";
 import { ApiRequestError, apiRequest } from "./api.ts";
-import {
-  getResourceRoute,
-  RESOURCE_ROUTES,
-  RESOURCE_ROUTE_GROUPS,
-  type ResourcePath,
-} from "./routes.ts";
+import { APP_ROUTES, APP_ROUTE_GROUPS, getAppRoute, type AppPath } from "./routes.ts";
 
 const RunContainerDialog = lazy(() =>
   import("./container-dialog.tsx").then((module) => ({ default: module.RunContainerDialog })),
@@ -99,6 +96,9 @@ const RemoteComposeActions = lazy(() =>
 const OperationsPage = lazy(() =>
   import("./operations-page.tsx").then((module) => ({ default: module.OperationsPage })),
 );
+const SettingsPage = lazy(() =>
+  import("./settings-page.tsx").then((module) => ({ default: module.SettingsPage })),
+);
 const CreateBuilderComposeDialog = lazy(() =>
   import("./builder-compose-dialog.tsx").then((module) => ({
     default: module.CreateBuilderComposeDialog,
@@ -116,8 +116,9 @@ const resourceRouteIcon = {
   "/images": HardDrive,
   "/networks": NetworkIcon,
   "/operations": ListChecks,
+  "/settings": Settings2,
   "/volumes": Database,
-} satisfies Record<ResourcePath, typeof Layers3>;
+} satisfies Record<AppPath, typeof Layers3>;
 
 const runtimePresentation: Record<
   RuntimePhase,
@@ -141,11 +142,11 @@ function LoadingScreen() {
       <aside aria-hidden="true" className="overseer-sidebar overseer-loading-sidebar">
         <Skeleton className="overseer-loading-brand" />
         <div className="overseer-loading-nav">
-          {RESOURCE_ROUTE_GROUPS.map((group) => (
+          {APP_ROUTE_GROUPS.map((group) => (
             <div className="overseer-loading-nav-group" key={group.id}>
               <Skeleton className="overseer-loading-nav-label" />
               <div className="overseer-loading-nav-items">
-                {RESOURCE_ROUTES.filter((route) => route.group === group.id).map((route) => (
+                {APP_ROUTES.filter((route) => route.group === group.id).map((route) => (
                   <Skeleton className="overseer-loading-nav-item" key={route.path} />
                 ))}
               </div>
@@ -881,8 +882,8 @@ interface MutationOptions {
   request: () => Promise<OperationAccepted>;
 }
 
-function resourcePathFromLocation(): ResourcePath {
-  return getResourceRoute(window.location.pathname).path;
+function resourcePathFromLocation(): AppPath {
+  return getAppRoute(window.location.pathname).path;
 }
 
 export function App() {
@@ -903,7 +904,8 @@ function AppContent() {
   const [composeDetailProject, setComposeDetailProject] = useState<ComposeProjectSummary>();
   const [logsTarget, setLogsTarget] = useState<LogsTarget>();
   const [dark, setDark] = useState(() => window.localStorage.getItem("overseer-theme") === "dark");
-  const [resourcePath, setResourcePath] = useState<ResourcePath>(resourcePathFromLocation);
+  const [resourcePath, setResourcePath] = useState<AppPath>(resourcePathFromLocation);
+  const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
   const notifiedOperations = useRef(new Set<string>());
   const operationsInitialized = useRef(false);
   const toastManager = Toast.useToastManager();
@@ -1027,6 +1029,7 @@ function AppContent() {
           title: "작업이 실패했습니다.",
           type: "warning",
         });
+        if (operation.target.resource === "runtime") void refreshResource("runtime");
       }
     }
   }, [operations, refreshResource, toastManager]);
@@ -1045,12 +1048,12 @@ function AppContent() {
     return () => window.removeEventListener("popstate", syncResourcePath);
   }, []);
 
-  const selectResourcePath = useCallback((nextPath: ResourcePath) => {
+  const selectResourcePath = useCallback((nextPath: AppPath) => {
     setResourcePath(nextPath);
     if (window.location.pathname !== nextPath) window.history.pushState(null, "", nextPath);
   }, []);
 
-  const handleResourceLink = (event: MouseEvent<HTMLAnchorElement>, nextPath: ResourcePath) => {
+  const handleResourceLink = (event: MouseEvent<HTMLAnchorElement>, nextPath: AppPath) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return;
     }
@@ -1103,6 +1106,26 @@ function AppContent() {
         }),
     });
 
+  const createDockerEngine = (configuration: DockerEngineConfiguration) =>
+    mutate({
+      key: "runtime-create",
+      request: () =>
+        apiRequest<OperationAccepted>("/runtime/start", {
+          body: JSON.stringify({ configuration }),
+          method: "POST",
+        }),
+    });
+
+  const recreateDockerEngine = (input: RecreateDockerEngineInput) =>
+    mutate({
+      key: "runtime-recreate",
+      request: () =>
+        apiRequest<OperationAccepted>("/runtime/recreate", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+    });
+
   if (!dashboard && !loadError) return <LoadingScreen />;
 
   const runtime = dashboard?.runtime;
@@ -1117,7 +1140,12 @@ function AppContent() {
         target.resource === resource && (target.id === identifier || target.name === identifier),
     );
   const runtimeBusy = activeOperations.some(({ target }) => target.resource === "runtime");
-  const currentRoute = getResourceRoute(resourcePath);
+  const latestFinishedRuntimeOperation = operations.find(
+    ({ status, target }) =>
+      target.resource === "runtime" && status !== "queued" && status !== "running",
+  );
+  const settingsRefreshToken = `${settingsRefreshRevision}:${latestFinishedRuntimeOperation?.id ?? ""}:${latestFinishedRuntimeOperation?.status ?? ""}`;
+  const currentRoute = getAppRoute(resourcePath);
   const pagePrimaryAction = !runtimeRunning ? null : resourcePath === "/compose" ? (
     <div className="overseer-compose-create-actions">
       <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
@@ -1239,7 +1267,7 @@ function AppContent() {
           </div>
         </div>
         <nav aria-label="주요 메뉴">
-          {RESOURCE_ROUTE_GROUPS.map((group) => {
+          {APP_ROUTE_GROUPS.map((group) => {
             const labelId = `overseer-nav-${group.id}`;
             return (
               <div
@@ -1252,7 +1280,7 @@ function AppContent() {
                   {group.label}
                 </span>
                 <div className="overseer-nav-group-items">
-                  {RESOURCE_ROUTES.filter((route) => route.group === group.id).map((route) => {
+                  {APP_ROUTES.filter((route) => route.group === group.id).map((route) => {
                     const Icon = resourceRouteIcon[route.path];
                     return (
                       <a
@@ -1329,16 +1357,23 @@ function AppContent() {
             <div className="overseer-page-actions">
               <div className="overseer-page-utilities">
                 <Button
-                  onClick={() =>
-                    void (resourcePath === "/operations" ? loadOperations() : refresh())
-                  }
+                  onClick={() => {
+                    if (resourcePath === "/operations") {
+                      void loadOperations();
+                      return;
+                    }
+                    if (resourcePath === "/settings") {
+                      setSettingsRefreshRevision((value) => value + 1);
+                    }
+                    void refresh();
+                  }}
                   size="sm"
                   variant="outline"
                 >
                   <RefreshCw aria-hidden="true" size={14} />
                   새로고침
                 </Button>
-                {runtime?.phase === "missing" || runtime?.phase === "stopped" ? (
+                {runtime?.phase === "stopped" ? (
                   <Button
                     disabled={runtimeBusy || submitting === "runtime-start"}
                     onClick={() =>
@@ -1351,11 +1386,7 @@ function AppContent() {
                     size="sm"
                   >
                     <Play aria-hidden="true" size={14} />
-                    {submitting === "runtime-start" || runtimeBusy
-                      ? "준비 중…"
-                      : runtime.phase === "missing"
-                        ? "Lima 환경 만들기"
-                        : "런타임 시작"}
+                    {submitting === "runtime-start" || runtimeBusy ? "준비 중…" : "런타임 시작"}
                   </Button>
                 ) : runtimeRunning ? (
                   <ConfirmAction
@@ -1401,7 +1432,7 @@ function AppContent() {
             </Alert.Root>
           ) : null}
 
-          {runtime && !runtimeRunning ? (
+          {runtime && !runtimeRunning && resourcePath !== "/settings" ? (
             <Alert.Root appearance="subtle" tone={runtimeStatus.tone}>
               <Alert.Title level={2}>Lima · {runtimeStatus.label}</Alert.Title>
               <Alert.Description>
@@ -1411,7 +1442,10 @@ function AppContent() {
             </Alert.Root>
           ) : null}
 
-          {dashboard && !runtimeRunning && resourcePath !== "/operations" ? (
+          {dashboard &&
+          !runtimeRunning &&
+          resourcePath !== "/operations" &&
+          resourcePath !== "/settings" ? (
             <section className="overseer-runtime-empty">
               <EmptyState.Root>
                 <EmptyState.Icon>
@@ -1424,11 +1458,31 @@ function AppContent() {
                 </EmptyState.Title>
                 <EmptyState.Description>
                   {runtime?.phase === "missing"
-                    ? "공식 Docker 템플릿으로 overseer 전용 인스턴스를 생성합니다."
+                    ? "설정에서 VM 드라이버와 자원을 선택해 overseer 전용 인스턴스를 만드십시오."
                     : "상단의 런타임 액션으로 다시 시작할 수 있습니다."}
                 </EmptyState.Description>
+                {runtime?.phase === "missing" ? (
+                  <EmptyState.Actions>
+                    <Button onClick={() => selectResourcePath("/settings")} size="sm">
+                      <Settings2 aria-hidden="true" size={14} />
+                      Docker Engine 설정
+                    </Button>
+                  </EmptyState.Actions>
+                ) : null}
               </EmptyState.Root>
             </section>
+          ) : null}
+
+          {dashboard && resourcePath === "/settings" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <SettingsPage
+                busy={runtimeBusy || Boolean(submitting)}
+                dashboard={dashboard}
+                onCreate={createDockerEngine}
+                onRecreate={recreateDockerEngine}
+                refreshToken={settingsRefreshToken}
+              />
+            </Suspense>
           ) : null}
 
           {resourcePath === "/operations" ? (
@@ -1443,7 +1497,10 @@ function AppContent() {
             </Suspense>
           ) : null}
 
-          {dashboard && runtimeRunning && resourcePath !== "/operations" ? (
+          {dashboard &&
+          runtimeRunning &&
+          resourcePath !== "/operations" &&
+          resourcePath !== "/settings" ? (
             <>
               {resourcePath === "/compose" ? (
                 <ComposePage

@@ -1,12 +1,13 @@
-export const RESOURCE_ROUTE_GROUPS = [
+export const APP_ROUTE_GROUPS = [
   { id: "workloads", label: "워크로드" },
   { id: "resources", label: "리소스" },
   { id: "operations", label: "운영" },
+  { id: "system", label: "시스템" },
 ] as const;
 
-export type ResourceRouteGroup = (typeof RESOURCE_ROUTE_GROUPS)[number]["id"];
+export type AppRouteGroup = (typeof APP_ROUTE_GROUPS)[number]["id"];
 
-export const RESOURCE_ROUTES = [
+export const APP_ROUTES = [
   {
     description: "실행 이력과 폼·URL Compose 프로젝트, 서비스 상태를 함께 관리합니다.",
     eyebrow: "COMPOSE PROJECTS",
@@ -49,13 +50,20 @@ export const RESOURCE_ROUTES = [
     label: "작업 기록",
     path: "/operations",
   },
+  {
+    description: "단일 Docker Engine의 실행 환경과 Lima VM 자원을 구성합니다.",
+    eyebrow: "SYSTEM SETTINGS",
+    group: "system",
+    label: "설정",
+    path: "/settings",
+  },
 ] as const;
 
-export type ResourcePath = (typeof RESOURCE_ROUTES)[number]["path"];
+export type AppPath = (typeof APP_ROUTES)[number]["path"];
 
-export function getResourceRoute(pathname: string) {
+export function getAppRoute(pathname: string) {
   return (
-    RESOURCE_ROUTES.find((route) => route.path === pathname) ??
-    RESOURCE_ROUTES.find((route) => route.path === "/containers")!
+    APP_ROUTES.find((route) => route.path === pathname) ??
+    APP_ROUTES.find((route) => route.path === "/containers")!
   );
 }

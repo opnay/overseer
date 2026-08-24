@@ -7,7 +7,11 @@ import {
   emptyComposeBuilderService,
   emptyComposeBuilderSpec,
 } from "../src/shared/compose-builder.ts";
-import type { DashboardSnapshot, OperationSnapshot } from "../src/shared/contracts.ts";
+import type {
+  DashboardSnapshot,
+  DockerEngineConfigurationSnapshot,
+  OperationSnapshot,
+} from "../src/shared/contracts.ts";
 
 function jsonResponse(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -35,6 +39,34 @@ function operation(
   };
 }
 
+function dockerEngineSnapshot(
+  source: DockerEngineConfigurationSnapshot["source"] = "default",
+  qemuAvailable = false,
+): DockerEngineConfigurationSnapshot {
+  return {
+    configuration: {
+      cpus: 4,
+      diskGiB: 100,
+      memoryGiB: 4,
+      provider: "lima",
+      vmType: "vz",
+    },
+    providers: [{ available: true, label: "Lima VM", value: "lima" }],
+    source,
+    vmTypes: [
+      { available: true, label: "Apple Virtualization (VZ)", value: "vz" },
+      {
+        available: qemuAvailable,
+        label: "QEMU",
+        ...(qemuAvailable
+          ? {}
+          : { unavailableReason: "QEMU가 설치되지 않았습니다. brew install qemu" }),
+        value: "qemu",
+      },
+    ],
+  };
+}
+
 describe("App", () => {
   it("matches the loading skeleton to the page shell and table", () => {
     vi.stubGlobal(
@@ -44,7 +76,7 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(6);
+    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(7);
     expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
   });
@@ -70,8 +102,185 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Lima 환경 만들기" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Docker Engine 설정" })).toBeEnabled();
     expect(screen.getByText("Lima 환경을 먼저 만드십시오.")).toBeInTheDocument();
+  });
+
+  it("configures the first Docker Engine from the settings subnavigation", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer",
+        message: "전용 Lima 인스턴스가 아직 없습니다.",
+        phase: "missing",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "runtime.start",
+      successMessage: "Docker Engine을 만들었습니다.",
+      target: { name: "overseer", resource: "runtime" },
+      title: "Docker Engine 만들기",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/runtime/configuration")) return jsonResponse(dockerEngineSnapshot());
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/runtime/start") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    await screen.findByRole("heading", { name: "컨테이너", level: 1 });
+
+    await user.click(screen.getByRole("link", { name: "설정" }));
+
+    expect(await screen.findByRole("heading", { name: "설정", level: 1 })).toBeInTheDocument();
+    const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    const dockerEngine = within(settingsNavigation).getByRole("group", {
+      name: "Docker Engine",
+    });
+    expect(within(dockerEngine).getByRole("button", { name: "엔진 설정" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(await screen.findByLabelText("CPU")).toHaveValue("4");
+    expect(screen.getByLabelText("메모리")).toHaveValue("4");
+    expect(screen.getByLabelText("디스크")).toHaveValue("100");
+
+    await user.click(within(dockerEngine).getByRole("button", { name: "실행 환경" }));
+    expect(screen.getByRole("heading", { name: "실행 환경", level: 2 })).toBeInTheDocument();
+    expect(within(dockerEngine).getByRole("button", { name: "실행 환경" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByText("QEMU가 설치되지 않았습니다. brew install qemu")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "VM 드라이버" }));
+    expect(await screen.findByRole("option", { name: /QEMU/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "엔진 설정에서 적용" }));
+    await user.click(screen.getByRole("button", { name: "Docker Engine 만들기" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/runtime/start") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    const createCall = fetchMock.mock.calls.find(([input]) =>
+      String(input).endsWith("/api/runtime/start"),
+    );
+    expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
+      configuration: dockerEngineSnapshot().configuration,
+    });
+  });
+
+  it("requires typing overseer before recreating the single VM", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [
+        { configFiles: ["/workspace/compose.yaml"], name: "demo", status: "running(1)" },
+      ],
+      containers: [
+        {
+          id: "container-id",
+          image: "nginx:alpine",
+          name: "web",
+          ports: "",
+          state: "running",
+          status: "Up",
+        },
+      ],
+      images: [
+        { createdSince: "today", id: "image-id", repository: "nginx", size: "20MB", tag: "alpine" },
+      ],
+      networks: [
+        {
+          builtIn: false,
+          createdAt: "today",
+          driver: "bridge",
+          id: "network-id",
+          internal: false,
+          ipv4: true,
+          ipv6: false,
+          labels: "",
+          name: "app-network",
+          scope: "local",
+        },
+      ],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [{ driver: "local", labels: "", name: "app-data", scope: "local" }],
+    };
+    const accepted = operation("queued", {
+      kind: "runtime.recreate",
+      successMessage: "Docker Engine을 재생성했습니다.",
+      target: { name: "overseer", resource: "runtime" },
+      title: "Docker Engine 재생성",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/runtime/configuration")) {
+        return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/runtime/recreate") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/settings");
+    render(<App />);
+    await screen.findByRole("button", { name: "Docker Engine 재생성" });
+
+    await user.click(screen.getByRole("button", { name: "Docker Engine 재생성" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Docker Engine을 재생성하시겠습니까?",
+    });
+    expect(dialog).toHaveTextContent("컨테이너 1개");
+    expect(dialog).toHaveTextContent("이미지 1개");
+    expect(dialog).toHaveTextContent("볼륨 1개");
+    expect(dialog).toHaveTextContent("사용자 네트워크 1개");
+    expect(dialog).toHaveTextContent("호스트 SQLite의 Compose 등록 정보와 작업 기록은 유지됩니다.");
+    const destructive = within(dialog).getByRole("button", { name: "Docker Engine 재생성" });
+    expect(destructive).toBeDisabled();
+
+    await user.type(within(dialog).getByLabelText("확인을 위해 overseer 입력"), "overseer");
+    expect(destructive).toBeEnabled();
+    await user.click(destructive);
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/runtime/recreate") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    const recreateCall = fetchMock.mock.calls.find(([input]) =>
+      String(input).endsWith("/api/runtime/recreate"),
+    );
+    expect(JSON.parse(String(recreateCall?.[1]?.body))).toEqual({
+      configuration: dockerEngineSnapshot("instance", true).configuration,
+      confirmation: "overseer",
+    });
   });
 
   it("shows the running empty state and primary actions", async () => {
@@ -356,7 +565,7 @@ describe("App", () => {
     );
   });
 
-  it("groups desktop navigation by workload, resource, and operations", async () => {
+  it("groups desktop navigation by workload, resource, operations, and system", async () => {
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
       containers: [],
@@ -385,6 +594,7 @@ describe("App", () => {
     const workloads = within(navigation).getByRole("group", { name: "워크로드" });
     const resources = within(navigation).getByRole("group", { name: "리소스" });
     const operations = within(navigation).getByRole("group", { name: "운영" });
+    const system = within(navigation).getByRole("group", { name: "시스템" });
     expect(
       within(workloads)
         .getAllByRole("link")
@@ -399,6 +609,7 @@ describe("App", () => {
       "href",
       "/operations",
     );
+    expect(within(system).getByRole("link", { name: "설정" })).toHaveAttribute("href", "/settings");
   });
 
   it("renders container logs in the terminal viewer", async () => {
