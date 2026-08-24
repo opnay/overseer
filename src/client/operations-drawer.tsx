@@ -6,6 +6,7 @@ import { Progress } from "@opnay/city-ds-react/progress";
 import { Activity, ListChecks, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { OperationSnapshot } from "../shared/contracts.ts";
+import { LogViewer } from "./log-display-options.tsx";
 import { operationElapsed, operationStatusPresentation } from "./operation-presentation.ts";
 
 function useCompactDrawer(): boolean {
@@ -128,9 +129,12 @@ export function OperationsDrawer({
                           <p className="overseer-operation-error">{operation.error.message}</p>
                         ) : null}
                         {operation.output.length > 0 ? (
-                          <pre className="overseer-operation-output">
-                            <code>{operation.output.slice(-12).join("\n")}</code>
-                          </pre>
+                          <LogViewer
+                            ariaLabel={`${operation.title} 최근 출력`}
+                            height="compact"
+                            key={operation.id}
+                            value={operation.output.slice(-12).join("\n")}
+                          />
                         ) : null}
                         {operation.status === "queued" ? (
                           <Button

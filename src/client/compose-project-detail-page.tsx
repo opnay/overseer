@@ -10,6 +10,7 @@ import { useEffect, useState, type MouseEvent } from "react";
 import type { ComposeBuilderSpec, ComposeProjectDetail } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
 import { BuilderComposeDialog } from "./builder-compose-dialog.tsx";
+import { LogViewer } from "./log-display-options.tsx";
 import { containerDetailPath } from "./routes.ts";
 
 interface ComposeProjectDetailPageProps {
@@ -348,9 +349,7 @@ export function ComposeProjectDetailPage({
               ) : logsLoading ? (
                 <Skeleton className="overseer-loading-table" />
               ) : logs ? (
-                <pre className="overseer-detail-log" tabIndex={0}>
-                  <code>{logs}</code>
-                </pre>
+                <LogViewer ariaLabel={`${name} Compose 로그`} key={name} value={logs} />
               ) : (
                 <EmptyState.Root density="compact">
                   <EmptyState.Title level={3}>표시할 로그가 없습니다.</EmptyState.Title>

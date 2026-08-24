@@ -8,12 +8,7 @@ import { Table } from "@opnay/city-ds-react/table";
 import { History, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import type { OperationSnapshot } from "../shared/contracts.ts";
-import {
-  DEFAULT_LOG_FONT_SIZE,
-  LogCodeContent,
-  LogDisplayOptions,
-  type LogFontSize,
-} from "./log-display-options.tsx";
+import { LogViewer } from "./log-display-options.tsx";
 import {
   operationElapsed,
   operationResourceLabel,
@@ -31,9 +26,6 @@ export function OperationsPage({
   operations: OperationSnapshot[];
 }) {
   const [selectedId, setSelectedId] = useState<string>();
-  const [wrapped, setWrapped] = useState(false);
-  const [showLineNumbers, setShowLineNumbers] = useState(false);
-  const [fontSize, setFontSize] = useState<LogFontSize>(DEFAULT_LOG_FONT_SIZE);
   const selected = operations.find(({ id }) => id === selectedId);
 
   const retry = async (operation: OperationSnapshot) => {
@@ -121,12 +113,7 @@ export function OperationsPage({
                       <Table.Cell>
                         <div className="overseer-row-actions">
                           <Button
-                            onClick={() => {
-                              setWrapped(false);
-                              setShowLineNumbers(false);
-                              setFontSize(DEFAULT_LOG_FONT_SIZE);
-                              setSelectedId(operation.id);
-                            }}
+                            onClick={() => setSelectedId(operation.id)}
                             size="sm"
                             variant="ghost"
                           >
@@ -155,13 +142,7 @@ export function OperationsPage({
       </section>
 
       <Dialog.Root
-        onOpenChange={(open) => {
-          if (open) return;
-          setSelectedId(undefined);
-          setWrapped(false);
-          setShowLineNumbers(false);
-          setFontSize(DEFAULT_LOG_FONT_SIZE);
-        }}
+        onOpenChange={(open) => !open && setSelectedId(undefined)}
         open={Boolean(selected)}
       >
         <Dialog.Portal>
@@ -202,30 +183,11 @@ export function OperationsPage({
                       </Alert.Root>
                     ) : null}
                     {selected.output.length > 0 ? (
-                      <div className="overseer-operation-output-block">
-                        <div className="overseer-operation-output-toolbar">
-                          <LogDisplayOptions
-                            fontSize={fontSize}
-                            onFontSizeChange={setFontSize}
-                            onShowLineNumbersChange={setShowLineNumbers}
-                            onWrappedChange={setWrapped}
-                            showLineNumbers={showLineNumbers}
-                            wrapped={wrapped}
-                          />
-                        </div>
-                        <pre
-                          className="overseer-operation-output overseer-operation-output--detail"
-                          data-font-size={fontSize}
-                          data-line-numbers={showLineNumbers}
-                          data-wrap={wrapped}
-                          tabIndex={0}
-                        >
-                          <LogCodeContent
-                            showLineNumbers={showLineNumbers}
-                            value={selected.output.join("\n")}
-                          />
-                        </pre>
-                      </div>
+                      <LogViewer
+                        ariaLabel={`${selected.title} 명령 출력`}
+                        key={selected.id}
+                        value={selected.output.join("\n")}
+                      />
                     ) : (
                       <p className="overseer-primary-meta">기록된 명령 출력이 없습니다.</p>
                     )}

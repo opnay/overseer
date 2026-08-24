@@ -40,6 +40,7 @@ import {
   type DockerEngineConfigurationForm,
 } from "./docker-engine-configuration.ts";
 import { DockerEngineNumberSetting } from "./docker-engine-number-setting.tsx";
+import { LogViewer } from "./log-display-options.tsx";
 
 interface StartupPageProps {
   composeSkipped: boolean;
@@ -736,17 +737,15 @@ export function StartupPage({
                         <Accordion.Trigger>자동 설치 로그</Accordion.Trigger>
                       </Accordion.Header>
                       <Accordion.Panel>
-                        <pre
-                          aria-label={`${operation.title} 로그`}
-                          className="overseer-startup-output"
-                          tabIndex={0}
-                        >
-                          <code>
-                            {operation.output.length > 0
+                        <LogViewer
+                          ariaLabel={`${operation.title} 로그`}
+                          height="compact"
+                          value={
+                            operation.output.length > 0
                               ? operation.output.slice(-12).join("\n")
-                              : operation.step}
-                          </code>
-                        </pre>
+                              : operation.step
+                          }
+                        />
                       </Accordion.Panel>
                     </Accordion.Item>
                   </Accordion.Root>
@@ -772,17 +771,21 @@ export function StartupPage({
                 </Progress.Root>
                 <strong>{operation.step}</strong>
                 {operation.output.length > 0 ? (
-                  <pre tabIndex={0}>
-                    <code>{operation.output.slice(-12).join("\n")}</code>
-                  </pre>
+                  <LogViewer
+                    ariaLabel={`${operation.title} 진행 출력`}
+                    height="compact"
+                    value={operation.output.slice(-12).join("\n")}
+                  />
                 ) : null}
               </section>
             ) : null}
 
             {failed && operation?.output.length ? (
-              <pre className="overseer-startup-output" tabIndex={0}>
-                <code>{operation.output.slice(-12).join("\n")}</code>
-              </pre>
+              <LogViewer
+                ariaLabel={`${operation.title} 실패 출력`}
+                height="compact"
+                value={operation.output.slice(-12).join("\n")}
+              />
             ) : null}
           </section>
         </div>

@@ -600,9 +600,20 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
 
     await user.click(automaticInstallLog);
-    expect(screen.getByLabelText("Docker CLI와 Compose 설치 로그")).toHaveTextContent(
-      "Docker Compose 설치 완료",
+    const startupLog = screen.getByRole("region", {
+      name: "Docker CLI와 Compose 설치 로그",
+    });
+    expect(startupLog).toHaveTextContent("Docker Compose 설치 완료");
+    await user.click(within(startupLog).getByRole("button", { name: "로그 옵션" }));
+    const startupLogOptions = await screen.findByRole("menu");
+    expect(
+      within(startupLogOptions).getByRole("menuitemcheckbox", { name: "줄 바꿈" }),
+    ).toBeInTheDocument();
+    expect(within(startupLogOptions).getByRole("menuitemradio", { name: "보통" })).toHaveAttribute(
+      "aria-checked",
+      "true",
     );
+    await user.keyboard("{Escape}");
 
     await user.click(screen.getByRole("button", { name: "다음" }));
     expect(
@@ -1468,6 +1479,16 @@ describe("App", () => {
     expect(within(drawer).getByText("실패 작업")).toBeInTheDocument();
     expect(within(drawer).queryByText("완료 작업")).not.toBeInTheDocument();
     expect(within(drawer).queryByText("취소 작업")).not.toBeInTheDocument();
+    const drawerOutput = within(drawer).getByRole("region", { name: "실패 작업 최근 출력" });
+    await user.click(within(drawerOutput).getByRole("button", { name: "로그 옵션" }));
+    const drawerLogOptions = await screen.findByRole("menu");
+    expect(
+      within(drawerLogOptions).getByRole("menuitemcheckbox", { name: "줄 번호" }),
+    ).toBeInTheDocument();
+    expect(
+      within(drawerLogOptions).getByRole("menuitemradio", { name: "크게" }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
 
     await user.click(within(drawer).getByRole("button", { name: "전체 작업 보기" }));
     expect(await screen.findByRole("heading", { name: "작업 기록", level: 1 })).toBeInTheDocument();
@@ -1481,7 +1502,7 @@ describe("App", () => {
     const detail = await screen.findByRole("dialog", { name: "실패 작업" });
     expect(detail).toHaveTextContent("포트 충돌");
     expect(detail).toHaveTextContent("docker output");
-    const operationOutput = detail.querySelector(".overseer-operation-output--detail");
+    const operationOutput = detail.querySelector(".overseer-log-viewer-code");
     expect(operationOutput?.tagName).toBe("PRE");
     expect(operationOutput?.querySelector("code")?.textContent).toBe("docker output");
     expect(operationOutput).toHaveAttribute("data-wrap", "false");
@@ -1708,7 +1729,7 @@ describe("App", () => {
     );
     expect(screen.getByRole("button", { name: "새로고침" })).toBeEnabled();
     const codeBlock = await waitFor(() => {
-      const element = document.querySelector(".overseer-terminal-code");
+      const element = document.querySelector(".overseer-log-viewer-code");
       if (!element) throw new Error("로그 코드 블록을 찾지 못했습니다.");
       return element;
     });
@@ -1977,7 +1998,17 @@ describe("App", () => {
     expect(screen.getAllByText("/workspace/compose.yaml").length).toBeGreaterThan(0);
 
     await user.click(within(composeGroup).getByRole("button", { name: "로그" }));
-    expect(await screen.findByText("web | ready")).toBeInTheDocument();
+    const composeLog = await screen.findByRole("region", { name: "demo-stack Compose 로그" });
+    expect(composeLog).toHaveTextContent("web | ready");
+    const composeLogCode = composeLog.querySelector(".overseer-log-viewer-code");
+    expect(composeLogCode).toHaveAttribute("data-wrap", "false");
+    expect(composeLogCode).toHaveAttribute("data-line-numbers", "false");
+    expect(composeLogCode).toHaveAttribute("data-font-size", "medium");
+    await user.click(within(composeLog).getByRole("button", { name: "로그 옵션" }));
+    const composeLogOptions = await screen.findByRole("menu");
+    await user.click(within(composeLogOptions).getByRole("menuitemcheckbox", { name: "줄 바꿈" }));
+    expect(composeLogCode).toHaveAttribute("data-wrap", "true");
+    await user.keyboard("{Escape}");
 
     await user.click(within(composeGroup).getByRole("button", { name: "서비스" }));
     const containerLink = await screen.findByRole("link", { name: "demo-stack-web-1" });

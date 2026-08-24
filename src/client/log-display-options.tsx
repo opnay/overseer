@@ -1,11 +1,12 @@
 import { Button } from "@opnay/city-ds-react/button";
 import { Menu } from "@opnay/city-ds-react/menu";
 import { SlidersHorizontal } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, useState, type ReactNode, type Ref } from "react";
 
 export type LogFontSize = "large" | "medium" | "small";
 
 export const DEFAULT_LOG_FONT_SIZE: LogFontSize = "medium";
+export type LogViewerHeight = "compact" | "default" | "expanded";
 
 const fontSizes: Array<{ label: string; value: LogFontSize }> = [
   { label: "작게", value: "small" },
@@ -72,6 +73,74 @@ export function LogDisplayOptions({
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
+  );
+}
+
+export function LogViewer({
+  actions,
+  ariaLabel,
+  context,
+  emptyMessage = "기록된 출력이 없습니다.",
+  height = "default",
+  loading = false,
+  loadingMessage = "출력을 불러오는 중…",
+  scrollRef,
+  value,
+}: {
+  actions?: ReactNode;
+  ariaLabel: string;
+  context?: ReactNode;
+  emptyMessage?: string;
+  height?: LogViewerHeight;
+  loading?: boolean;
+  loadingMessage?: string;
+  scrollRef?: Ref<HTMLPreElement>;
+  value: string;
+}) {
+  const [fontSize, setFontSize] = useState<LogFontSize>(DEFAULT_LOG_FONT_SIZE);
+  const [showLineNumbers, setShowLineNumbers] = useState(false);
+  const [wrapped, setWrapped] = useState(false);
+
+  return (
+    <section
+      aria-busy={loading}
+      aria-label={ariaLabel}
+      className="overseer-log-viewer"
+      data-height={height}
+    >
+      <div className="overseer-log-viewer-toolbar">
+        {context ? <div className="overseer-log-viewer-context">{context}</div> : null}
+        <div className="overseer-log-viewer-actions">
+          {actions}
+          <LogDisplayOptions
+            fontSize={fontSize}
+            onFontSizeChange={setFontSize}
+            onShowLineNumbersChange={setShowLineNumbers}
+            onWrappedChange={setWrapped}
+            showLineNumbers={showLineNumbers}
+            wrapped={wrapped}
+          />
+        </div>
+      </div>
+      {loading && !value ? (
+        <div className="overseer-log-viewer-empty" role="status">
+          {loadingMessage}
+        </div>
+      ) : value ? (
+        <pre
+          className="overseer-log-viewer-code"
+          data-font-size={fontSize}
+          data-line-numbers={showLineNumbers}
+          data-wrap={wrapped}
+          ref={scrollRef}
+          tabIndex={0}
+        >
+          <LogCodeContent showLineNumbers={showLineNumbers} value={value} />
+        </pre>
+      ) : (
+        <div className="overseer-log-viewer-empty">{emptyMessage}</div>
+      )}
+    </section>
   );
 }
 
