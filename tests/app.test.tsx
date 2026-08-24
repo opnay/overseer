@@ -1867,9 +1867,17 @@ describe("App", () => {
               {
                 comment: "buildkit.dockerfile.v0",
                 createdAt: "2026-08-22T18:22:08+09:00",
-                createdBy: "COPY --chown=node:node /app /app # buildkit",
+                createdBy: 'CMD ["node" "server/server.js"]',
                 createdSince: "2 days ago",
-                size: "284MB",
+                size: "0B",
+              },
+              {
+                comment: "buildkit.dockerfile.v0",
+                createdAt: "2026-08-22T18:21:00+09:00",
+                createdBy:
+                  "RUN /bin/sh -c apt update && apt install curl | tee /tmp/result # buildkit",
+                createdSince: "2 days ago",
+                size: "12MB",
               },
             ],
           });
@@ -1973,10 +1981,15 @@ describe("App", () => {
     expect(screen.getByText("org.opencontainers.image.source")).toBeInTheDocument();
 
     await user.click(within(imageGroup).getByRole("button", { name: "레이어" }));
-    expect(
-      await screen.findByText("COPY --chown=node:node /app /app # buildkit"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("284MB")).toBeInTheDocument();
+    const layerCode = await screen.findByRole("region", { name: "Dockerfile 레이어 코드" });
+    expect(layerCode.querySelector("pre")).toHaveTextContent(
+      "# Layer 1 · 12MB RUN apt update && \\ apt install curl | \\ tee /tmp/result",
+    );
+    expect(layerCode.querySelector("pre")).toHaveTextContent(
+      '# Layer 2 · 0B CMD ["node" "server/server.js"]',
+    );
+    expect(within(layerCode).getByRole("button", { name: "코드 보기 옵션" })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "이미지 레이어 기록" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "이미지 목록" }));
     expect(window.location.pathname).toBe("/images");

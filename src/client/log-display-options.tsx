@@ -15,6 +15,7 @@ const fontSizes: Array<{ label: string; value: LogFontSize }> = [
 ];
 
 export function LogDisplayOptions({
+  ariaLabel = "로그 옵션",
   fontSize,
   onFontSizeChange,
   onShowLineNumbersChange,
@@ -22,6 +23,7 @@ export function LogDisplayOptions({
   showLineNumbers,
   wrapped,
 }: {
+  ariaLabel?: string;
   fontSize: LogFontSize;
   onFontSizeChange(value: LogFontSize): void;
   onShowLineNumbersChange(value: boolean): void;
@@ -31,7 +33,7 @@ export function LogDisplayOptions({
 }) {
   return (
     <Menu.Root density="compact">
-      <Menu.Trigger render={<Button aria-label="로그 옵션" iconOnly size="sm" variant="ghost" />}>
+      <Menu.Trigger render={<Button aria-label={ariaLabel} iconOnly size="sm" variant="ghost" />}>
         <SlidersHorizontal aria-hidden="true" size={14} />
       </Menu.Trigger>
       <Menu.Portal>
@@ -84,6 +86,7 @@ export function LogViewer({
   height = "default",
   loading = false,
   loadingMessage = "출력을 불러오는 중…",
+  optionsLabel = "로그 옵션",
   scrollRef,
   value,
 }: {
@@ -94,6 +97,7 @@ export function LogViewer({
   height?: LogViewerHeight;
   loading?: boolean;
   loadingMessage?: string;
+  optionsLabel?: string;
   scrollRef?: Ref<HTMLPreElement>;
   value: string;
 }) {
@@ -113,6 +117,7 @@ export function LogViewer({
         <div className="overseer-log-viewer-actions">
           {actions}
           <LogDisplayOptions
+            ariaLabel={optionsLabel}
             fontSize={fontSize}
             onFontSizeChange={setFontSize}
             onShowLineNumbersChange={setShowLineNumbers}

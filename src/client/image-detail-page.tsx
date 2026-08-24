@@ -15,6 +15,8 @@ import type {
   ImageSummary,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
+import { reconstructDockerfileLayers } from "./image-history-presentation.ts";
+import { LogViewer } from "./log-display-options.tsx";
 
 interface ImageDetailPageProps {
   id: string;
@@ -44,7 +46,7 @@ const sectionPresentation: Record<ImageDetailSection, { description: string; lab
     label: "Label",
   },
   layers: {
-    description: "이미지를 구성하는 파일 시스템 레이어를 순서대로 확인합니다.",
+    description: "이미지 기록을 빌드 순서의 Dockerfile 코드로 재구성합니다.",
     label: "레이어",
   },
   overview: {
@@ -512,49 +514,20 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                 <Skeleton />
                 <Skeleton className="overseer-loading-table" />
               </section>
-            ) : history.length > 0 ? (
-              <DataTableRegion
-                hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-                label="이미지 레이어 기록 표"
-              >
-                <Table.Root
-                  aria-label="이미지 레이어 기록"
-                  className="overseer-table overseer-table--image-history"
-                  size="sm"
-                >
-                  <Table.Caption className="overseer-table-caption">
-                    Docker 이미지 빌드 레이어와 메타데이터 기록
-                  </Table.Caption>
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.Head>명령</Table.Head>
-                      <Table.Head>크기</Table.Head>
-                      <Table.Head>생성</Table.Head>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {history.map((entry, index) => (
-                      <Table.Row key={`${index}-${entry.id ?? entry.createdBy}`}>
-                        <Table.Cell>
-                          <div className="overseer-image-history-command">
-                            <code>{entry.createdBy || "—"}</code>
-                            <div className="overseer-primary-meta">
-                              {entry.id ? <code>{entry.id}</code> : <span>메타데이터 레이어</span>}
-                              {entry.comment ? <span>{entry.comment}</span> : null}
-                            </div>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>{entry.size}</Table.Cell>
-                        <Table.Cell>
-                          <time dateTime={entry.createdAt}>{entry.createdSince}</time>
-                        </Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table.Root>
-              </DataTableRegion>
             ) : (
-              <p className="overseer-detail-empty-copy">레이어 기록이 없습니다.</p>
+              <LogViewer
+                ariaLabel="Dockerfile 레이어 코드"
+                context={
+                  <>
+                    <code>Dockerfile</code>
+                    <span>{history.length}개 레이어 · 빌드 순서 · history 재구성</span>
+                  </>
+                }
+                emptyMessage="레이어 기록이 없습니다."
+                height="expanded"
+                optionsLabel="코드 보기 옵션"
+                value={reconstructDockerfileLayers(history)}
+              />
             )
           ) : null}
         </div>
