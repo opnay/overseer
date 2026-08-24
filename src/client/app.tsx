@@ -81,6 +81,12 @@ import type {
 import { isImageReference, isResourceName } from "../shared/validation.ts";
 import { ApiRequestError, apiRequest } from "./api.ts";
 import {
+  DEFAULT_LOG_FONT_SIZE,
+  LogCodeContent,
+  LogDisplayOptions,
+  type LogFontSize,
+} from "./log-display-options.tsx";
+import {
   APP_ROUTES,
   APP_ROUTE_GROUPS,
   composeProjectDetailPath,
@@ -531,8 +537,11 @@ function LogsDialog({ onClose, target }: { onClose: () => void; target?: LogsTar
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [following, setFollowing] = useState(true);
+  const [wrapped, setWrapped] = useState(false);
+  const [showLineNumbers, setShowLineNumbers] = useState(false);
+  const [fontSize, setFontSize] = useState<LogFontSize>(DEFAULT_LOG_FONT_SIZE);
   const [copied, setCopied] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLPreElement>(null);
 
   const load = useCallback(
     async (quiet = false) => {
@@ -555,6 +564,9 @@ function LogsDialog({ onClose, target }: { onClose: () => void; target?: LogsTar
     setLogs("");
     setError(undefined);
     setFollowing(true);
+    setWrapped(false);
+    setShowLineNumbers(false);
+    setFontSize(DEFAULT_LOG_FONT_SIZE);
     setCopied(false);
     if (target) void load();
   }, [target, load]);
@@ -609,73 +621,79 @@ function LogsDialog({ onClose, target }: { onClose: () => void; target?: LogsTar
                     <code>tail -n 300</code>
                     <span aria-live="polite">{loading ? "동기화 중…" : `${lines.length}줄`}</span>
                   </div>
-                  <Toolbar.Root
-                    appearance="plain"
-                    aria-label="로그 명령"
-                    className="overseer-terminal-actions"
-                    size="sm"
+                  <div className="overseer-terminal-actions">
+                    <Toolbar.Root appearance="plain" aria-label="로그 명령" size="sm">
+                      <Toolbar.Button
+                        disabled={!logs}
+                        onClick={() => void copyLogs()}
+                        variant="ghost"
+                      >
+                        {copied ? (
+                          <Check aria-hidden="true" size={14} />
+                        ) : (
+                          <Copy aria-hidden="true" size={14} />
+                        )}
+                        {copied ? "복사됨" : "복사"}
+                      </Toolbar.Button>
+                      <Toolbar.Button
+                        disabled={!logs}
+                        onClick={() => {
+                          if (scrollRef.current) {
+                            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                          }
+                        }}
+                        variant="ghost"
+                      >
+                        <ArrowDownToLine aria-hidden="true" size={14} />
+                        맨 아래
+                      </Toolbar.Button>
+                      <Toolbar.Toggle
+                        aria-label={following ? "자동 갱신 켜짐" : "자동 갱신 꺼짐"}
+                        onPressedChange={setFollowing}
+                        pressed={following}
+                        variant="ghost"
+                      >
+                        <Radio aria-hidden="true" size={14} />
+                        자동 갱신
+                      </Toolbar.Toggle>
+                      <Toolbar.Button
+                        disabled={loading}
+                        onClick={() => void load()}
+                        variant="ghost"
+                      >
+                        <RefreshCw aria-hidden="true" size={14} />
+                        새로고침
+                      </Toolbar.Button>
+                    </Toolbar.Root>
+                    <LogDisplayOptions
+                      fontSize={fontSize}
+                      onFontSizeChange={setFontSize}
+                      onShowLineNumbersChange={setShowLineNumbers}
+                      onWrappedChange={setWrapped}
+                      showLineNumbers={showLineNumbers}
+                      wrapped={wrapped}
+                    />
+                  </div>
+                </div>
+                {loading && lines.length === 0 ? (
+                  <div className="overseer-terminal-empty" role="status">
+                    로그를 불러오는 중…
+                  </div>
+                ) : lines.length === 0 ? (
+                  <div className="overseer-terminal-empty">출력된 로그가 없습니다.</div>
+                ) : (
+                  <pre
+                    aria-busy={loading}
+                    className="overseer-terminal-scroll overseer-terminal-code"
+                    data-font-size={fontSize}
+                    data-line-numbers={showLineNumbers}
+                    data-wrap={wrapped}
+                    ref={scrollRef}
+                    tabIndex={0}
                   >
-                    <Toolbar.Button
-                      disabled={!logs}
-                      onClick={() => void copyLogs()}
-                      variant="ghost"
-                    >
-                      {copied ? (
-                        <Check aria-hidden="true" size={14} />
-                      ) : (
-                        <Copy aria-hidden="true" size={14} />
-                      )}
-                      {copied ? "복사됨" : "복사"}
-                    </Toolbar.Button>
-                    <Toolbar.Button
-                      disabled={!logs}
-                      onClick={() => {
-                        if (scrollRef.current) {
-                          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-                        }
-                      }}
-                      variant="ghost"
-                    >
-                      <ArrowDownToLine aria-hidden="true" size={14} />
-                      맨 아래
-                    </Toolbar.Button>
-                    <Toolbar.Toggle
-                      aria-label={following ? "자동 갱신 켜짐" : "자동 갱신 꺼짐"}
-                      onPressedChange={setFollowing}
-                      pressed={following}
-                      variant="ghost"
-                    >
-                      <Radio aria-hidden="true" size={14} />
-                      자동 갱신
-                    </Toolbar.Toggle>
-                    <Toolbar.Button disabled={loading} onClick={() => void load()} variant="ghost">
-                      <RefreshCw aria-hidden="true" size={14} />
-                      새로고침
-                    </Toolbar.Button>
-                  </Toolbar.Root>
-                </div>
-                <div
-                  aria-busy={loading}
-                  className="overseer-terminal-scroll"
-                  ref={scrollRef}
-                  tabIndex={0}
-                >
-                  {loading && lines.length === 0 ? (
-                    <div className="overseer-terminal-empty" role="status">
-                      로그를 불러오는 중…
-                    </div>
-                  ) : lines.length === 0 ? (
-                    <div className="overseer-terminal-empty">출력된 로그가 없습니다.</div>
-                  ) : (
-                    <ol className="overseer-terminal-lines">
-                      {lines.map((line, index) => (
-                        <li key={`${index}-${line.slice(0, 24)}`}>
-                          <code>{line || " "}</code>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
+                    <LogCodeContent showLineNumbers={showLineNumbers} value={logs} />
+                  </pre>
+                )}
               </section>
             </Dialog.Body>
             <Dialog.Footer>

@@ -1192,6 +1192,7 @@
 
   .overseer-operation-output {
     max-height: 10rem;
+    margin: 0;
     padding: var(--city-space-3);
     overflow: auto;
     border-radius: var(--city-radius-sm);
@@ -1204,8 +1205,38 @@
     overflow-wrap: anywhere;
   }
 
+  .overseer-operation-output-block {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-sm);
+  }
+
+  .overseer-operation-output-toolbar {
+    display: flex;
+    min-height: var(--city-control-lg);
+    padding: var(--city-space-1) var(--city-space-2);
+    border-bottom: 1px solid var(--city-color-border);
+    background: var(--city-color-surface);
+    align-items: center;
+    justify-content: flex-end;
+  }
+
   .overseer-operation-output--detail {
     max-height: min(50vh, 28rem);
+    border-radius: 0;
+    overflow-wrap: normal;
+    white-space: pre;
+  }
+
+  .overseer-operation-output--detail[data-wrap="true"] {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .overseer-operation-output--detail:focus-visible {
+    outline: 2px solid var(--city-palette-neutral-400);
+    outline-offset: -2px;
   }
 
   .overseer-operation-detail {
@@ -1337,7 +1368,10 @@
   }
 
   .overseer-terminal-actions {
+    display: flex;
     margin-left: auto;
+    align-items: center;
+    gap: var(--city-space-1);
   }
 
   .overseer-terminal-scroll {
@@ -1352,22 +1386,64 @@
     scrollbar-color: var(--city-palette-neutral-600) var(--city-palette-neutral-900);
   }
 
-  .overseer-terminal-lines {
-    min-width: max-content;
+  .overseer-terminal-code {
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 100%;
     margin: 0;
+    padding: var(--city-space-3);
+    color: inherit;
+    font: inherit;
+    tab-size: 4;
+    white-space: pre;
+  }
+
+  .overseer-terminal-code code {
+    color: inherit;
+    font: inherit;
+  }
+
+  .overseer-terminal-code[data-wrap="true"] {
+    width: 100%;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .overseer-terminal-code[data-font-size="small"],
+  .overseer-operation-output--detail[data-font-size="small"] {
+    font-size: var(--city-font-size-2xs);
+  }
+
+  .overseer-terminal-code[data-font-size="medium"],
+  .overseer-operation-output--detail[data-font-size="medium"] {
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-terminal-code[data-font-size="large"],
+  .overseer-operation-output--detail[data-font-size="large"] {
+    font-size: var(--city-font-size-sm);
+  }
+
+  .overseer-terminal-code[data-line-numbers="true"],
+  .overseer-operation-output--detail[data-line-numbers="true"] {
     padding: var(--city-space-2) 0;
-    list-style: none;
+  }
+
+  .overseer-log-code-lines {
+    display: block;
+    min-width: 100%;
+    white-space: normal;
     counter-reset: log-line;
   }
 
-  .overseer-terminal-lines li {
+  .overseer-log-code-line {
     display: grid;
     min-height: var(--city-line-height-sm);
     grid-template-columns: 3.5rem minmax(max-content, 1fr);
     counter-increment: log-line;
   }
 
-  .overseer-terminal-lines li::before {
+  .overseer-log-code-line::before {
     padding: 0 var(--city-space-3) 0 var(--city-space-2);
     border-right: 1px solid var(--city-palette-neutral-800);
     color: var(--city-palette-neutral-600);
@@ -1376,16 +1452,24 @@
     user-select: none;
   }
 
-  .overseer-terminal-lines li:hover {
+  .overseer-log-code-line-content {
+    padding: 0 var(--city-space-3);
+    white-space: pre;
+  }
+
+  .overseer-log-code-line:hover {
     background: var(--city-palette-neutral-900);
   }
 
-  .overseer-terminal-lines code {
-    padding: 0 var(--city-space-3);
-    color: inherit;
-    font: inherit;
-    tab-size: 4;
-    white-space: pre;
+  .overseer-terminal-code[data-wrap="true"] .overseer-log-code-line,
+  .overseer-operation-output--detail[data-wrap="true"] .overseer-log-code-line {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+  }
+
+  .overseer-terminal-code[data-wrap="true"] .overseer-log-code-line-content,
+  .overseer-operation-output--detail[data-wrap="true"] .overseer-log-code-line-content {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
 
   .overseer-terminal-empty {

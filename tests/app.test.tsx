@@ -1262,7 +1262,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByText("컨테이너가 없습니다.");
 
-    await user.click(screen.getByRole("button", { name: /^작업/ }));
+    await user.click(await screen.findByRole("button", { name: /^작업/ }));
     expect(await screen.findByRole("heading", { name: "작업" })).toBeInTheDocument();
     expect(screen.getByText("볼륨 만들기")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "대기 작업 취소" }));
@@ -1330,7 +1330,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByText("컨테이너가 없습니다.");
 
-    await user.click(screen.getByRole("button", { name: /^작업/ }));
+    await user.click(await screen.findByRole("button", { name: /^작업/ }));
     const drawer = await screen.findByRole("dialog", { name: "작업" });
     expect(within(drawer).getByText("대기 작업")).toBeInTheDocument();
     expect(within(drawer).getByText("진행 작업")).toBeInTheDocument();
@@ -1350,6 +1350,38 @@ describe("App", () => {
     const detail = await screen.findByRole("dialog", { name: "실패 작업" });
     expect(detail).toHaveTextContent("포트 충돌");
     expect(detail).toHaveTextContent("docker output");
+    const operationOutput = detail.querySelector(".overseer-operation-output--detail");
+    expect(operationOutput?.tagName).toBe("PRE");
+    expect(operationOutput?.querySelector("code")?.textContent).toBe("docker output");
+    expect(operationOutput).toHaveAttribute("data-wrap", "false");
+    expect(operationOutput).toHaveAttribute("data-line-numbers", "false");
+    expect(operationOutput).toHaveAttribute("data-font-size", "medium");
+    const operationOptionsTrigger = within(detail).getByRole("button", { name: "로그 옵션" });
+    expect(operationOptionsTrigger).toHaveAttribute("data-city-icon-only");
+    await user.click(operationOptionsTrigger);
+    const operationOptions = await screen.findByRole("menu");
+    const operationLineWrap = within(operationOptions).getByRole("menuitemcheckbox", {
+      name: "줄 바꿈",
+    });
+    const operationLineNumbers = within(operationOptions).getByRole("menuitemcheckbox", {
+      name: "줄 번호",
+    });
+    expect(operationLineWrap).toHaveAttribute("aria-checked", "false");
+    expect(operationLineNumbers).toHaveAttribute("aria-checked", "false");
+    expect(within(operationOptions).getByRole("menuitemradio", { name: "보통" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await user.click(operationLineWrap);
+    expect(operationLineWrap).toHaveAttribute("aria-checked", "true");
+    expect(operationOutput).toHaveAttribute("data-wrap", "true");
+    await user.click(operationLineNumbers);
+    expect(operationLineNumbers).toHaveAttribute("aria-checked", "true");
+    expect(operationOutput).toHaveAttribute("data-line-numbers", "true");
+    expect(operationOutput?.querySelectorAll(".overseer-log-code-line")).toHaveLength(1);
+    await user.click(within(operationOptions).getByRole("menuitemradio", { name: "크게" }));
+    expect(operationOutput).toHaveAttribute("data-font-size", "large");
+    await user.keyboard("{Escape}");
     await user.click(within(detail).getByRole("button", { name: "닫기" }));
 
     await user.click(within(failedRow).getByRole("button", { name: "재시도" }));
@@ -1544,8 +1576,38 @@ describe("App", () => {
       "true",
     );
     expect(screen.getByRole("button", { name: "새로고침" })).toBeEnabled();
-    expect(await screen.findByText("first line")).toBeInTheDocument();
-    expect(document.querySelectorAll(".overseer-terminal-lines li")).toHaveLength(2);
+    const codeBlock = await waitFor(() => {
+      const element = document.querySelector(".overseer-terminal-code");
+      if (!element) throw new Error("로그 코드 블록을 찾지 못했습니다.");
+      return element;
+    });
+    expect(codeBlock.tagName).toBe("PRE");
+    expect(codeBlock.querySelector("code")?.textContent).toBe("first line\nsecond line");
+    expect(codeBlock).toHaveAttribute("data-wrap", "false");
+    expect(codeBlock).toHaveAttribute("data-line-numbers", "false");
+    expect(codeBlock).toHaveAttribute("data-font-size", "medium");
+
+    const logOptionsTrigger = screen.getByRole("button", { name: "로그 옵션" });
+    expect(logOptionsTrigger).toHaveAttribute("data-city-icon-only");
+    await user.click(logOptionsTrigger);
+    const logOptions = await screen.findByRole("menu");
+    const lineWrap = within(logOptions).getByRole("menuitemcheckbox", { name: "줄 바꿈" });
+    const lineNumbers = within(logOptions).getByRole("menuitemcheckbox", { name: "줄 번호" });
+    expect(lineWrap).toHaveAttribute("aria-checked", "false");
+    expect(lineNumbers).toHaveAttribute("aria-checked", "false");
+    expect(within(logOptions).getByRole("menuitemradio", { name: "보통" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await user.click(lineWrap);
+    expect(lineWrap).toHaveAttribute("aria-checked", "true");
+    expect(codeBlock).toHaveAttribute("data-wrap", "true");
+    await user.click(lineNumbers);
+    expect(lineNumbers).toHaveAttribute("aria-checked", "true");
+    expect(codeBlock).toHaveAttribute("data-line-numbers", "true");
+    expect(codeBlock.querySelectorAll(".overseer-log-code-line")).toHaveLength(2);
+    await user.click(within(logOptions).getByRole("menuitemradio", { name: "크게" }));
+    expect(codeBlock).toHaveAttribute("data-font-size", "large");
   });
 
   it("navigates to the images page from the sidebar", async () => {
