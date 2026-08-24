@@ -69,6 +69,7 @@ import type {
   RecreateDockerEngineInput,
   RuntimePhase,
   StartupInstallTarget,
+  StartupPrerequisiteId,
   StartupSnapshot,
   VolumeSummary,
 } from "../shared/contracts.ts";
@@ -795,25 +796,42 @@ function resourcePathFromLocation(): AppLocationPath {
   return getAppLocation(window.location.pathname);
 }
 
-function homebrewPreviewEnabled(): boolean {
-  return new URLSearchParams(window.location.search).get("startup-preview") === "homebrew";
+type StartupPreview = Exclude<StartupPrerequisiteId, "compose">;
+
+function startupPreviewFromLocation(): StartupPreview | undefined {
+  const value = new URLSearchParams(window.location.search).get("startup-preview");
+  return value === "homebrew" || value === "docker" || value === "lima" ? value : undefined;
 }
 
-function withMissingHomebrew(snapshot: StartupSnapshot): StartupSnapshot {
+const startupPreviewStates: Record<StartupPreview, Record<StartupPrerequisiteId, boolean>> = {
+  docker: { compose: false, docker: false, homebrew: true, lima: false },
+  homebrew: { compose: false, docker: false, homebrew: false, lima: false },
+  lima: { compose: true, docker: true, homebrew: true, lima: false },
+};
+
+const startupMissingReasons: Record<StartupPrerequisiteId, string> = {
+  compose: "Docker Compose 플러그인을 찾을 수 없습니다.",
+  docker: "Docker CLI를 찾을 수 없습니다.",
+  homebrew: "Homebrew 실행 파일을 찾을 수 없습니다.",
+  lima: "Lima 실행 파일을 찾을 수 없습니다.",
+};
+
+function withStartupPreview(snapshot: StartupSnapshot, preview: StartupPreview): StartupSnapshot {
   return {
     prerequisites: snapshot.prerequisites.map((prerequisite) => {
-      if (prerequisite.id === "homebrew") {
-        const { version: _version, ...rest } = prerequisite;
-        return {
-          ...rest,
-          installed: false,
-          missingReason: "Homebrew 실행 파일을 찾을 수 없습니다.",
-        };
-      }
+      const installed = startupPreviewStates[preview][prerequisite.id];
+      const { missingReason: _missingReason, version, ...rest } = prerequisite;
       return {
-        ...prerequisite,
-        automaticInstall: false,
-        automaticInstallUnavailableReason: "Homebrew를 먼저 설치해야 합니다.",
+        ...rest,
+        automaticInstall: prerequisite.id === "homebrew" ? false : preview !== "homebrew",
+        ...(preview === "homebrew" && prerequisite.id !== "homebrew"
+          ? {
+              automaticInstallUnavailableReason: "Homebrew를 먼저 설치해야 합니다.",
+            }
+          : {}),
+        installed,
+        ...(installed && version ? { version } : {}),
+        ...(!installed ? { missingReason: startupMissingReasons[prerequisite.id] } : {}),
       };
     }),
     ready: false,
@@ -829,14 +847,16 @@ export function App() {
 }
 
 function AppContent() {
-  const [homebrewPreview] = useState(homebrewPreviewEnabled);
+  const [startupPreview] = useState(startupPreviewFromLocation);
   const [dashboard, setDashboard] = useState<DashboardSnapshot>();
   const [loadError, setLoadError] = useState<string>();
   const [startup, setStartup] = useState<StartupSnapshot>();
   const [startupError, setStartupError] = useState<string>();
   const [startupRefreshing, setStartupRefreshing] = useState(false);
   const [composeSkipped, setComposeSkipped] = useState(
-    () => window.localStorage.getItem("overseer-compose-setup") === "skipped",
+    () =>
+      startupPreview !== "docker" &&
+      window.localStorage.getItem("overseer-compose-setup") === "skipped",
   );
   const [operationError, setOperationError] = useState<string>();
   const [submitting, setSubmitting] = useState<string>();
@@ -888,7 +908,8 @@ function AppContent() {
     }
   }, []);
 
-  const displayedStartup = startup && homebrewPreview ? withMissingHomebrew(startup) : startup;
+  const displayedStartup =
+    startup && startupPreview ? withStartupPreview(startup, startupPreview) : startup;
   const firstMissingRequiredPrerequisite = displayedStartup?.prerequisites.find(
     ({ installed, required }) => required && !installed,
   );
@@ -915,9 +936,9 @@ function AppContent() {
   }, [refreshStartup, startupVisible]);
 
   useEffect(() => {
-    if (!dashboard || (dashboard.runtime.phase === "running" && !homebrewPreview)) return;
+    if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview)) return;
     void refreshStartup();
-  }, [dashboard?.runtime.phase, homebrewPreview, refreshStartup]);
+  }, [dashboard?.runtime.phase, refreshStartup, startupPreview]);
 
   const refreshResource = useCallback(
     async (resource: OperationResource) => {
@@ -1170,7 +1191,7 @@ function AppContent() {
             setComposeSkipped(true);
           }}
           operation={startupOperation}
-          preview={homebrewPreview}
+          preview={Boolean(startupPreview)}
           refreshing={startupRefreshing}
           snapshot={displayedStartup}
         />

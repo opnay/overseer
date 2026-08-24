@@ -219,6 +219,57 @@ describe("App", () => {
     );
   });
 
+  it.each([
+    {
+      completedSteps: 1,
+      command: "brew install docker docker-compose",
+      commandLabel: "Docker CLI와 Compose 설치 명령",
+      heading: "Docker CLI를 설치해야 합니다.",
+      preview: "docker",
+    },
+    {
+      completedSteps: 2,
+      command: "brew install lima",
+      commandLabel: "Lima 설치 명령",
+      heading: "Lima를 설치해야 합니다.",
+      preview: "lima",
+    },
+  ])(
+    "previews the $preview installation step without changing the detected tools",
+    async ({ command, commandLabel, completedSteps, heading, preview }) => {
+      const dashboard: DashboardSnapshot = {
+        composeProjects: [],
+        containers: [],
+        images: [],
+        networks: [],
+        runtime: {
+          dockerVersion: "29.7.2",
+          instance: "overseer",
+          message: "정상",
+          phase: "running",
+        },
+        volumes: [],
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+          if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+          return jsonResponse(dashboard);
+        }),
+      );
+      window.history.replaceState(null, "", `/containers?startup-preview=${preview}`);
+
+      render(<App />);
+
+      expect(await screen.findByRole("heading", { name: heading, level: 2 })).toBeInTheDocument();
+      expect(screen.getByText("미리보기")).toBeInTheDocument();
+      expect(screen.getAllByText("완료")).toHaveLength(completedSteps);
+      expect(screen.getByLabelText(commandLabel)).toHaveTextContent(command);
+    },
+  );
+
   it("lets the user choose Docker CLI only or include Compose", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
