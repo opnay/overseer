@@ -110,6 +110,27 @@ export interface ContainerVolumeMount {
   volume: string;
 }
 
+export type ContainerMount =
+  | {
+      containerPath: string;
+      hostPath: string;
+      readOnly: boolean;
+      type: "bind";
+    }
+  | {
+      containerPath: string;
+      readOnly: boolean;
+      type: "volume";
+      volume: string;
+    }
+  | {
+      containerPath: string;
+      dockerType: string;
+      readOnly: boolean;
+      source?: string;
+      type: "other";
+    };
+
 export interface ContainerRestartPolicy {
   maximumRetryCount?: number;
   mode: ContainerRestartMode;
@@ -138,6 +159,7 @@ export interface ContainerSpecInput {
 export interface ContainerDetail {
   configHash: string;
   id: string;
+  mounts: ContainerMount[];
   replacementBlockers: string[];
   running: boolean;
   spec: ContainerSpecInput;

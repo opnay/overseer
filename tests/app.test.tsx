@@ -1491,6 +1491,7 @@ describe("App", () => {
             container: {
               configHash: "a".repeat(64),
               id: "container-id",
+              mounts: [],
               replacementBlockers: ["Overseer에서 만든 컨테이너가 아닙니다."],
               running: true,
               spec: { ...emptyContainerSpec(), image: "nginx:alpine", name: "web" },
@@ -2159,6 +2160,20 @@ describe("App", () => {
               container: {
                 configHash: "a".repeat(64),
                 id: "container-id",
+                mounts: [
+                  {
+                    containerPath: "/app/data",
+                    hostPath: "/home/test.guest/.local/share/overseer/compose/demo/data",
+                    readOnly: false,
+                    type: "bind",
+                  },
+                  {
+                    containerPath: "/audit",
+                    readOnly: true,
+                    type: "volume",
+                    volume: "audit-data",
+                  },
+                ],
                 replacementBlockers: [],
                 running: true,
                 spec: {
@@ -2197,6 +2212,13 @@ describe("App", () => {
 
     await user.click(within(containerGroup).getByRole("button", { name: "연결" }));
     expect(screen.getByText("bridge")).toBeInTheDocument();
+    expect(screen.getByText("Bind mount")).toBeInTheDocument();
+    expect(
+      screen.getByText("/home/test.guest/.local/share/overseer/compose/demo/data"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("/app/data")).toBeInTheDocument();
+    expect(screen.getByText("Named volume")).toBeInTheDocument();
+    expect(screen.getByText("audit-data")).toBeInTheDocument();
 
     await user.click(within(containerGroup).getByRole("button", { name: "환경 변수" }));
     expect(screen.getByText("MODE")).toBeInTheDocument();
@@ -2279,6 +2301,7 @@ describe("App", () => {
             container: {
               configHash: "a".repeat(64),
               id: "container-id",
+              mounts: [],
               replacementBlockers: ["Compose에서 관리하는 컨테이너입니다."],
               running: true,
               spec: {

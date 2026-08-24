@@ -928,6 +928,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .overseer-detail-definition--wide {
+    grid-column: 1 / -1;
+  }
+
   .overseer-detail-definitions > div,
   .overseer-detail-key-values > div {
     display: grid;
@@ -953,6 +957,61 @@
 
   .overseer-detail-definitions code,
   .overseer-detail-key-values code {
+    font-size: var(--city-font-size-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .overseer-detail-mounts {
+    display: grid;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--city-color-border);
+    list-style: none;
+  }
+
+  .overseer-detail-mounts > li {
+    display: grid;
+    padding: var(--city-space-3) 0;
+    border-bottom: 1px solid var(--city-color-border);
+    gap: var(--city-space-2);
+  }
+
+  .overseer-detail-mount-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--city-space-2);
+  }
+
+  .overseer-detail-mount-header > span {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-detail-mount-paths {
+    display: grid;
+    margin: 0;
+    gap: var(--city-space-2);
+  }
+
+  .overseer-detail-mount-paths > div {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-0-5);
+  }
+
+  .overseer-detail-mount-paths dt,
+  .overseer-detail-mount-paths dd {
+    margin: 0;
+  }
+
+  .overseer-detail-mount-paths dt {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-detail-mount-paths code {
     font-size: var(--city-font-size-xs);
     overflow-wrap: anywhere;
   }

@@ -112,7 +112,8 @@ Compose 페이지의 **폼으로 추가**에서 복수 서비스와 image·tag, 
 
 - 서버는 `127.0.0.1`에만 바인딩합니다.
 - 컨테이너 포트는 기본적으로 `127.0.0.1`의 빈 포트에 게시합니다.
-- 컨테이너 설정은 named volume만 연결하며 bind mount, privileged, device와 host network를 노출하지 않습니다.
+- 컨테이너 생성·편집은 named volume만 연결합니다. 상세 화면은 bind mount를 읽기 전용으로 구분하고 Lima 호스트의 전체 소스 경로를 표시합니다.
+- bind mount, privileged, device와 host network 설정은 생성·편집에 노출하지 않습니다.
 - 브라우저 요청은 고정된 Homebrew formula 설치·확인·업데이트만 실행하며 임의 셸 명령을 실행할 수 없습니다.
 - URL Compose fetch는 공개 HTTPS와 1MiB 이하 raw 문서로 제한합니다.
 - Compose 작업은 Docker가 보고한 프로젝트명과 구성 파일만 사용합니다.

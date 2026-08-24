@@ -10,6 +10,7 @@ import type {
   ComposeServiceSummary,
   ContainerDetail,
   ContainerKeyValue,
+  ContainerMount,
   ContainerPortMapping,
   ContainerSpecInput,
   ContainerSummary,
@@ -219,6 +220,7 @@ interface DockerInspectMount {
   Destination: string;
   Name?: string;
   RW: boolean;
+  Source: string;
   Type: string;
 }
 
@@ -568,13 +570,25 @@ export class LimaDockerRuntime implements RuntimeController {
     if ((inspected.HostConfig.SecurityOpt?.length ?? 0) > 0) blockers.push("보안 옵션이 있습니다.");
     if (inspected.HostConfig.NetworkMode === "host") blockers.push("host 네트워크를 사용합니다.");
 
+    const mounts: ContainerMount[] = [];
     const volumes: ContainerVolumeMount[] = [];
     for (const mount of inspected.Mounts ?? []) {
-      if (mount.Type !== "volume" || !mount.Name) {
-        blockers.push("named volume 이외의 마운트가 있습니다.");
-        continue;
+      const common = { containerPath: mount.Destination, readOnly: !mount.RW };
+      if (mount.Type === "volume" && mount.Name) {
+        mounts.push({ ...common, type: "volume", volume: mount.Name });
+        volumes.push({ ...common, volume: mount.Name });
+      } else if (mount.Type === "bind") {
+        mounts.push({ ...common, hostPath: mount.Source, type: "bind" });
+      } else {
+        mounts.push({
+          ...common,
+          dockerType: mount.Type,
+          ...(mount.Source ? { source: mount.Source } : {}),
+          type: "other",
+        });
       }
-      volumes.push({ containerPath: mount.Destination, readOnly: !mount.RW, volume: mount.Name });
+      if (mount.Type !== "volume" || !mount.Name)
+        blockers.push("named volume 이외의 마운트가 있습니다.");
     }
 
     const ports: ContainerPortMapping[] = [];
@@ -631,6 +645,7 @@ export class LimaDockerRuntime implements RuntimeController {
     return {
       configHash: configHash(spec),
       id: inspected.Id,
+      mounts: mounts.sort((left, right) => left.containerPath.localeCompare(right.containerPath)),
       replacementBlockers: [...new Set(blockers)],
       running: inspected.State.Running,
       spec,

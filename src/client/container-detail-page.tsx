@@ -2,7 +2,12 @@ import { Alert } from "@opnay/city-ds-react/alert";
 import { Badge } from "@opnay/city-ds-react/badge";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import type { ContainerDetail, ContainerKeyValue, ContainerSummary } from "../shared/contracts.ts";
+import type {
+  ContainerDetail,
+  ContainerKeyValue,
+  ContainerMount,
+  ContainerSummary,
+} from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
 import { composeProjectDetailPath } from "./routes.ts";
 
@@ -63,12 +68,69 @@ function restartPolicy(detail: ContainerDetail): string {
     : policy.mode;
 }
 
-function Definition({ label, value }: { label: string; value: ReactNode }) {
+function Definition({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value: ReactNode;
+  wide?: boolean;
+}) {
   return (
-    <div>
+    <div className={wide ? "overseer-detail-definition--wide" : undefined}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
+  );
+}
+
+function mountPresentation(mount: ContainerMount) {
+  if (mount.type === "bind") {
+    return { label: "Bind mount", sourceLabel: "Lima 호스트 경로", source: mount.hostPath };
+  }
+  if (mount.type === "volume") {
+    return { label: "Named volume", sourceLabel: "Volume", source: mount.volume };
+  }
+  return {
+    label: `${mount.dockerType} mount`,
+    sourceLabel: "소스",
+    source: mount.source ?? "—",
+  };
+}
+
+function Mounts({ mounts }: { mounts: ContainerMount[] }) {
+  if (mounts.length === 0) return <>없음</>;
+  return (
+    <ul className="overseer-detail-mounts">
+      {mounts.map((mount) => {
+        const presentation = mountPresentation(mount);
+        return (
+          <li key={`${mount.type}:${presentation.source}:${mount.containerPath}`}>
+            <div className="overseer-detail-mount-header">
+              <Badge appearance="outline" size="sm" tone="neutral">
+                {presentation.label}
+              </Badge>
+              <span>{mount.readOnly ? "읽기 전용" : "읽기/쓰기"}</span>
+            </div>
+            <dl className="overseer-detail-mount-paths">
+              <div>
+                <dt>{presentation.sourceLabel}</dt>
+                <dd>
+                  <code>{presentation.source}</code>
+                </dd>
+              </div>
+              <div>
+                <dt>컨테이너 경로</dt>
+                <dd>
+                  <code>{mount.containerPath}</code>
+                </dd>
+              </div>
+            </dl>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -146,10 +208,6 @@ export function ContainerDetailPage({
     hostPort
       ? `127.0.0.1:${hostPort} → ${containerPort}/${protocol}`
       : `${containerPort}/${protocol}`,
-  );
-  const volumes = spec.volumes.map(
-    ({ containerPath, readOnly, volume }) =>
-      `${volume} → ${containerPath}${readOnly ? " (읽기 전용)" : ""}`,
   );
   const presentation = sectionPresentation[section];
 
@@ -289,14 +347,7 @@ export function ContainerDetailPage({
                     : "없음"
                 }
               />
-              <Definition
-                label="Volume"
-                value={
-                  volumes.length > 0
-                    ? volumes.map((volume) => <code key={volume}>{volume}</code>)
-                    : "없음"
-                }
-              />
+              <Definition label="마운트" value={<Mounts mounts={detail.mounts} />} wide />
             </dl>
           ) : null}
 

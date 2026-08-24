@@ -61,7 +61,15 @@ function inspectFixture() {
       SecurityOpt: null,
     },
     Id: "old-id-1234567890",
-    Mounts: [{ Destination: "/data", Name: "audit-data", RW: true, Type: "volume" }],
+    Mounts: [
+      {
+        Destination: "/data",
+        Name: "audit-data",
+        RW: true,
+        Source: "/var/lib/docker/volumes/audit-data/_data",
+        Type: "volume",
+      },
+    ],
     Name: "/web",
     NetworkSettings: { Networks: { bridge: {} } },
     State: { Running: true },
@@ -263,6 +271,43 @@ describe("LimaDockerRuntime image inspection", () => {
 });
 
 describe("LimaDockerRuntime container configuration", () => {
+  it("separates observed bind mounts from editable named volumes", async () => {
+    const inspected = {
+      ...inspectFixture(),
+      Mounts: [
+        ...inspectFixture().Mounts,
+        {
+          Destination: "/app/data",
+          RW: false,
+          Source: "/home/test.guest/.local/share/overseer/compose/demo/data",
+          Type: "bind",
+        },
+      ],
+    };
+    const command: CommandRunner = vi.fn(async (executable) =>
+      executable === "limactl"
+        ? { stderr: "", stdout: limaRow }
+        : { stderr: "", stdout: JSON.stringify([inspected]) },
+    );
+    const runtime = new LimaDockerRuntime(command);
+
+    const detail = await runtime.getContainer(inspected.Id);
+
+    expect(detail.spec.volumes).toEqual([
+      { containerPath: "/data", readOnly: false, volume: "audit-data" },
+    ]);
+    expect(detail.mounts).toEqual([
+      {
+        containerPath: "/app/data",
+        hostPath: "/home/test.guest/.local/share/overseer/compose/demo/data",
+        readOnly: true,
+        type: "bind",
+      },
+      { containerPath: "/data", readOnly: false, type: "volume", volume: "audit-data" },
+    ]);
+    expect(detail.replacementBlockers).toContain("named volume 이외의 마운트가 있습니다.");
+  });
+
   it("passes the supported create options without a shell", async () => {
     const dockerCommands: string[][] = [];
     const command: CommandRunner = vi.fn(async (executable, args) => {

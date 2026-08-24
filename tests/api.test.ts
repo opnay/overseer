@@ -27,6 +27,7 @@ function createController(): RuntimeController {
     getContainer: vi.fn(async (id) => ({
       configHash: "a".repeat(64),
       id,
+      mounts: [],
       replacementBlockers: [],
       running: true,
       spec: { ...emptyContainerSpec(), image: "nginx:alpine", name: "web" },
