@@ -27,6 +27,7 @@ import { StartupPrerequisiteService, type StartupPrerequisiteController } from "
 import {
   requireContainerReference,
   requireComposeUrl,
+  requireImageIdentifier,
   requireImageReference,
   optionalComposeProjectName,
   requireResourceName,
@@ -496,6 +497,10 @@ export function createApi(
   });
 
   app.get("/images", async (context) => context.json({ images: await controller.getImages() }));
+  app.get("/images/:id", async (context) => {
+    const image = await controller.getImage(requireImageIdentifier(context.req.param("id")));
+    return context.json({ image });
+  });
   app.post("/images/pull", async (context) => {
     const body = await readObject(context);
     const input: PullImageInput = { image: requireImageReference(body.image) };

@@ -61,7 +61,11 @@ export const APP_ROUTES = [
 
 export type AppPath = (typeof APP_ROUTES)[number]["path"];
 
-export type AppLocationPath = AppPath | `/compose/${string}` | `/containers/${string}`;
+export type AppLocationPath =
+  | AppPath
+  | `/compose/${string}`
+  | `/containers/${string}`
+  | `/images/${string}`;
 
 export type AppDetailLocation =
   | { identifier: string; parentPath: "/compose"; path: `/compose/${string}`; type: "compose" }
@@ -70,6 +74,12 @@ export type AppDetailLocation =
       parentPath: "/containers";
       path: `/containers/${string}`;
       type: "container";
+    }
+  | {
+      identifier: string;
+      parentPath: "/images";
+      path: `/images/${string}`;
+      type: "image";
     };
 
 export function composeProjectDetailPath(name: string): `/compose/${string}` {
@@ -78,6 +88,10 @@ export function composeProjectDetailPath(name: string): `/compose/${string}` {
 
 export function containerDetailPath(id: string): `/containers/${string}` {
   return `/containers/${encodeURIComponent(id)}`;
+}
+
+export function imageDetailPath(id: string): `/images/${string}` {
+  return `/images/${encodeURIComponent(id)}`;
 }
 
 export function getAppDetailLocation(pathname: string): AppDetailLocation | undefined {
@@ -105,6 +119,14 @@ export function getAppDetailLocation(pathname: string): AppDetailLocation | unde
       type: "container",
     };
   }
+  if (resource === "images" && isImageIdentifier(identifier)) {
+    return {
+      identifier,
+      parentPath: "/images",
+      path: imageDetailPath(identifier),
+      type: "image",
+    };
+  }
   return undefined;
 }
 
@@ -124,4 +146,8 @@ export function getAppRoute(pathname: string) {
     APP_ROUTES.find((route) => route.path === "/containers")!
   );
 }
-import { isComposeProjectName, isContainerReference } from "../shared/validation.ts";
+import {
+  isComposeProjectName,
+  isContainerReference,
+  isImageIdentifier,
+} from "../shared/validation.ts";

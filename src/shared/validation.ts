@@ -1,4 +1,5 @@
 const CONTAINER_REFERENCE = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/;
+const IMAGE_IDENTIFIER = /^(?:sha256:)?[a-f0-9]{12,64}$/;
 const IMAGE_REFERENCE = /^[a-zA-Z0-9][a-zA-Z0-9._/@:-]{0,254}$/;
 const RESOURCE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
 const ENVIRONMENT_NAME = /^[a-zA-Z_][a-zA-Z0-9_]{0,127}$/;
@@ -16,6 +17,10 @@ export function isComposeProjectName(value: string): boolean {
 
 export function isImageReference(value: string): boolean {
   return IMAGE_REFERENCE.test(value);
+}
+
+export function isImageIdentifier(value: string): boolean {
+  return IMAGE_IDENTIFIER.test(value);
 }
 
 export function isResourceName(value: string): boolean {

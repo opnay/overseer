@@ -90,6 +90,7 @@ import {
   getAppDetailLocation,
   getAppLocation,
   getAppRoute,
+  imageDetailPath,
   type AppLocationPath,
   type AppPath,
 } from "./routes.ts";
@@ -130,6 +131,11 @@ const ComposeProjectDetailPage = lazy(() =>
 const ContainerDetailPage = lazy(() =>
   import("./container-detail-page.tsx").then((module) => ({
     default: module.ContainerDetailPage,
+  })),
+);
+const ImageDetailPage = lazy(() =>
+  import("./image-detail-page.tsx").then((module) => ({
+    default: module.ImageDetailPage,
   })),
 );
 const CreateBuilderComposeDialog = lazy(() =>
@@ -697,6 +703,10 @@ function composeStatusTone(project: ComposeProjectSummary): "neutral" | "success
 
 function composeFileName(file: string): string {
   return file.split("/").filter(Boolean).at(-1) ?? file;
+}
+
+function imageDisplayReference(image: ImageSummary): string {
+  return image.tag === "<none>" ? image.repository : `${image.repository}:${image.tag}`;
 }
 
 function followAppLink(event: MouseEvent<HTMLAnchorElement>, onFollow: () => void) {
@@ -1524,6 +1534,10 @@ function AppContent() {
     currentDetail?.type === "compose"
       ? dashboard?.composeProjects.find(({ name }) => name === currentDetail.identifier)
       : undefined;
+  const currentImage =
+    currentDetail?.type === "image"
+      ? dashboard?.images.find(({ id }) => id === currentDetail.identifier)
+      : undefined;
   const latestFinishedDetailOperation = currentDetail
     ? operations.find(
         ({ status, target }) =>
@@ -1537,17 +1551,25 @@ function AppContent() {
   const pageEyebrow = currentDetail
     ? currentDetail.type === "compose"
       ? "COMPOSE PROJECT"
-      : "CONTAINER DETAIL"
+      : currentDetail.type === "container"
+        ? "CONTAINER DETAIL"
+        : "IMAGE DETAIL"
     : currentRoute.eyebrow;
   const pageLabel = currentDetail
     ? currentDetail.type === "compose"
       ? currentDetail.identifier
-      : (currentContainer?.name ?? currentDetail.identifier)
+      : currentDetail.type === "container"
+        ? (currentContainer?.name ?? currentDetail.identifier)
+        : currentImage
+          ? imageDisplayReference(currentImage)
+          : currentDetail.identifier
     : currentRoute.label;
   const pageDescription = currentDetail
     ? currentDetail.type === "compose"
       ? "프로젝트 구성, 서비스, 로그와 소스별 설정을 관리합니다."
-      : "컨테이너 실행 상태와 전체 구성을 확인합니다."
+      : currentDetail.type === "container"
+        ? "컨테이너 실행 상태와 전체 구성을 확인합니다."
+        : "이미지의 실행 설정, 메타데이터와 파일 시스템 레이어를 확인합니다."
     : currentRoute.description;
   const runComposeAction = (name: string, action: ComposeProjectAction) =>
     mutate({
@@ -1841,7 +1863,11 @@ function AppContent() {
                     variant="outline"
                   >
                     <ArrowLeft aria-hidden="true" size={14} />
-                    {currentDetail.type === "compose" ? "Compose 목록" : "컨테이너 목록"}
+                    {currentDetail.type === "compose"
+                      ? "Compose 목록"
+                      : currentDetail.type === "container"
+                        ? "컨테이너 목록"
+                        : "이미지 목록"}
                   </Button>
                 ) : null}
                 <Button
@@ -2090,6 +2116,16 @@ function AppContent() {
             </Suspense>
           ) : null}
 
+          {dashboard && runtimeRunning && currentDetail?.type === "image" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <ImageDetailPage
+                id={currentDetail.identifier}
+                refreshToken={detailRefreshToken}
+                summary={currentImage}
+              />
+            </Suspense>
+          ) : null}
+
           {dashboard &&
           runtimeRunning &&
           !currentDetail &&
@@ -2209,6 +2245,7 @@ function AppContent() {
                   <ImageTable
                     images={dashboard?.images ?? []}
                     isBusy={(image) => runtimeBusy || targetBusy("image", image.id)}
+                    onInspect={(image) => selectResourcePath(imageDetailPath(image.id))}
                     onRemove={(image) =>
                       void mutate({
                         key: `${image.id}-remove`,
@@ -2756,10 +2793,12 @@ function ContainerTable({
 function ImageTable({
   images,
   isBusy,
+  onInspect,
   onRemove,
 }: {
   images: ImageSummary[];
   isBusy: (image: ImageSummary) => boolean;
+  onInspect: (image: ImageSummary) => void;
   onRemove: (image: ImageSummary) => void;
 }) {
   return (
@@ -2778,8 +2817,7 @@ function ImageTable({
         </Table.Caption>
         <Table.Header>
           <Table.Row>
-            <Table.Head>저장소</Table.Head>
-            <Table.Head>태그</Table.Head>
+            <Table.Head>이미지</Table.Head>
             <Table.Head>이미지 ID</Table.Head>
             <Table.Head>생성</Table.Head>
             <Table.Head>크기</Table.Head>
@@ -2788,7 +2826,7 @@ function ImageTable({
         </Table.Header>
         <Table.Body>
           {images.length === 0 ? (
-            <Table.StateRow colSpan={6}>
+            <Table.StateRow colSpan={5}>
               <EmptyState.Root className="overseer-table-empty-state" density="compact">
                 <EmptyState.Icon>
                   <HardDrive aria-hidden="true" />
@@ -2803,10 +2841,18 @@ function ImageTable({
             images.map((image) => (
               <Table.Row key={`${image.id}-${image.repository}-${image.tag}`}>
                 <Table.Cell>
-                  <strong>{image.repository}</strong>
-                </Table.Cell>
-                <Table.Cell>
-                  <code>{image.tag}</code>
+                  <div className="overseer-primary-cell">
+                    <a
+                      className="overseer-detail-link"
+                      href={imageDetailPath(image.id)}
+                      onClick={(event) => followAppLink(event, () => onInspect(image))}
+                    >
+                      {imageDisplayReference(image)}
+                    </a>
+                    <div className="overseer-primary-meta">
+                      <code>{image.url}</code>
+                    </div>
+                  </div>
                 </Table.Cell>
                 <Table.Cell>
                   <code>{image.id}</code>
@@ -2817,12 +2863,12 @@ function ImageTable({
                   <div className="overseer-row-actions">
                     <ConfirmAction
                       actionLabel="이미지 삭제"
-                      ariaLabel={`${image.repository} 이미지 삭제`}
+                      ariaLabel={`${imageDisplayReference(image)} 이미지 삭제`}
                       disabled={isBusy(image)}
                       description="이 이미지를 사용하는 컨테이너가 있으면 삭제되지 않습니다."
                       onConfirm={() => onRemove(image)}
                       iconOnly
-                      title={`${image.repository}:${image.tag} 이미지를 삭제하시겠습니까?`}
+                      title={`${imageDisplayReference(image)} 이미지를 삭제하시겠습니까?`}
                     >
                       <Trash2 aria-hidden="true" size={14} />
                     </ConfirmAction>

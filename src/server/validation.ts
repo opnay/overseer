@@ -3,6 +3,7 @@ import {
   isContainerPort,
   isContainerReference,
   isComposeProjectName,
+  isImageIdentifier,
   isImageReference,
   isResourceName,
 } from "../shared/validation.ts";
@@ -55,6 +56,13 @@ export function requireComposeUrl(value: unknown): string {
 export function requireImageReference(value: unknown): string {
   if (typeof value !== "string" || !isImageReference(value)) {
     throw new ExpectedError("invalid_image", "유효한 이미지 이름을 입력하십시오.", 400);
+  }
+  return value;
+}
+
+export function requireImageIdentifier(value: string): string {
+  if (!isImageIdentifier(value)) {
+    throw new ExpectedError("invalid_image", "유효하지 않은 이미지 식별자입니다.", 400);
   }
   return value;
 }

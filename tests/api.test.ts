@@ -69,6 +69,22 @@ function createController(): RuntimeController {
         { available: false, label: "QEMU", value: "qemu" as const },
       ],
     })),
+    getImage: vi.fn(async (id) => ({
+      architecture: "arm64",
+      command: ["node", "server.js"],
+      createdAt: "2026-08-22T09:22:08.000Z",
+      entrypoint: ["/usr/bin/dumb-init", "--"],
+      environment: [{ key: "NODE_ENV", value: "production" }],
+      exposedPorts: ["3001/tcp"],
+      id,
+      labels: [{ key: "org.opencontainers.image.source", value: "https://example.com/source" }],
+      layers: ["sha256:layer"],
+      operatingSystem: "linux",
+      repositoryDigests: ["example/image@sha256:digest"],
+      repositoryTags: ["example/image:latest"],
+      sizeBytes: 1_000,
+      workingDirectory: "/app",
+    })),
     getImages: vi.fn(async () => []),
     getNetworks: vi.fn(async () => []),
     getVolumes: vi.fn(async () => []),
@@ -406,6 +422,22 @@ describe("API boundary", () => {
     expect(response.status).toBe(202);
     await vi.waitFor(() => expect(controller.createVolume).toHaveBeenCalled());
     expect(controller.createVolume).toHaveBeenCalledWith({ name: "app-data" }, expect.any(Object));
+  });
+
+  it("returns image inspection details for a validated image identifier", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/images/3e24e96c89ef", { headers: localHeaders });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      image: { id: "3e24e96c89ef", operatingSystem: "linux" },
+    });
+    expect(controller.getImage).toHaveBeenCalledWith("3e24e96c89ef");
+
+    const invalid = await app.request("/images/not-an-image", { headers: localHeaders });
+    expect(invalid.status).toBe(400);
+    expect(controller.getImage).toHaveBeenCalledTimes(1);
   });
 
   it("lists Compose projects and forwards project actions", async () => {

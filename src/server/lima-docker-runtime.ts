@@ -18,6 +18,7 @@ import type {
   DashboardSnapshot,
   DockerEngineConfiguration,
   DockerEngineConfigurationSnapshot,
+  ImageDetail,
   ImageSummary,
   NetworkSummary,
   PullImageInput,
@@ -59,6 +60,7 @@ export interface RuntimeController {
   getComposeProjects(): Promise<ComposeProjectSummary[]>;
   getDashboard(): Promise<DashboardSnapshot>;
   getDockerEngineConfiguration(): Promise<DockerEngineConfigurationSnapshot>;
+  getImage(id: string): Promise<ImageDetail>;
   getImages(): Promise<ImageSummary[]>;
   getNetworks(): Promise<NetworkSummary[]>;
   getVolumes(): Promise<VolumeSummary[]>;
@@ -146,6 +148,26 @@ interface DockerImageRow {
   Repository: string;
   Size: string;
   Tag: string;
+}
+
+interface DockerInspectImage {
+  Architecture: string;
+  Comment?: string;
+  Config?: {
+    Cmd?: string[] | null;
+    Entrypoint?: string[] | null;
+    Env?: string[] | null;
+    ExposedPorts?: Record<string, unknown> | null;
+    Labels?: Record<string, string> | null;
+    WorkingDir?: string;
+  } | null;
+  Created: string;
+  Id: string;
+  Os: string;
+  RepoDigests?: string[] | null;
+  RepoTags?: string[] | null;
+  RootFS?: { Layers?: string[] | null } | null;
+  Size: number;
 }
 
 interface DockerVolumeRow {
@@ -261,6 +283,25 @@ function environmentValues(value: string[] | null | undefined): ContainerKeyValu
         : { key: item.slice(0, separator), value: item.slice(separator + 1) };
     })
     .sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function imageReferenceUrl(repository: string, tag: string): string {
+  if (repository === "<none>") return "—";
+  const firstSegment = repository.split("/", 1)[0] ?? repository;
+  const hasRegistry =
+    firstSegment === "localhost" || firstSegment.includes(".") || firstSegment.includes(":");
+  const canonicalRepository = hasRegistry
+    ? repository
+    : repository.includes("/")
+      ? `docker.io/${repository}`
+      : `docker.io/library/${repository}`;
+  return tag === "<none>" ? canonicalRepository : `${canonicalRepository}:${tag}`;
+}
+
+function imageLabels(value: Record<string, string> | null | undefined): ContainerKeyValue[] {
+  return Object.entries(value ?? {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => ({ key, value: item }));
 }
 
 function restartMode(value: string): ContainerSpecInput["restartPolicy"]["mode"] {
@@ -831,6 +872,42 @@ export class LimaDockerRuntime implements RuntimeController {
     await this.docker(["image", "rm", id], 120_000, progress);
   }
 
+  async getImage(id: string): Promise<ImageDetail> {
+    const result = await this.docker(["image", "inspect", id]);
+    let inspected: DockerInspectImage;
+    try {
+      const value = JSON.parse(result.stdout) as DockerInspectImage[];
+      const first = value[0];
+      if (!first) throw new Error("empty inspect output");
+      inspected = first;
+    } catch {
+      throw new ExpectedError(
+        "invalid_image_output",
+        "Docker 이미지 설정을 해석하지 못했습니다.",
+        503,
+      );
+    }
+
+    const config = inspected.Config ?? {};
+    return {
+      architecture: inspected.Architecture,
+      command: [...(config.Cmd ?? [])],
+      ...(inspected.Comment ? { comment: inspected.Comment } : {}),
+      createdAt: inspected.Created,
+      entrypoint: [...(config.Entrypoint ?? [])],
+      environment: environmentValues(config.Env),
+      exposedPorts: Object.keys(config.ExposedPorts ?? {}).sort(),
+      id: inspected.Id,
+      labels: imageLabels(config.Labels),
+      layers: [...(inspected.RootFS?.Layers ?? [])],
+      operatingSystem: inspected.Os,
+      repositoryDigests: [...(inspected.RepoDigests ?? [])].sort(),
+      repositoryTags: [...(inspected.RepoTags ?? [])].sort(),
+      sizeBytes: inspected.Size,
+      ...(config.WorkingDir ? { workingDirectory: config.WorkingDir } : {}),
+    };
+  }
+
   async getImages(): Promise<ImageSummary[]> {
     const result = await this.docker(["image", "ls", "--format", IMAGE_ROW_FORMAT]);
     return parseJsonLines<DockerImageRow>(result.stdout).map((row) => ({
@@ -839,6 +916,7 @@ export class LimaDockerRuntime implements RuntimeController {
       repository: row.Repository,
       size: row.Size,
       tag: row.Tag,
+      url: imageReferenceUrl(row.Repository, row.Tag),
     }));
   }
 

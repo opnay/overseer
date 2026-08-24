@@ -91,6 +91,85 @@ describe("LimaDockerRuntime optional Compose capability", () => {
   });
 });
 
+describe("LimaDockerRuntime image inspection", () => {
+  it("builds canonical image URLs and maps Docker inspect details", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      const dockerArgs = args.slice(2);
+      if (dockerArgs[0] === "image" && dockerArgs[1] === "ls") {
+        return {
+          stderr: "",
+          stdout: `${JSON.stringify({
+            CreatedSince: "2 days ago",
+            ID: "3e24e96c89ef",
+            Repository: "louislam/uptime-kuma",
+            Size: "2.51GB",
+            Tag: "2",
+          })}\n`,
+        };
+      }
+      if (dockerArgs[0] === "image" && dockerArgs[1] === "inspect") {
+        return {
+          stderr: "",
+          stdout: JSON.stringify([
+            {
+              Architecture: "arm64",
+              Comment: "buildkit.dockerfile.v0",
+              Config: {
+                Cmd: ["node", "server/server.js"],
+                Entrypoint: ["/usr/bin/dumb-init", "--"],
+                Env: ["NODE_ENV=production"],
+                ExposedPorts: { "3001/tcp": {} },
+                Labels: {
+                  "org.opencontainers.image.source": "https://github.com/louislam/uptime-kuma",
+                },
+                WorkingDir: "/app",
+              },
+              Created: "2026-08-22T09:22:08.000Z",
+              Id: "sha256:3e24e96c89ef",
+              Os: "linux",
+              RepoDigests: ["louislam/uptime-kuma@sha256:digest"],
+              RepoTags: ["louislam/uptime-kuma:2"],
+              RootFS: { Layers: ["sha256:layer-one", "sha256:layer-two"] },
+              Size: 601_204_055,
+            },
+          ]),
+        };
+      }
+      throw new Error(`unexpected Docker command: ${dockerArgs.join(" ")}`);
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getImages()).resolves.toEqual([
+      {
+        createdSince: "2 days ago",
+        id: "3e24e96c89ef",
+        repository: "louislam/uptime-kuma",
+        size: "2.51GB",
+        tag: "2",
+        url: "docker.io/louislam/uptime-kuma:2",
+      },
+    ]);
+    await expect(runtime.getImage("3e24e96c89ef")).resolves.toMatchObject({
+      architecture: "arm64",
+      command: ["node", "server/server.js"],
+      entrypoint: ["/usr/bin/dumb-init", "--"],
+      environment: [{ key: "NODE_ENV", value: "production" }],
+      exposedPorts: ["3001/tcp"],
+      labels: [
+        {
+          key: "org.opencontainers.image.source",
+          value: "https://github.com/louislam/uptime-kuma",
+        },
+      ],
+      layers: ["sha256:layer-one", "sha256:layer-two"],
+      operatingSystem: "linux",
+      repositoryTags: ["louislam/uptime-kuma:2"],
+      workingDirectory: "/app",
+    });
+  });
+});
+
 describe("LimaDockerRuntime container configuration", () => {
   it("passes the supported create options without a shell", async () => {
     const dockerCommands: string[][] = [];

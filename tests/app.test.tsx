@@ -1141,7 +1141,14 @@ describe("App", () => {
         },
       ],
       images: [
-        { createdSince: "today", id: "image-id", repository: "nginx", size: "20MB", tag: "alpine" },
+        {
+          createdSince: "today",
+          id: "image-id",
+          repository: "nginx",
+          size: "20MB",
+          tag: "alpine",
+          url: "docker.io/library/nginx:alpine",
+        },
       ],
       networks: [
         {
@@ -1260,7 +1267,14 @@ describe("App", () => {
       composeProjects: [],
       containers: [],
       images: [
-        { createdSince: "today", id: "image-id", repository: "nginx", size: "20MB", tag: "alpine" },
+        {
+          createdSince: "today",
+          id: "image-id",
+          repository: "nginx",
+          size: "20MB",
+          tag: "alpine",
+          url: "docker.io/library/nginx:alpine",
+        },
       ],
       networks: [
         {
@@ -1812,6 +1826,105 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "이미지", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("로컬 이미지가 없습니다.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "이미지" })).toHaveAttribute("aria-current", "page");
+    expect(window.location.pathname).toBe("/images");
+  });
+
+  it("combines image references and navigates to image inspection details", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [
+        {
+          createdSince: "2 days ago",
+          id: "3e24e96c89ef",
+          repository: "louislam/uptime-kuma",
+          size: "2.51GB",
+          tag: "2",
+          url: "docker.io/louislam/uptime-kuma:2",
+        },
+      ],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith("/api/images/3e24e96c89ef")) {
+          return jsonResponse({
+            image: {
+              architecture: "arm64",
+              command: ["node", "server/server.js"],
+              comment: "buildkit.dockerfile.v0",
+              createdAt: "2026-08-22T09:22:08.000Z",
+              entrypoint: ["/usr/bin/dumb-init", "--"],
+              environment: [{ key: "NODE_ENV", value: "production" }],
+              exposedPorts: ["3001/tcp"],
+              id: "sha256:3e24e96c89ef",
+              labels: [
+                {
+                  key: "org.opencontainers.image.source",
+                  value: "https://github.com/louislam/uptime-kuma",
+                },
+              ],
+              layers: ["sha256:layer-one", "sha256:layer-two"],
+              operatingSystem: "linux",
+              repositoryDigests: ["louislam/uptime-kuma@sha256:digest"],
+              repositoryTags: ["louislam/uptime-kuma:2"],
+              sizeBytes: 601_204_055,
+              workingDirectory: "/app",
+            },
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/images");
+    render(<App />);
+
+    const imageUrl = await screen.findByText("docker.io/louislam/uptime-kuma:2", {
+      selector: "code",
+    });
+    expect(imageUrl.closest(".overseer-primary-meta")).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "태그" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "louislam/uptime-kuma:2" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "louislam/uptime-kuma:2", level: 1 }),
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/images/3e24e96c89ef");
+    const imageNavigation = await screen.findByRole("navigation", { name: "이미지 상세 메뉴" });
+    const imageGroup = within(imageNavigation).getByRole("group", { name: "이미지" });
+    expect(within(imageGroup).getByRole("button", { name: "개요" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByText("linux/arm64")).toBeInTheDocument();
+    expect(screen.getByText("sha256:3e24e96c89ef")).toBeInTheDocument();
+
+    await user.click(within(imageGroup).getByRole("button", { name: "실행 설정" }));
+    expect(screen.getByText("/app")).toBeInTheDocument();
+    expect(screen.getByText("3001/tcp")).toBeInTheDocument();
+    expect(screen.getByText("2개")).toBeInTheDocument();
+
+    await user.click(within(imageGroup).getByRole("button", { name: "환경 변수" }));
+    expect(screen.getByText("NODE_ENV")).toBeInTheDocument();
+
+    await user.click(within(imageGroup).getByRole("button", { name: "Label" }));
+    expect(screen.getByText("org.opencontainers.image.source")).toBeInTheDocument();
+
+    await user.click(within(imageGroup).getByRole("button", { name: "레이어" }));
+    expect(screen.getByText("sha256:layer-one")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "이미지 목록" }));
     expect(window.location.pathname).toBe("/images");
   });
 
@@ -2530,6 +2643,7 @@ describe("App", () => {
           repository: "nginx",
           size: "20MB",
           tag: "alpine",
+          url: "docker.io/library/nginx:alpine",
         },
       ],
       networks: [
@@ -2577,7 +2691,9 @@ describe("App", () => {
     expect(screen.queryByText("최신")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "이미지" }));
-    expect(screen.getByText("alpine").tagName).toBe("CODE");
+    expect(screen.getByRole("link", { name: "nginx:alpine" })).toBeInTheDocument();
+    expect(screen.getByText("docker.io/library/nginx:alpine").tagName).toBe("CODE");
+    expect(screen.queryByRole("columnheader", { name: "태그" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "네트워크" }));
     expect(screen.getByText("Docker 기본 네트워크")).toHaveClass("overseer-primary-meta");

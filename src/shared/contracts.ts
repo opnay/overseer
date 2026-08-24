@@ -249,6 +249,25 @@ export interface ImageSummary {
   repository: string;
   size: string;
   tag: string;
+  url: string;
+}
+
+export interface ImageDetail {
+  architecture: string;
+  command: string[];
+  comment?: string;
+  createdAt: string;
+  entrypoint: string[];
+  environment: ContainerKeyValue[];
+  exposedPorts: string[];
+  id: string;
+  labels: ContainerKeyValue[];
+  layers: string[];
+  operatingSystem: string;
+  repositoryDigests: string[];
+  repositoryTags: string[];
+  sizeBytes: number;
+  workingDirectory?: string;
 }
 
 export interface VolumeSummary {
