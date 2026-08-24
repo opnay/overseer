@@ -24,8 +24,11 @@ interface StartupPageProps {
   snapshot: StartupSnapshot;
 }
 
-const HOMEBREW_ZSHRC_COMMAND = String.raw`grep -qxF 'eval "$(/opt/homebrew/bin/brew shellenv zsh)"' ~/.zshrc 2>/dev/null || printf '\n%s\n' 'eval "$(/opt/homebrew/bin/brew shellenv zsh)"' >> ~/.zshrc
-eval "$(/opt/homebrew/bin/brew shellenv zsh)"`;
+const HOMEBREW_ZSHRC_COMMAND = String.raw`BREW_BIN=/opt/homebrew/bin/brew
+[ -x "$BREW_BIN" ] || BREW_BIN=/usr/local/bin/brew
+SHELLENV_LINE="eval \"\$($BREW_BIN shellenv zsh)\""
+grep -qxF "$SHELLENV_LINE" ~/.zshrc 2>/dev/null || printf '\n%s\n' "$SHELLENV_LINE" >> ~/.zshrc
+eval "$("$BREW_BIN" shellenv zsh)"`;
 
 export function StartupPage({
   composeSkipped,

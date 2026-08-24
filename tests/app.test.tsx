@@ -217,7 +217,10 @@ describe("App", () => {
       "raw.githubusercontent.com/Homebrew/install",
     );
     expect(screen.getByLabelText("Homebrew zshrc 등록 명령")).toHaveTextContent(
-      'eval "$(/opt/homebrew/bin/brew shellenv zsh)"',
+      "BREW_BIN=/opt/homebrew/bin/brew",
+    );
+    expect(screen.getByLabelText("Homebrew zshrc 등록 명령")).toHaveTextContent(
+      "BREW_BIN=/usr/local/bin/brew",
     );
     expect(screen.getByLabelText("Homebrew zshrc 등록 명령")).toHaveTextContent(
       "printf '\\n%s\\n'",
