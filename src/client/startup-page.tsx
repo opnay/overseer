@@ -4,17 +4,27 @@ import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { Checkbox } from "@opnay/city-ds-react/checkbox";
 import { Progress } from "@opnay/city-ds-react/progress";
-import { Check, Copy, Download, ExternalLink, PackageCheck, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowRight,
+  Check,
+  Copy,
+  Download,
+  ExternalLink,
+  PackageCheck,
+  RefreshCw,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import type {
   OperationSnapshot,
   StartupInstallTarget,
+  StartupPrerequisiteId,
   StartupSnapshot,
 } from "../shared/contracts.ts";
 
 interface StartupPageProps {
   composeSkipped: boolean;
   error?: string;
+  onContinue(): void;
   onInstall(target: StartupInstallTarget): Promise<void>;
   onRefresh(): Promise<void>;
   onSkipCompose(): void;
@@ -22,6 +32,7 @@ interface StartupPageProps {
   preview: boolean;
   refreshing: boolean;
   snapshot: StartupSnapshot;
+  step: StartupPrerequisiteId;
 }
 
 const HOMEBREW_ZSHRC_COMMAND = String.raw`BREW_BIN=/opt/homebrew/bin/brew
@@ -33,6 +44,7 @@ eval "$("$BREW_BIN" shellenv zsh)"`;
 export function StartupPage({
   composeSkipped,
   error,
+  onContinue,
   onInstall,
   onRefresh,
   onSkipCompose,
@@ -40,25 +52,22 @@ export function StartupPage({
   preview,
   refreshing,
   snapshot,
+  step,
 }: StartupPageProps) {
   const [copiedCommand, setCopiedCommand] = useState<string>();
   const [includeCompose, setIncludeCompose] = useState(!composeSkipped);
+
+  useEffect(() => {
+    setCopiedCommand(undefined);
+  }, [step]);
+
   const requiredPrerequisites = snapshot.prerequisites.filter(({ required }) => required);
-  const compose = snapshot.prerequisites.find(({ id }) => id === "compose");
-  const firstMissingRequired = requiredPrerequisites.find(({ installed }) => !installed);
-  const composeDecisionPending = Boolean(
-    compose &&
-    !compose.installed &&
-    !composeSkipped &&
-    snapshot.prerequisites.find(({ id }) => id === "docker")?.installed &&
-    firstMissingRequired?.id !== "homebrew" &&
-    firstMissingRequired?.id !== "docker",
-  );
-  const prerequisite = composeDecisionPending ? compose : firstMissingRequired;
+  const prerequisite = snapshot.prerequisites.find(({ id }) => id === step);
 
   if (!prerequisite) return null;
 
   const composeOptional = prerequisite.id === "compose";
+  const detected = prerequisite.installed || (composeOptional && composeSkipped);
   const currentStepId = composeOptional ? "docker" : prerequisite.id;
   const dockerWithCompose = prerequisite.id === "docker" && includeCompose;
   const displayedInstallCommand = dockerWithCompose
@@ -96,6 +105,8 @@ export function StartupPage({
         ];
   const active = operation?.status === "queued" || operation?.status === "running";
   const failed = operation?.status === "failed";
+  const succeeded = operation?.status === "succeeded";
+
   const copyCommand = async (command: string, id: string) => {
     try {
       if (!navigator.clipboard) return;
@@ -135,11 +146,12 @@ export function StartupPage({
             <ol aria-label="시작 준비 단계" className="overseer-startup-steps">
               {requiredPrerequisites.map((item, index) => {
                 const current = item.id === currentStepId;
+                const currentOptionalComplete = current && composeOptional && detected;
                 const statusLabel =
-                  current && composeOptional
-                    ? "선택 사항"
-                    : item.installed
-                      ? "완료"
+                  item.installed || currentOptionalComplete
+                    ? "완료"
+                    : current && composeOptional
+                      ? "선택 사항"
                       : current
                         ? "현재 단계"
                         : "대기";
@@ -155,10 +167,10 @@ export function StartupPage({
                           dot
                           size="sm"
                           tone={
-                            current && composeOptional
-                              ? "info"
-                              : item.installed
-                                ? "success"
+                            item.installed || currentOptionalComplete
+                              ? "success"
+                              : current && composeOptional
+                                ? "info"
                                 : current
                                   ? "warning"
                                   : "neutral"
@@ -184,25 +196,33 @@ export function StartupPage({
                   {requiredPrerequisites.length}
                 </p>
                 <h2 className="city-text-section-title" id="overseer-startup-current-title">
-                  {composeOptional
-                    ? "Docker Compose를 설치할까요?"
-                    : `${prerequisite.label}를 설치해야 합니다.`}
+                  {detected
+                    ? composeOptional && composeSkipped && !prerequisite.installed
+                      ? "Docker Compose 설치를 건너뛰었습니다."
+                      : `${prerequisite.label} 설치를 확인했습니다.`
+                    : composeOptional
+                      ? "Docker Compose를 설치할까요?"
+                      : `${prerequisite.label}를 설치해야 합니다.`}
                 </h2>
-                <span className="city-text-supporting">{prerequisite.description}</span>
+                {!detected ? (
+                  <span className="city-text-supporting">{prerequisite.description}</span>
+                ) : null}
               </div>
-              <Button
-                disabled={refreshing}
-                onClick={() => void onRefresh()}
-                size="sm"
-                variant="outline"
-              >
-                <RefreshCw
-                  aria-hidden="true"
-                  className={refreshing ? "animate-spin" : undefined}
-                  size={14}
-                />
-                {refreshing ? "새로고침 중…" : "상태 새로고침"}
-              </Button>
+              {!detected ? (
+                <Button
+                  disabled={refreshing}
+                  onClick={() => void onRefresh()}
+                  size="sm"
+                  variant="outline"
+                >
+                  <RefreshCw
+                    aria-hidden="true"
+                    className={refreshing ? "animate-spin" : undefined}
+                    size={14}
+                  />
+                  {refreshing ? "새로고침 중…" : "상태 새로고침"}
+                </Button>
+              ) : null}
             </header>
 
             {error ? (
@@ -221,7 +241,7 @@ export function StartupPage({
               </Alert.Root>
             ) : null}
 
-            {prerequisite.id === "docker" ? (
+            {!detected && prerequisite.id === "docker" ? (
               <Accordion.Root className="overseer-startup-compose-option">
                 <Accordion.Item value="compose">
                   <Accordion.Header>
@@ -248,83 +268,85 @@ export function StartupPage({
               </Accordion.Root>
             ) : null}
 
-            <div className="overseer-startup-install-group">
-              {installCommands.map(({ accessibleLabel, command, id, label }) => {
-                const copied = copiedCommand === id;
-                return (
-                  <div className="overseer-startup-command" key={id}>
-                    <div>
-                      <span>{label}</span>
+            {!detected ? (
+              <div className="overseer-startup-install-group">
+                {installCommands.map(({ accessibleLabel, command, id, label }) => {
+                  const copied = copiedCommand === id;
+                  return (
+                    <div className="overseer-startup-command" key={id}>
+                      <div>
+                        <span>{label}</span>
+                        <Button
+                          aria-label={`${label} 명령 복사`}
+                          onClick={() => void copyCommand(command, id)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          {copied ? (
+                            <Check aria-hidden="true" size={14} />
+                          ) : (
+                            <Copy aria-hidden="true" size={14} />
+                          )}
+                          {copied ? "복사됨" : "복사"}
+                        </Button>
+                      </div>
+                      <pre aria-label={accessibleLabel} tabIndex={0}>
+                        <code>{command}</code>
+                      </pre>
+                    </div>
+                  );
+                })}
+
+                {prerequisite.automaticInstall ? (
+                  <div aria-hidden="true" className="overseer-startup-divider">
+                    <span>또는</span>
+                  </div>
+                ) : null}
+
+                {prerequisite.automaticInstall ? (
+                  <div
+                    className={
+                      composeOptional
+                        ? "overseer-startup-decision-actions"
+                        : "overseer-startup-primary-action"
+                    }
+                  >
+                    {composeOptional ? (
+                      <Button disabled={active} onClick={onSkipCompose} variant="outline">
+                        건너뛰기
+                      </Button>
+                    ) : null}
+                    <Button
+                      disabled={active}
+                      onClick={() => {
+                        if (prerequisite.id === "docker" && !includeCompose) onSkipCompose();
+                        void onInstall(installTarget).catch(() => undefined);
+                      }}
+                    >
+                      <Download aria-hidden="true" size={16} />
+                      {active ? `${prerequisite.label} 설치 중…` : automaticInstallLabel}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="overseer-startup-manual">
+                    <p>다음 단계부터 Docker CLI와 Lima를 자동 설치할 수 있습니다.</p>
+                    <div className="overseer-startup-decision-actions">
                       <Button
-                        aria-label={`${label} 명령 복사`}
-                        onClick={() => void copyCommand(command, id)}
-                        size="sm"
-                        variant="ghost"
+                        render={<a href="https://brew.sh/" rel="noreferrer" target="_blank" />}
+                        variant="outline"
                       >
-                        {copied ? (
-                          <Check aria-hidden="true" size={14} />
-                        ) : (
-                          <Copy aria-hidden="true" size={14} />
-                        )}
-                        {copied ? "복사됨" : "복사"}
+                        <ExternalLink aria-hidden="true" size={16} />
+                        공식 홈페이지
+                      </Button>
+                      <Button disabled={active} onClick={() => void onRefresh()}>
+                        <RefreshCw aria-hidden="true" size={16} />
+                        설치 확인
                       </Button>
                     </div>
-                    <pre aria-label={accessibleLabel} tabIndex={0}>
-                      <code>{command}</code>
-                    </pre>
                   </div>
-                );
-              })}
-
-              {prerequisite.automaticInstall ? (
-                <div aria-hidden="true" className="overseer-startup-divider">
-                  <span>또는</span>
-                </div>
-              ) : null}
-
-              {prerequisite.automaticInstall ? (
-                <div
-                  className={
-                    composeOptional
-                      ? "overseer-startup-decision-actions"
-                      : "overseer-startup-primary-action"
-                  }
-                >
-                  {composeOptional ? (
-                    <Button disabled={active} onClick={onSkipCompose} variant="outline">
-                      건너뛰기
-                    </Button>
-                  ) : null}
-                  <Button
-                    disabled={active}
-                    onClick={() => {
-                      if (prerequisite.id === "docker" && !includeCompose) onSkipCompose();
-                      void onInstall(installTarget).catch(() => undefined);
-                    }}
-                  >
-                    <Download aria-hidden="true" size={16} />
-                    {active ? `${prerequisite.label} 설치 중…` : automaticInstallLabel}
-                  </Button>
-                </div>
-              ) : (
-                <div className="overseer-startup-manual">
-                  <p>다음 단계부터 Docker CLI와 Lima를 자동 설치할 수 있습니다.</p>
-                  <div className="overseer-startup-decision-actions">
-                    <Button
-                      render={<a href="https://brew.sh/" rel="noreferrer" target="_blank" />}
-                      variant="outline"
-                    >
-                      <ExternalLink aria-hidden="true" size={16} />
-                      공식 홈페이지
-                    </Button>
-                    <Button disabled={active} onClick={() => void onRefresh()}>
-                      <RefreshCw aria-hidden="true" size={16} />
-                      설치 확인
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : null}
 
             {active && operation ? (
               <section aria-live="polite" className="overseer-startup-progress">
@@ -346,6 +368,39 @@ export function StartupPage({
               <pre className="overseer-startup-output" tabIndex={0}>
                 <code>{operation.output.slice(-12).join("\n")}</code>
               </pre>
+            ) : null}
+
+            {detected && succeeded && operation ? (
+              <Accordion.Root className="overseer-startup-operation-log">
+                <Accordion.Item value="automatic-install-log">
+                  <Accordion.Header>
+                    <Accordion.Trigger>자동 설치 로그</Accordion.Trigger>
+                  </Accordion.Header>
+                  <Accordion.Panel>
+                    <div className="overseer-startup-operation-log-content">
+                      <strong>{operation.step}</strong>
+                      {operation.output.length > 0 ? (
+                        <pre
+                          aria-label={`${operation.title} 로그`}
+                          className="overseer-startup-output"
+                          tabIndex={0}
+                        >
+                          <code>{operation.output.slice(-12).join("\n")}</code>
+                        </pre>
+                      ) : null}
+                    </div>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              </Accordion.Root>
+            ) : null}
+
+            {detected && !active ? (
+              <div className="overseer-startup-primary-action">
+                <Button onClick={onContinue}>
+                  다음
+                  <ArrowRight aria-hidden="true" size={16} />
+                </Button>
+              </div>
             ) : null}
           </section>
         </div>

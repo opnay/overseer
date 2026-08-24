@@ -789,6 +789,7 @@ function ComposePage({
 
 interface MutationOptions {
   key: string;
+  onAccepted?: (operation: OperationSnapshot) => void;
   request: () => Promise<OperationAccepted>;
 }
 
@@ -852,7 +853,9 @@ function AppContent() {
   const [loadError, setLoadError] = useState<string>();
   const [startup, setStartup] = useState<StartupSnapshot>();
   const [startupError, setStartupError] = useState<string>();
+  const [startupOperationId, setStartupOperationId] = useState<string>();
   const [startupRefreshing, setStartupRefreshing] = useState(false);
+  const [startupStep, setStartupStep] = useState<StartupPrerequisiteId>();
   const [composeSkipped, setComposeSkipped] = useState(
     () =>
       startupPreview !== "docker" &&
@@ -925,9 +928,11 @@ function AppContent() {
     firstMissingRequiredPrerequisite?.id !== "homebrew" &&
     firstMissingRequiredPrerequisite?.id !== "docker",
   );
-  const startupVisible = Boolean(
-    displayedStartup && (!displayedStartup.ready || composeDecisionPending),
-  );
+  const detectedStartupStep = composeDecisionPending
+    ? "compose"
+    : firstMissingRequiredPrerequisite?.id;
+  const currentStartupStep = startupStep ?? detectedStartupStep;
+  const startupVisible = Boolean(displayedStartup && currentStartupStep);
   const startupCheckPending = Boolean(
     dashboard &&
     (dashboard.runtime.phase !== "running" || startupPreview) &&
@@ -940,6 +945,11 @@ function AppContent() {
     const interval = window.setInterval(() => void refreshStartup(), 10_000);
     return () => window.clearInterval(interval);
   }, [refreshStartup, startupVisible]);
+
+  useEffect(() => {
+    if (startupStep || !detectedStartupStep) return;
+    setStartupStep(detectedStartupStep);
+  }, [detectedStartupStep, startupStep]);
 
   useEffect(() => {
     if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview)) return;
@@ -1090,13 +1100,14 @@ function AppContent() {
     selectResourcePath(nextPath);
   };
 
-  const mutate = async ({ key, request }: MutationOptions) => {
+  const mutate = async ({ key, onAccepted, request }: MutationOptions) => {
     setSubmitting(key);
     setOperationError(undefined);
     try {
       const { operation } = await request();
       if (!operation) throw new Error("작업 응답을 확인하지 못했습니다.");
       setOperations((current) => [operation, ...current.filter(({ id }) => id !== operation.id)]);
+      onAccepted?.(operation);
       toastManager.add({
         description: operation.title,
         title: "작업을 시작했습니다.",
@@ -1142,6 +1153,7 @@ function AppContent() {
     }
     return mutate({
       key: `startup-install-${target}`,
+      onAccepted: (operation) => setStartupOperationId(operation.id),
       request: () =>
         apiRequest<OperationAccepted>(`/startup/prerequisites/${target}/install`, {
           method: "POST",
@@ -1171,22 +1183,38 @@ function AppContent() {
 
   if ((!dashboard && !loadError) || startupCheckPending) return <LoadingScreen />;
 
-  if (displayedStartup && startupVisible) {
-    const targetName = composeDecisionPending ? "compose" : firstMissingRequiredPrerequisite?.id;
-    const startupOperation = targetName
-      ? operations.find(
-          ({ status, target }) =>
-            target.resource === "startup" &&
-            target.name === targetName &&
-            status !== "succeeded" &&
-            status !== "cancelled",
-        )
+  if (displayedStartup && currentStartupStep) {
+    const startupOperation = startupOperationId
+      ? operations.find(({ id }) => id === startupOperationId)
       : undefined;
+    const continueStartup = () => {
+      if (!currentStartupStep) return;
+      setOperationError(undefined);
+      setStartupOperationId(undefined);
+      if (currentStartupStep === "homebrew") {
+        setStartupStep("docker");
+        return;
+      }
+      if (currentStartupStep === "docker") {
+        setStartupStep(
+          composePrerequisite && !composePrerequisite.installed && !composeSkipped
+            ? "compose"
+            : "lima",
+        );
+        return;
+      }
+      if (currentStartupStep === "compose") {
+        setStartupStep("lima");
+        return;
+      }
+      setStartupStep(undefined);
+    };
     return (
       <Suspense fallback={<LoadingScreen />}>
         <StartupPage
           composeSkipped={composeSkipped}
           error={startupError ?? operationError}
+          onContinue={continueStartup}
           onInstall={installStartupTarget}
           onRefresh={async () => {
             setOperationError(undefined);
@@ -1200,6 +1228,7 @@ function AppContent() {
           preview={Boolean(startupPreview)}
           refreshing={startupRefreshing}
           snapshot={displayedStartup}
+          step={currentStartupStep}
         />
       </Suspense>
     );

@@ -197,7 +197,11 @@ describe("App", () => {
         const url = String(input);
         if (url.endsWith("/api/startup")) {
           startupRequests += 1;
-          return jsonResponse(startupSnapshot({ docker: false, homebrew: false, lima: false }));
+          return jsonResponse(
+            startupRequests === 1
+              ? startupSnapshot({ compose: false, docker: false, homebrew: false, lima: false })
+              : startupSnapshot({ compose: false, docker: false, homebrew: true, lima: false }),
+          );
         }
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         return jsonResponse(dashboard);
@@ -238,7 +242,17 @@ describe("App", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "설치 확인" }));
-    await waitFor(() => expect(startupRequests).toBeGreaterThan(1));
+    expect(
+      await screen.findByRole("heading", { name: "Homebrew 설치를 확인했습니다.", level: 2 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Homebrew CLI 설치 명령")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "다음" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Docker CLI를 설치해야 합니다.", level: 2 }),
+    ).toBeInTheDocument();
   });
 
   it("previews a missing Homebrew state without changing the detected tools", async () => {
@@ -349,16 +363,31 @@ describe("App", () => {
       target: { name: "docker", resource: "startup" },
       title: "Docker CLI와 Compose 설치",
     });
+    const finished = operation("succeeded", {
+      kind: "startup.install",
+      output: ["Docker CLI 설치 완료", "Docker Compose 설치 완료"],
+      successMessage: "Docker CLI와 Compose를 설치했습니다.",
+      target: { name: "docker", resource: "startup" },
+      title: "Docker CLI와 Compose 설치",
+    });
+    let installStarted = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/startup")) {
-        return jsonResponse(startupSnapshot({ compose: false, docker: false, lima: false }));
+        return jsonResponse(
+          installStarted
+            ? startupSnapshot({ compose: true, docker: true, lima: false })
+            : startupSnapshot({ compose: false, docker: false, lima: false }),
+        );
       }
-      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/operations")) {
+        return jsonResponse({ operations: installStarted ? [finished] : [] });
+      }
       if (
         url.endsWith("/api/startup/prerequisites/docker-with-compose/install") &&
         init?.method === "POST"
       ) {
+        installStarted = true;
         return jsonResponse({ operation: accepted }, 202);
       }
       return jsonResponse(dashboard);
@@ -410,6 +439,28 @@ describe("App", () => {
         ),
       ).toBe(true),
     );
+
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "Docker CLI 설치를 확인했습니다.", level: 2 },
+        { timeout: 3_000 },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Docker CLI와 Compose 설치 명령")).not.toBeInTheDocument();
+    const automaticInstallLog = screen.getByRole("button", { name: "자동 설치 로그" });
+    expect(automaticInstallLog).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
+
+    await user.click(automaticInstallLog);
+    expect(screen.getByLabelText("Docker CLI와 Compose 설치 로그")).toHaveTextContent(
+      "Docker Compose 설치 완료",
+    );
+
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    expect(
+      await screen.findByRole("heading", { name: "Lima를 설치해야 합니다.", level: 2 }),
+    ).toBeInTheDocument();
   });
 
   it("refreshes startup status every 10 seconds and allows skipping Compose", async () => {
@@ -455,13 +506,73 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "상태 새로고침" }));
     expect(screen.getByRole("button", { name: "새로고침 중…" })).toBeDisabled();
+    await waitFor(() => expect(releaseRefresh).toBeTypeOf("function"));
     releaseRefresh?.(jsonResponse(snapshot));
     expect(await screen.findByRole("button", { name: "상태 새로고침" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "건너뛰기" }));
     expect(
+      await screen.findByRole("heading", {
+        name: "Docker Compose 설치를 건너뛰었습니다.",
+        level: 2,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Docker Compose 설치 명령")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    expect(
       await screen.findByRole("heading", { name: "Lima를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
+  });
+
+  it("leaves startup only after the detected final step is continued", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer",
+        message: "전용 Lima 인스턴스가 아직 없습니다.",
+        phase: "missing",
+      },
+      volumes: [],
+    };
+    let startupRequests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/startup")) {
+          startupRequests += 1;
+          return jsonResponse(
+            startupRequests === 1 ? startupSnapshot({ lima: false }) : startupSnapshot(),
+          );
+        }
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/containers");
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Lima를 설치해야 합니다.", level: 2 }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "상태 새로고침" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Lima 설치를 확인했습니다.", level: 2 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Lima 설치 명령")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "다음" }));
+
+    expect(await screen.findByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
   });
 
   it("keeps non-Compose resources available when optional Compose is missing", async () => {
