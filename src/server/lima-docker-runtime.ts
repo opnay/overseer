@@ -619,7 +619,10 @@ export class LimaDockerRuntime implements RuntimeController {
 
   async getComposeProject(name: string): Promise<ComposeProjectDetail> {
     const project = await this.requireComposeProject(name);
-    const result = await this.compose(project, ["ps", "--all", "--format", "json"]);
+    const [result, configuration] = await Promise.all([
+      this.compose(project, ["ps", "--all", "--format", "json"]),
+      this.getComposeProjectConfiguration(project),
+    ]);
     const services = parseJsonLines<DockerComposeServiceRow>(result.stdout).map(
       (row): ComposeServiceSummary => ({
         health: row.Health,
@@ -632,7 +635,48 @@ export class LimaDockerRuntime implements RuntimeController {
         status: row.Status,
       }),
     );
-    return { ...project, services };
+    return { ...project, configuration, services };
+  }
+
+  private async getComposeProjectConfiguration(
+    project: ComposeProjectSummary,
+  ): Promise<ComposeProjectDetail["configuration"]> {
+    if (project.remote) {
+      const remote = await this.remoteCompose.get(project.name);
+      if (!remote) {
+        throw new ExpectedError(
+          "remote_compose_not_found",
+          "URL Compose 프로젝트를 찾을 수 없습니다.",
+          404,
+        );
+      }
+      return {
+        checkedAt: remote.checkedAt,
+        ...(remote.checkError ? { checkError: remote.checkError } : {}),
+        contentHash: remote.contentHash,
+        kind: "remote",
+        ...(remote.pendingHash ? { pendingHash: remote.pendingHash } : {}),
+        ...(remote.pendingContent ? { pendingYaml: remote.pendingContent } : {}),
+        url: remote.url,
+        yaml: remote.content,
+      };
+    }
+    if (project.builder) {
+      const builder = await this.builderCompose.get(project.name);
+      if (!builder) {
+        throw new ExpectedError(
+          "builder_compose_not_found",
+          "폼 Compose 프로젝트를 찾을 수 없습니다.",
+          404,
+        );
+      }
+      return {
+        configHash: builder.configHash,
+        kind: "builder",
+        yaml: builder.yaml,
+      };
+    }
+    return { configFiles: project.configFiles, kind: "discovered" };
   }
 
   async getBuilderComposeProject(name: string): Promise<ComposeBuilderProjectDetail> {

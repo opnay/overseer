@@ -174,7 +174,29 @@ export interface ComposeServiceSummary {
   status: string;
 }
 
+export type ComposeProjectConfiguration =
+  | {
+      configFiles: string[];
+      kind: "discovered";
+    }
+  | {
+      configHash: string;
+      kind: "builder";
+      yaml: string;
+    }
+  | {
+      checkedAt: string;
+      checkError?: string;
+      contentHash: string;
+      kind: "remote";
+      pendingHash?: string;
+      pendingYaml?: string;
+      url: string;
+      yaml: string;
+    };
+
 export interface ComposeProjectDetail extends ComposeProjectSummary {
+  configuration: ComposeProjectConfiguration;
   services: ComposeServiceSummary[];
 }
 

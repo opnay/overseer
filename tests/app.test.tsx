@@ -694,6 +694,89 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/images");
   });
 
+  it("navigates from the container list to the container detail page", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [
+        {
+          id: "container-id",
+          image: "alpine:3.23",
+          name: "worker",
+          ports: "",
+          state: "running",
+          status: "Up 2 minutes",
+        },
+      ],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("/api/containers/container-id")
+          ? jsonResponse({
+              container: {
+                configHash: "a".repeat(64),
+                id: "container-id",
+                replacementBlockers: [],
+                running: true,
+                spec: {
+                  ...emptyContainerSpec(),
+                  command: ["sleep", "600"],
+                  environment: [{ key: "MODE", value: "worker" }],
+                  image: "alpine:3.23",
+                  labels: [{ key: "team", value: "platform" }],
+                  name: "worker",
+                  networks: ["bridge"],
+                },
+              },
+            })
+          : jsonResponse(dashboard),
+      ),
+    );
+    window.history.replaceState(null, "", "/containers");
+    render(<App />);
+
+    await user.click(await screen.findByRole("link", { name: "worker" }));
+
+    expect(await screen.findByRole("heading", { name: "worker", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/containers/container-id");
+    const containerNavigation = await screen.findByRole("navigation", {
+      name: "컨테이너 상세 메뉴",
+    });
+    const containerGroup = within(containerNavigation).getByRole("group", { name: "컨테이너" });
+    expect(within(containerGroup).getByRole("button", { name: "개요" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+
+    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
+    expect(screen.getByRole("heading", { name: "실행 설정", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText("sleep 600")).toBeInTheDocument();
+
+    await user.click(within(containerGroup).getByRole("button", { name: "연결" }));
+    expect(screen.getByText("bridge")).toBeInTheDocument();
+
+    await user.click(within(containerGroup).getByRole("button", { name: "환경 변수" }));
+    expect(screen.getByText("MODE")).toBeInTheDocument();
+
+    await user.click(within(containerGroup).getByRole("button", { name: "Label" }));
+    expect(screen.getByText("team")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "컨테이너 목록" }));
+
+    expect(window.location.pathname).toBe("/containers");
+    expect(screen.getByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
+  });
+
   it("renders discovered Compose projects and service details", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
@@ -704,7 +787,18 @@ describe("App", () => {
           status: "running(1)",
         },
       ],
-      containers: [],
+      containers: [
+        {
+          composeProject: "demo-stack",
+          composeService: "web",
+          id: "container-id",
+          image: "nginx:alpine",
+          name: "demo-stack-web-1",
+          ports: "127.0.0.1:8080->80/tcp",
+          state: "running",
+          status: "Up 1 minute",
+        },
+      ],
       images: [],
       networks: [],
       runtime: {
@@ -717,29 +811,56 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).includes("/api/compose/projects/demo-stack")
-          ? jsonResponse({
-              project: {
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/compose/projects/demo-stack/logs")) {
+          return jsonResponse({ logs: "web | ready" });
+        }
+        if (url.includes("/api/compose/projects/demo-stack")) {
+          return jsonResponse({
+            project: {
+              configFiles: ["/workspace/compose.yaml"],
+              configuration: {
                 configFiles: ["/workspace/compose.yaml"],
-                name: "demo-stack",
-                services: [
-                  {
-                    health: "",
-                    id: "container-id",
-                    image: "nginx:alpine",
-                    name: "demo-stack-web-1",
-                    ports: "127.0.0.1:8080->80/tcp",
-                    service: "web",
-                    state: "running",
-                    status: "Up 1 minute",
-                  },
-                ],
-                status: "running(1)",
+                kind: "discovered",
               },
-            })
-          : jsonResponse(dashboard),
-      ),
+              name: "demo-stack",
+              services: [
+                {
+                  health: "",
+                  id: "container-id",
+                  image: "nginx:alpine",
+                  name: "demo-stack-web-1",
+                  ports: "127.0.0.1:8080->80/tcp",
+                  service: "web",
+                  state: "running",
+                  status: "Up 1 minute",
+                },
+              ],
+              status: "running(1)",
+            },
+          });
+        }
+        if (url.includes("/api/containers/container-id")) {
+          return jsonResponse({
+            container: {
+              configHash: "a".repeat(64),
+              id: "container-id",
+              replacementBlockers: ["Compose에서 관리하는 컨테이너입니다."],
+              running: true,
+              spec: {
+                ...emptyContainerSpec(),
+                command: ["nginx", "-g", "daemon off;"],
+                image: "nginx:alpine",
+                name: "demo-stack-web-1",
+                networks: ["demo-stack_default"],
+                ports: [{ containerPort: 80, hostPort: 8080, protocol: "tcp" }],
+              },
+            },
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
     );
     window.history.replaceState(null, "", "/compose");
 
@@ -751,8 +872,206 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "demo-stack 서비스 보기" }));
 
-    expect(await screen.findByRole("heading", { name: "demo-stack 서비스" })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /demo-stack-web-1/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "demo-stack", level: 1 }),
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/compose/demo-stack");
+    expect(screen.getByRole("button", { name: "중지" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "재시작" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "내리기" })).toBeEnabled();
+    const composeNavigation = await screen.findByRole("navigation", { name: "Compose 상세 메뉴" });
+    const composeGroup = within(composeNavigation).getByRole("group", {
+      name: "Compose 프로젝트",
+    });
+    expect(within(composeGroup).getByRole("button", { name: "개요" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+
+    expect(within(composeGroup).getByRole("button", { name: "구성" })).toBeEnabled();
+    expect(within(composeGroup).getByRole("button", { name: "로그" })).toBeEnabled();
+    expect(
+      within(composeGroup).queryByRole("button", { name: "업데이트" }),
+    ).not.toBeInTheDocument();
+    expect(within(composeGroup).queryByRole("button", { name: "폼 설정" })).not.toBeInTheDocument();
+
+    await user.click(within(composeGroup).getByRole("button", { name: "구성" }));
+    expect(screen.getAllByText("/workspace/compose.yaml").length).toBeGreaterThan(0);
+
+    await user.click(within(composeGroup).getByRole("button", { name: "로그" }));
+    expect(await screen.findByText("web | ready")).toBeInTheDocument();
+
+    await user.click(within(composeGroup).getByRole("button", { name: "서비스" }));
+    const containerLink = await screen.findByRole("link", { name: "demo-stack-web-1" });
+    expect(containerLink).toHaveAttribute("href", "/containers/container-id");
+
+    await user.click(containerLink);
+
+    expect(
+      await screen.findByRole("heading", { name: "demo-stack-web-1", level: 1 }),
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/containers/container-id");
+    expect(await screen.findByRole("heading", { name: "개요", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText("Compose에서 관리하는 컨테이너입니다.")).toBeInTheDocument();
+  });
+
+  it("shows URL Compose update details and actions only for remote projects", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [
+        {
+          configFiles: ["/host/remote-stack/compose.yaml"],
+          name: "remote-stack",
+          remote: {
+            buildContext: false,
+            checkedAt: "2026-08-24T00:00:00.000Z",
+            updateAvailable: true,
+            url: "https://example.com/compose.yaml",
+          },
+          status: "registered",
+        },
+      ],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/compose/projects/remote-stack/remote/check")) {
+        return jsonResponse(
+          {
+            operation: operation("queued", {
+              kind: "compose.remote.check",
+              target: { name: "remote-stack", resource: "compose" },
+              title: "Compose 업데이트 확인",
+            }),
+          },
+          202,
+        );
+      }
+      if (url.endsWith("/api/compose/projects/remote-stack")) {
+        return jsonResponse({
+          project: {
+            ...dashboard.composeProjects[0],
+            configuration: {
+              checkedAt: "2026-08-24T00:00:00.000Z",
+              contentHash: "a".repeat(64),
+              kind: "remote",
+              pendingHash: "b".repeat(64),
+              pendingYaml: "services:\n  web:\n    image: nginx:1.29\n",
+              url: "https://example.com/compose.yaml",
+              yaml: "services:\n  web:\n    image: nginx:1.28\n",
+            },
+            services: [],
+          },
+        });
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/compose/remote-stack");
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", { name: "Compose 상세 메뉴" });
+    const group = within(navigation).getByRole("group", { name: "Compose 프로젝트" });
+    expect(within(group).getByRole("button", { name: "업데이트" })).toBeEnabled();
+    expect(within(group).queryByRole("button", { name: "폼 설정" })).not.toBeInTheDocument();
+
+    await user.click(within(group).getByRole("button", { name: "업데이트" }));
+
+    expect(screen.getByText("적용 대기 YAML")).toBeInTheDocument();
+    expect(screen.getByText(/nginx:1\.29/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "업데이트 적용" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/compose/projects/remote-stack/remote/check") &&
+            init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("shows form settings and opens the editor only for builder projects", async () => {
+    const user = userEvent.setup();
+    const spec = {
+      ...emptyComposeBuilderSpec(),
+      name: "form-stack",
+      services: [{ ...emptyComposeBuilderService(), image: "nginx", name: "web" }],
+    };
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [
+        {
+          builder: { configHash: "a".repeat(64) },
+          configFiles: ["/host/form-stack/compose.yaml"],
+          name: "form-stack",
+          status: "registered",
+        },
+      ],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/compose/projects/form-stack/builder")) {
+          return jsonResponse({
+            project: {
+              configHash: "a".repeat(64),
+              spec,
+              yaml: 'services:\n  web:\n    image: "nginx:latest"\n',
+            },
+          });
+        }
+        if (url.endsWith("/api/compose/projects/form-stack")) {
+          return jsonResponse({
+            project: {
+              ...dashboard.composeProjects[0],
+              configuration: {
+                configHash: "a".repeat(64),
+                kind: "builder",
+                yaml: 'services:\n  web:\n    image: "nginx:latest"\n',
+              },
+              services: [],
+            },
+          });
+        }
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/compose/form-stack");
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", { name: "Compose 상세 메뉴" });
+    const group = within(navigation).getByRole("group", { name: "Compose 프로젝트" });
+    expect(within(group).getByRole("button", { name: "폼 설정" })).toBeEnabled();
+    expect(within(group).queryByRole("button", { name: "업데이트" })).not.toBeInTheDocument();
+
+    await user.click(within(group).getByRole("button", { name: "폼 설정" }));
+    await user.click(screen.getByRole("button", { name: "폼 설정 편집" }));
+
+    expect(await screen.findByRole("dialog", { name: "폼 Compose 수정" })).toBeInTheDocument();
   });
 
   it("registers a raw HTTPS Compose URL through the async operation API", async () => {

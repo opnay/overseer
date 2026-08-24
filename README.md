@@ -31,8 +31,8 @@ pnpm dev
 
 리소스는 독립 URL에서 관리합니다.
 
-- `/compose`: 폼 또는 raw HTTPS URL 프로젝트 등록, YAML 미리보기, 업데이트 확인·적용, 실행·중지·재시작·로그·내리기
-- `/containers`: 확장 설정으로 실행·수정, 시작·중지·재시작·로그·삭제
+- `/compose`, `/compose/:name`: 폼 또는 raw HTTPS URL 프로젝트 등록, 개요·서비스·구성·로그 상세, URL 업데이트와 폼 설정, 실행·중지·재시작·내리기
+- `/containers`, `/containers/:id`: 확장 설정으로 실행·수정, 개요·실행 설정·연결·환경 변수·Label 상세, 시작·중지·재시작·로그·삭제
 - `/images`: pull·삭제
 - `/volumes`: 생성·삭제
 - `/networks`: 생성·삭제, 기본 네트워크 보호

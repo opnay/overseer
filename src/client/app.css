@@ -350,7 +350,8 @@
     min-width: 0;
   }
 
-  .overseer-settings-layout {
+  .overseer-settings-layout,
+  .overseer-detail-layout {
     display: grid;
     min-width: 0;
     align-items: start;
@@ -358,7 +359,8 @@
     gap: var(--city-space-6);
   }
 
-  .overseer-settings-sidebar {
+  .overseer-settings-sidebar,
+  .overseer-detail-sidebar {
     min-width: 0;
     min-height: 28rem;
     padding-right: var(--city-space-4);
@@ -367,20 +369,25 @@
 
   .overseer-settings-sidebar nav,
   .overseer-settings-nav-group,
-  .overseer-settings-nav-items {
+  .overseer-settings-nav-items,
+  .overseer-detail-sidebar nav,
+  .overseer-detail-nav-group,
+  .overseer-detail-nav-items {
     display: grid;
     min-width: 0;
     gap: var(--city-space-1);
   }
 
-  .overseer-settings-nav-label {
+  .overseer-settings-nav-label,
+  .overseer-detail-nav-label {
     padding: var(--city-space-1) var(--city-space-2-5);
     color: var(--city-color-muted-foreground);
     font-size: var(--city-font-size-xs);
     font-weight: var(--city-font-weight-semibold);
   }
 
-  .overseer-settings-nav-items button {
+  .overseer-settings-nav-items button,
+  .overseer-detail-nav-items button {
     display: flex;
     width: 100%;
     min-height: var(--city-control-md);
@@ -395,36 +402,48 @@
     text-align: left;
   }
 
-  .overseer-settings-nav-items button:hover {
+  .overseer-settings-nav-items button:hover,
+  .overseer-detail-nav-items button:hover {
     background: var(--city-color-accent);
     color: var(--city-color-foreground);
   }
 
-  .overseer-settings-nav-items button:focus-visible {
+  .overseer-settings-nav-items button:focus-visible,
+  .overseer-detail-nav-items button:focus-visible {
     outline: 2px solid var(--city-color-ring);
     outline-offset: 2px;
   }
 
-  .overseer-settings-nav-items button[aria-current="page"] {
+  .overseer-settings-nav-items button[aria-current="page"],
+  .overseer-detail-nav-items button[aria-current="page"] {
     border-color: var(--city-color-border);
     background: var(--city-color-muted);
     color: var(--city-color-foreground);
   }
 
-  .overseer-settings-content {
+  .overseer-settings-content,
+  .overseer-detail-content {
+    display: grid;
+    min-width: 0;
     gap: var(--city-space-5);
   }
 
-  .overseer-settings-content-header {
+  .overseer-settings-content-header,
+  .overseer-detail-content-header {
+    display: grid;
+    min-width: 0;
     gap: var(--city-space-1);
   }
 
   .overseer-settings-content-header p,
-  .overseer-settings-content-header h2 {
+  .overseer-settings-content-header h2,
+  .overseer-detail-content-header p,
+  .overseer-detail-content-header h2 {
     margin: 0;
   }
 
-  .overseer-settings-content-header p {
+  .overseer-settings-content-header p,
+  .overseer-detail-content-header p {
     color: var(--city-color-muted-foreground);
     font-family: var(--city-font-family-mono);
     font-size: var(--city-font-size-2xs);
@@ -433,7 +452,8 @@
     text-transform: uppercase;
   }
 
-  .overseer-settings-content-header > span {
+  .overseer-settings-content-header > span,
+  .overseer-detail-content-header > span {
     color: var(--city-color-muted-foreground);
   }
 
@@ -523,6 +543,199 @@
   .overseer-recreate-preserved {
     margin: 0 0 var(--city-space-4);
     color: var(--city-color-muted-foreground);
+  }
+
+  .overseer-detail-page,
+  .overseer-detail-loading,
+  .overseer-detail-section,
+  .overseer-detail-section > header,
+  .overseer-detail-section > header > div {
+    display: grid;
+    min-width: 0;
+  }
+
+  .overseer-detail-page,
+  .overseer-detail-loading {
+    gap: var(--city-space-6);
+  }
+
+  .overseer-detail-loading > * {
+    min-height: var(--city-control-lg);
+  }
+
+  .overseer-detail-summary {
+    display: grid;
+    padding: var(--city-space-4);
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-md);
+    background: var(--city-color-surface-raised);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--city-space-4);
+  }
+
+  .overseer-detail-summary > div {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-detail-summary span,
+  .overseer-detail-definitions dt,
+  .overseer-detail-key-values dt {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-detail-summary strong {
+    overflow: hidden;
+    font-size: var(--city-font-size-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .overseer-detail-section {
+    gap: var(--city-space-4);
+  }
+
+  .overseer-detail-section > header > div {
+    gap: var(--city-space-1);
+  }
+
+  .overseer-detail-section h2,
+  .overseer-detail-section h3,
+  .overseer-detail-section p {
+    margin: 0;
+  }
+
+  .overseer-detail-section header p,
+  .overseer-detail-empty-copy {
+    color: var(--city-color-muted-foreground);
+  }
+
+  .overseer-detail-source {
+    display: block;
+    padding: var(--city-space-3) var(--city-space-4);
+    overflow-wrap: anywhere;
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-sm);
+    background: var(--city-color-muted);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-detail-link {
+    color: var(--city-color-foreground);
+    font-weight: var(--city-font-weight-semibold);
+    text-decoration: underline;
+    text-decoration-color: var(--city-color-border);
+    text-underline-offset: 0.2em;
+  }
+
+  .overseer-detail-link:hover {
+    text-decoration-color: currentColor;
+  }
+
+  .overseer-detail-link:focus-visible {
+    border-radius: var(--city-radius-xs);
+    outline: 2px solid var(--city-color-ring);
+    outline-offset: 2px;
+  }
+
+  .overseer-detail-definitions {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--city-space-4);
+  }
+
+  .overseer-detail-definitions--wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overseer-detail-definitions > div,
+  .overseer-detail-key-values > div {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-detail-definitions dt,
+  .overseer-detail-definitions dd,
+  .overseer-detail-key-values dt,
+  .overseer-detail-key-values dd {
+    margin: 0;
+  }
+
+  .overseer-detail-definitions dd {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: var(--city-space-1) var(--city-space-2);
+    font-size: var(--city-font-size-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .overseer-detail-definitions code,
+  .overseer-detail-key-values code {
+    font-size: var(--city-font-size-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .overseer-detail-key-values {
+    display: grid;
+    border-top: 1px solid var(--city-color-border);
+  }
+
+  .overseer-detail-key-values > div {
+    padding: var(--city-space-2-5) 0;
+    border-bottom: 1px solid var(--city-color-border);
+    grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1fr);
+  }
+
+  .overseer-detail-empty-copy {
+    font-size: var(--city-font-size-sm);
+  }
+
+  .overseer-detail-yaml,
+  .overseer-detail-log {
+    min-height: 22rem;
+    max-height: min(60vh, 48rem);
+    margin: 0;
+    padding: var(--city-space-4);
+    overflow: auto;
+    border-radius: var(--city-radius-sm);
+    background: var(--city-palette-neutral-950);
+    color: var(--city-palette-neutral-100);
+    font-family: var(--city-font-family-mono);
+    font-size: var(--city-font-size-xs);
+    line-height: var(--city-line-height-sm);
+    white-space: pre;
+  }
+
+  .overseer-detail-log:focus-visible {
+    outline: 2px solid var(--city-palette-neutral-400);
+    outline-offset: -2px;
+  }
+
+  .overseer-detail-file-list {
+    display: grid;
+    gap: var(--city-space-2);
+  }
+
+  .overseer-detail-file-list code {
+    padding: var(--city-space-3) var(--city-space-4);
+    overflow-wrap: anywhere;
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-sm);
+    background: var(--city-color-muted);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-detail-actions {
+    display: flex;
+    padding-top: var(--city-space-4);
+    border-top: 1px solid var(--city-color-border);
+    justify-content: flex-end;
+    gap: var(--city-space-2);
   }
 
   .overseer-table {
@@ -1172,14 +1385,28 @@
     }
 
     .overseer-terminal-scroll,
-    .overseer-terminal-empty {
+    .overseer-terminal-empty,
+    .overseer-detail-yaml,
+    .overseer-detail-log {
       min-height: 18rem;
+    }
+
+    .overseer-detail-actions {
+      align-items: stretch;
+      flex-direction: column-reverse;
+    }
+
+    .overseer-detail-actions > * {
+      width: 100%;
     }
 
     .overseer-form-section-grid,
     .overseer-settings-grid,
     .overseer-settings-resource-grid,
     .overseer-settings-status,
+    .overseer-detail-summary,
+    .overseer-detail-definitions,
+    .overseer-detail-definitions--wide,
     .overseer-operation-detail-meta,
     .overseer-repeatable-row,
     .overseer-port-row,
@@ -1187,12 +1414,18 @@
       grid-template-columns: 1fr;
     }
 
-    .overseer-settings-layout {
+    .overseer-detail-key-values > div {
+      grid-template-columns: 1fr;
+    }
+
+    .overseer-settings-layout,
+    .overseer-detail-layout {
       grid-template-columns: 1fr;
       gap: var(--city-space-5);
     }
 
-    .overseer-settings-sidebar {
+    .overseer-settings-sidebar,
+    .overseer-detail-sidebar {
       min-height: 0;
       padding-right: 0;
       padding-bottom: var(--city-space-4);
@@ -1200,12 +1433,14 @@
       border-bottom: 1px solid var(--city-color-border);
     }
 
-    .overseer-settings-nav-items {
+    .overseer-settings-nav-items,
+    .overseer-detail-nav-items {
       display: flex;
       overflow-x: auto;
     }
 
-    .overseer-settings-nav-items button {
+    .overseer-settings-nav-items button,
+    .overseer-detail-nav-items button {
       width: auto;
       flex: none;
     }
@@ -1233,6 +1468,7 @@
   @media (pointer: coarse) {
     .overseer-sidebar nav a,
     .overseer-settings-nav-items button,
+    .overseer-detail-nav-items button,
     .city-button,
     .overseer-terminal-actions button {
       min-height: var(--city-hit-target-min);

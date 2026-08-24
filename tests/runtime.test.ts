@@ -269,7 +269,18 @@ describe("LimaDockerRuntime remote Compose", () => {
     const registry: RemoteComposeRegistry = {
       applyUpdate: vi.fn(async () => undefined),
       checkUpdate: vi.fn(async () => undefined),
-      get: vi.fn(async () => undefined),
+      get: vi.fn(async () => ({
+        buildContext: false,
+        checkedAt: "2026-08-23T00:00:00.000Z",
+        configFile: "/host/compose/remote-stack/compose.yaml",
+        content: "services: {}\n",
+        contentHash: "a".repeat(64),
+        name: "remote-stack",
+        pendingContent: "services:\n  web:\n    image: nginx\n",
+        pendingHash: "b".repeat(64),
+        updateAvailable: true,
+        url: "https://example.com/compose.yaml",
+      })),
       list: vi.fn(async () => [
         {
           buildContext: false,
@@ -288,6 +299,15 @@ describe("LimaDockerRuntime remote Compose", () => {
     };
     const runtime = new LimaDockerRuntime(command, registry, emptyBuilderRegistry());
 
+    await expect(runtime.getComposeProject("remote-stack")).resolves.toMatchObject({
+      configuration: {
+        contentHash: "a".repeat(64),
+        kind: "remote",
+        pendingHash: "b".repeat(64),
+        pendingYaml: expect.stringContaining("image: nginx"),
+        yaml: "services: {}\n",
+      },
+    });
     await runtime.composeProjectAction("remote-stack", "up");
 
     expect(commands).toContainEqual({
@@ -383,7 +403,13 @@ describe("LimaDockerRuntime form Compose", () => {
       remove: vi.fn(async () => undefined),
     };
     const builder: BuilderComposeRegistry = {
-      get: vi.fn(async () => undefined),
+      get: vi.fn(async () => ({
+        configFile: "/host/compose/form-stack/compose.yaml",
+        configHash: "a".repeat(64),
+        name: "form-stack",
+        spec: { name: "form-stack", networks: [], services: [], volumes: [] },
+        yaml: "services: {}\n",
+      })),
       list: vi.fn(async () => [
         {
           configFile: "/host/compose/form-stack/compose.yaml",
@@ -406,6 +432,13 @@ describe("LimaDockerRuntime form Compose", () => {
     await expect(runtime.getComposeProjects()).resolves.toMatchObject([
       { builder: { configHash: "a".repeat(64) }, name: "form-stack", status: "registered" },
     ]);
+    await expect(runtime.getComposeProject("form-stack")).resolves.toMatchObject({
+      configuration: {
+        configHash: "a".repeat(64),
+        kind: "builder",
+        yaml: "services: {}\n",
+      },
+    });
     await runtime.composeProjectAction("form-stack", "up");
     expect(commands).toContainEqual({
       args: [

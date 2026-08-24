@@ -31,6 +31,7 @@ function createController(): RuntimeController {
     getContainers: vi.fn(async () => []),
     getComposeProject: vi.fn(async (name) => ({
       configFiles: ["/workspace/compose.yaml"],
+      configuration: { configFiles: ["/workspace/compose.yaml"], kind: "discovered" as const },
       name,
       services: [],
       status: "running(1)",

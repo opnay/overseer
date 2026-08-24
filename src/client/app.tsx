@@ -12,6 +12,7 @@ import { Table } from "@opnay/city-ds-react/table";
 import { Toolbar } from "@opnay/city-ds-react/toolbar";
 import { Toast } from "@opnay/city-ds-react/toast";
 import {
+  ArrowLeft,
   ArrowDownToLine,
   Box,
   Boxes,
@@ -53,7 +54,6 @@ import {
 import type {
   ComposeProjectAction,
   ComposeBuilderSpec,
-  ComposeProjectDetail,
   ComposeProjectSummary,
   ContainerDetail,
   ContainerSpecInput,
@@ -72,7 +72,17 @@ import type {
 } from "../shared/contracts.ts";
 import { isImageReference, isResourceName } from "../shared/validation.ts";
 import { ApiRequestError, apiRequest } from "./api.ts";
-import { APP_ROUTES, APP_ROUTE_GROUPS, getAppRoute, type AppPath } from "./routes.ts";
+import {
+  APP_ROUTES,
+  APP_ROUTE_GROUPS,
+  composeProjectDetailPath,
+  containerDetailPath,
+  getAppDetailLocation,
+  getAppLocation,
+  getAppRoute,
+  type AppLocationPath,
+  type AppPath,
+} from "./routes.ts";
 
 const RunContainerDialog = lazy(() =>
   import("./container-dialog.tsx").then((module) => ({ default: module.RunContainerDialog })),
@@ -98,6 +108,16 @@ const OperationsPage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   import("./settings-page.tsx").then((module) => ({ default: module.SettingsPage })),
+);
+const ComposeProjectDetailPage = lazy(() =>
+  import("./compose-project-detail-page.tsx").then((module) => ({
+    default: module.ComposeProjectDetailPage,
+  })),
+);
+const ContainerDetailPage = lazy(() =>
+  import("./container-detail-page.tsx").then((module) => ({
+    default: module.ContainerDetailPage,
+  })),
 );
 const CreateBuilderComposeDialog = lazy(() =>
   import("./builder-compose-dialog.tsx").then((module) => ({
@@ -505,134 +525,10 @@ function composeFileName(file: string): string {
   return file.split("/").filter(Boolean).at(-1) ?? file;
 }
 
-function ComposeProjectDialog({
-  onClose,
-  project,
-}: {
-  onClose: () => void;
-  project?: ComposeProjectSummary;
-}) {
-  const [detail, setDetail] = useState<ComposeProjectDetail>();
-  const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!project) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const result = await apiRequest<{ project: ComposeProjectDetail }>(
-        `/compose/projects/${encodeURIComponent(project.name)}`,
-      );
-      setDetail(result.project);
-    } catch (loadError) {
-      setError(actionError(loadError));
-    } finally {
-      setLoading(false);
-    }
-  }, [project]);
-
-  useEffect(() => {
-    setDetail(undefined);
-    if (project) void load();
-  }, [project, load]);
-
-  return (
-    <Dialog.Root onOpenChange={(open) => !open && onClose()} open={Boolean(project)}>
-      <Dialog.Portal>
-        <Dialog.Backdrop />
-        <Dialog.Viewport>
-          <Dialog.Popup size="xl">
-            <Dialog.Header>
-              <div>
-                <Dialog.Title>{project?.name} 서비스</Dialog.Title>
-                <Dialog.Description>
-                  {project?.configFiles.map(composeFileName).join(" · ")}
-                </Dialog.Description>
-              </div>
-              <Button disabled={loading} onClick={() => void load()} size="sm" variant="outline">
-                <RefreshCw aria-hidden="true" size={14} />
-                새로고침
-              </Button>
-            </Dialog.Header>
-            <Dialog.Body>
-              {error ? (
-                <Alert.Root tone="destructive">
-                  <Alert.Title level={3}>서비스 상태를 불러오지 못했습니다.</Alert.Title>
-                  <Alert.Description>{error}</Alert.Description>
-                </Alert.Root>
-              ) : loading && !detail ? (
-                <div aria-live="polite" role="status">
-                  서비스 상태를 불러오는 중…
-                </div>
-              ) : detail ? (
-                <DataTableRegion
-                  hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-                  label={`${detail.name} 서비스 표`}
-                >
-                  <Table.Root
-                    aria-label={`${detail.name} 서비스 목록`}
-                    className="overseer-table overseer-table--compose-services"
-                    size="sm"
-                  >
-                    <Table.Caption className="overseer-table-caption">
-                      {detail.name} Compose 서비스
-                    </Table.Caption>
-                    <Table.Header>
-                      <Table.Row>
-                        <Table.Head>서비스</Table.Head>
-                        <Table.Head>컨테이너</Table.Head>
-                        <Table.Head>이미지</Table.Head>
-                        <Table.Head>상태</Table.Head>
-                        <Table.Head>포트</Table.Head>
-                      </Table.Row>
-                    </Table.Header>
-                    <Table.Body>
-                      {detail.services.length === 0 ? (
-                        <Table.StateRow colSpan={5}>
-                          등록된 서비스 컨테이너가 없습니다.
-                        </Table.StateRow>
-                      ) : (
-                        detail.services.map((service) => {
-                          const running = service.state === "running";
-                          return (
-                            <Table.Row key={service.id || service.name}>
-                              <Table.Cell>
-                                <strong>{service.service}</strong>
-                              </Table.Cell>
-                              <Table.Cell>{service.name}</Table.Cell>
-                              <Table.Cell>{service.image}</Table.Cell>
-                              <Table.Cell>
-                                <span className="overseer-container-status">
-                                  <Badge
-                                    aria-label={running ? "실행 중" : "중지됨"}
-                                    dot
-                                    size="sm"
-                                    tone={running ? "success" : "neutral"}
-                                  />
-                                  <span>{service.health || service.status}</span>
-                                </span>
-                              </Table.Cell>
-                              <Table.Cell>
-                                <code>{service.ports || "—"}</code>
-                              </Table.Cell>
-                            </Table.Row>
-                          );
-                        })
-                      )}
-                    </Table.Body>
-                  </Table.Root>
-                </DataTableRegion>
-              ) : null}
-            </Dialog.Body>
-            <Dialog.Footer>
-              <Dialog.Close render={<Button variant="outline" />}>닫기</Dialog.Close>
-            </Dialog.Footer>
-          </Dialog.Popup>
-        </Dialog.Viewport>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
+function followAppLink(event: MouseEvent<HTMLAnchorElement>, onFollow: () => void) {
+  if (event.button > 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  onFollow();
 }
 
 function ComposePage({
@@ -711,7 +607,13 @@ function ComposePage({
                   <Table.Row key={project.name}>
                     <Table.Cell>
                       <div className="overseer-primary-cell">
-                        <strong>{project.name}</strong>
+                        <a
+                          className="overseer-detail-link"
+                          href={composeProjectDetailPath(project.name)}
+                          onClick={(event) => followAppLink(event, () => onInspect(project))}
+                        >
+                          {project.name}
+                        </a>
                         {project.remote ? (
                           <span className="overseer-primary-meta">URL 등록</span>
                         ) : project.builder ? (
@@ -882,8 +784,8 @@ interface MutationOptions {
   request: () => Promise<OperationAccepted>;
 }
 
-function resourcePathFromLocation(): AppPath {
-  return getAppRoute(window.location.pathname).path;
+function resourcePathFromLocation(): AppLocationPath {
+  return getAppLocation(window.location.pathname);
 }
 
 export function App() {
@@ -901,10 +803,10 @@ function AppContent() {
   const [submitting, setSubmitting] = useState<string>();
   const [operations, setOperations] = useState<OperationSnapshot[]>([]);
   const [editContainer, setEditContainer] = useState<ContainerSummary>();
-  const [composeDetailProject, setComposeDetailProject] = useState<ComposeProjectSummary>();
   const [logsTarget, setLogsTarget] = useState<LogsTarget>();
   const [dark, setDark] = useState(() => window.localStorage.getItem("overseer-theme") === "dark");
-  const [resourcePath, setResourcePath] = useState<AppPath>(resourcePathFromLocation);
+  const [resourcePath, setResourcePath] = useState<AppLocationPath>(resourcePathFromLocation);
+  const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
   const notifiedOperations = useRef(new Set<string>());
   const operationsInitialized = useRef(false);
@@ -1048,13 +950,13 @@ function AppContent() {
     return () => window.removeEventListener("popstate", syncResourcePath);
   }, []);
 
-  const selectResourcePath = useCallback((nextPath: AppPath) => {
+  const selectResourcePath = useCallback((nextPath: AppLocationPath) => {
     setResourcePath(nextPath);
     if (window.location.pathname !== nextPath) window.history.pushState(null, "", nextPath);
   }, []);
 
-  const handleResourceLink = (event: MouseEvent<HTMLAnchorElement>, nextPath: AppPath) => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+  const handleResourceLink = (event: MouseEvent<HTMLAnchorElement>, nextPath: AppLocationPath) => {
+    if (event.button > 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return;
     }
     event.preventDefault();
@@ -1145,8 +1047,105 @@ function AppContent() {
       target.resource === "runtime" && status !== "queued" && status !== "running",
   );
   const settingsRefreshToken = `${settingsRefreshRevision}:${latestFinishedRuntimeOperation?.id ?? ""}:${latestFinishedRuntimeOperation?.status ?? ""}`;
+  const currentDetail = getAppDetailLocation(resourcePath);
   const currentRoute = getAppRoute(resourcePath);
-  const pagePrimaryAction = !runtimeRunning ? null : resourcePath === "/compose" ? (
+  const currentContainer =
+    currentDetail?.type === "container"
+      ? dashboard?.containers.find(
+          ({ id, name }) =>
+            id === currentDetail.identifier ||
+            name === currentDetail.identifier ||
+            id.startsWith(currentDetail.identifier) ||
+            currentDetail.identifier.startsWith(id),
+        )
+      : undefined;
+  const currentCompose =
+    currentDetail?.type === "compose"
+      ? dashboard?.composeProjects.find(({ name }) => name === currentDetail.identifier)
+      : undefined;
+  const latestFinishedDetailOperation = currentDetail
+    ? operations.find(
+        ({ status, target }) =>
+          target.resource === currentDetail.type &&
+          status !== "queued" &&
+          status !== "running" &&
+          (target.id === currentDetail.identifier || target.name === currentDetail.identifier),
+      )
+    : undefined;
+  const detailRefreshToken = `${detailRefreshRevision}:${latestFinishedDetailOperation?.id ?? ""}:${latestFinishedDetailOperation?.status ?? ""}`;
+  const pageEyebrow = currentDetail
+    ? currentDetail.type === "compose"
+      ? "COMPOSE PROJECT"
+      : "CONTAINER DETAIL"
+    : currentRoute.eyebrow;
+  const pageLabel = currentDetail
+    ? currentDetail.type === "compose"
+      ? currentDetail.identifier
+      : (currentContainer?.name ?? currentDetail.identifier)
+    : currentRoute.label;
+  const pageDescription = currentDetail
+    ? currentDetail.type === "compose"
+      ? "프로젝트 구성, 서비스, 로그와 소스별 설정을 관리합니다."
+      : "컨테이너 실행 상태와 전체 구성을 확인합니다."
+    : currentRoute.description;
+  const runComposeAction = (name: string, action: ComposeProjectAction) =>
+    mutate({
+      key: `compose-${name}-${action}`,
+      request: () =>
+        apiRequest<OperationAccepted>(
+          `/compose/projects/${encodeURIComponent(name)}/actions/${action}`,
+          { method: "POST" },
+        ),
+    });
+  const pagePrimaryAction = !runtimeRunning ? null : currentCompose ? (
+    <div className="overseer-compose-create-actions">
+      {composeIsRunning(currentCompose.status) ? (
+        <>
+          <Button
+            disabled={runtimeBusy || targetBusy("compose", currentCompose.name)}
+            onClick={() =>
+              void runComposeAction(currentCompose.name, "stop").catch(() => undefined)
+            }
+            size="sm"
+            variant="outline"
+          >
+            <Square aria-hidden="true" size={14} />
+            중지
+          </Button>
+          <Button
+            disabled={runtimeBusy || targetBusy("compose", currentCompose.name)}
+            onClick={() =>
+              void runComposeAction(currentCompose.name, "restart").catch(() => undefined)
+            }
+            size="sm"
+            variant="outline"
+          >
+            <RotateCcw aria-hidden="true" size={14} />
+            재시작
+          </Button>
+        </>
+      ) : (
+        <Button
+          disabled={runtimeBusy || targetBusy("compose", currentCompose.name)}
+          onClick={() => void runComposeAction(currentCompose.name, "up").catch(() => undefined)}
+          size="sm"
+        >
+          <Play aria-hidden="true" size={14} />
+          실행
+        </Button>
+      )}
+      <ConfirmAction
+        actionLabel="프로젝트 내리기"
+        disabled={runtimeBusy || targetBusy("compose", currentCompose.name)}
+        description="컨테이너와 네트워크를 제거합니다. named volume과 Compose 등록 정보는 유지됩니다."
+        onConfirm={() => void runComposeAction(currentCompose.name, "down").catch(() => undefined)}
+        title={`${currentCompose.name} 프로젝트를 내리시겠습니까?`}
+      >
+        <ArrowDownToLine aria-hidden="true" size={14} />
+        내리기
+      </ConfirmAction>
+    </div>
+  ) : resourcePath === "/compose" ? (
     <div className="overseer-compose-create-actions">
       <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
         <CreateBuilderComposeDialog
@@ -1284,7 +1283,7 @@ function AppContent() {
                     const Icon = resourceRouteIcon[route.path];
                     return (
                       <a
-                        aria-current={resourcePath === route.path ? "page" : undefined}
+                        aria-current={currentRoute.path === route.path ? "page" : undefined}
                         href={route.path}
                         key={route.path}
                         onClick={(event) => handleResourceLink(event, route.path)}
@@ -1350,12 +1349,22 @@ function AppContent() {
         <main className="overseer-main" id="main-content">
           <section className="overseer-page-header">
             <div>
-              <p>{currentRoute.eyebrow}</p>
-              <h1 className="city-text-page-title">{currentRoute.label}</h1>
-              <span className="city-text-supporting">{currentRoute.description}</span>
+              <p>{pageEyebrow}</p>
+              <h1 className="city-text-page-title">{pageLabel}</h1>
+              <span className="city-text-supporting">{pageDescription}</span>
             </div>
             <div className="overseer-page-actions">
               <div className="overseer-page-utilities">
+                {currentDetail ? (
+                  <Button
+                    onClick={() => selectResourcePath(currentDetail.parentPath)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <ArrowLeft aria-hidden="true" size={14} />
+                    {currentDetail.type === "compose" ? "Compose 목록" : "컨테이너 목록"}
+                  </Button>
+                ) : null}
                 <Button
                   onClick={() => {
                     if (resourcePath === "/operations") {
@@ -1364,6 +1373,9 @@ function AppContent() {
                     }
                     if (resourcePath === "/settings") {
                       setSettingsRefreshRevision((value) => value + 1);
+                    }
+                    if (currentDetail) {
+                      setDetailRefreshRevision((value) => value + 1);
                     }
                     void refresh();
                   }}
@@ -1497,24 +1509,71 @@ function AppContent() {
             </Suspense>
           ) : null}
 
+          {dashboard && runtimeRunning && currentDetail?.type === "compose" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <ComposeProjectDetailPage
+                busy={runtimeBusy || targetBusy("compose", currentDetail.identifier)}
+                name={currentDetail.identifier}
+                onBuilderUpdate={(spec, expectedConfigHash) =>
+                  mutate({
+                    key: `compose-${currentDetail.identifier}-builder-update`,
+                    request: () =>
+                      apiRequest<OperationAccepted>(
+                        `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/builder`,
+                        {
+                          body: JSON.stringify({ expectedConfigHash, spec }),
+                          method: "PATCH",
+                        },
+                      ),
+                  })
+                }
+                onOpenContainer={(id) => selectResourcePath(containerDetailPath(id))}
+                onRemoteCheck={() =>
+                  mutate({
+                    key: `compose-${currentDetail.identifier}-remote-check`,
+                    request: () =>
+                      apiRequest<OperationAccepted>(
+                        `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/remote/check`,
+                        { method: "POST" },
+                      ),
+                  })
+                }
+                onRemoteUpdate={() =>
+                  mutate({
+                    key: `compose-${currentDetail.identifier}-remote-update`,
+                    request: () =>
+                      apiRequest<OperationAccepted>(
+                        `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/remote/update`,
+                        { method: "POST" },
+                      ),
+                  })
+                }
+                refreshToken={detailRefreshToken}
+              />
+            </Suspense>
+          ) : null}
+
+          {dashboard && runtimeRunning && currentDetail?.type === "container" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <ContainerDetailPage
+                id={currentDetail.identifier}
+                onOpenCompose={(name) => selectResourcePath(composeProjectDetailPath(name))}
+                refreshToken={detailRefreshToken}
+                summary={currentContainer}
+              />
+            </Suspense>
+          ) : null}
+
           {dashboard &&
           runtimeRunning &&
+          !currentDetail &&
           resourcePath !== "/operations" &&
           resourcePath !== "/settings" ? (
             <>
               {resourcePath === "/compose" ? (
                 <ComposePage
                   isBusy={(project) => runtimeBusy || targetBusy("compose", project.name)}
-                  onAction={(project, action) =>
-                    mutate({
-                      key: `compose-${project.name}-${action}`,
-                      request: () =>
-                        apiRequest<OperationAccepted>(
-                          `/compose/projects/${encodeURIComponent(project.name)}/actions/${action}`,
-                          { method: "POST" },
-                        ),
-                    })
-                  }
+                  onAction={(project, action) => runComposeAction(project.name, action)}
                   onBuilderRemove={(project) =>
                     mutate({
                       key: `compose-${project.name}-builder-remove`,
@@ -1538,7 +1597,9 @@ function AppContent() {
                         ),
                     })
                   }
-                  onInspect={setComposeDetailProject}
+                  onInspect={(project) =>
+                    selectResourcePath(composeProjectDetailPath(project.name))
+                  }
                   onLogs={(project) =>
                     setLogsTarget({
                       description: "프로젝트 전체 서비스의 최근 300줄을 표시합니다.",
@@ -1596,6 +1657,7 @@ function AppContent() {
                       }).catch(() => undefined)
                     }
                     onEdit={setEditContainer}
+                    onInspect={(container) => selectResourcePath(containerDetailPath(container.id))}
                     onLogs={(container) =>
                       setLogsTarget({
                         description: "최근 300줄을 시간 정보와 함께 표시합니다.",
@@ -1671,10 +1733,6 @@ function AppContent() {
           ) : null}
         </main>
       </div>
-      <ComposeProjectDialog
-        onClose={() => setComposeDetailProject(undefined)}
-        project={composeDetailProject}
-      />
       <Suspense fallback={null}>
         <EditContainerDialog
           container={editContainer}
@@ -1992,6 +2050,7 @@ function ContainerTable({
   isBusy,
   onAction,
   onEdit,
+  onInspect,
   onLogs,
   onRemove,
 }: {
@@ -1999,6 +2058,7 @@ function ContainerTable({
   isBusy: (container: ContainerSummary) => boolean;
   onAction: (container: ContainerSummary, action: "restart" | "start" | "stop") => void;
   onEdit: (container: ContainerSummary) => void;
+  onInspect: (container: ContainerSummary) => void;
   onLogs: (container: ContainerSummary) => void;
   onRemove: (container: ContainerSummary) => void;
 }) {
@@ -2046,7 +2106,13 @@ function ContainerTable({
                 <Table.Row key={container.id}>
                   <Table.Cell>
                     <div className="overseer-primary-cell">
-                      <strong>{container.name}</strong>
+                      <a
+                        className="overseer-detail-link"
+                        href={containerDetailPath(container.id)}
+                        onClick={(event) => followAppLink(event, () => onInspect(container))}
+                      >
+                        {container.name}
+                      </a>
                       <div className="overseer-primary-meta">
                         {container.composeProject ? (
                           <span

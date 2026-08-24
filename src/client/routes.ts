@@ -61,9 +61,67 @@ export const APP_ROUTES = [
 
 export type AppPath = (typeof APP_ROUTES)[number]["path"];
 
+export type AppLocationPath = AppPath | `/compose/${string}` | `/containers/${string}`;
+
+export type AppDetailLocation =
+  | { identifier: string; parentPath: "/compose"; path: `/compose/${string}`; type: "compose" }
+  | {
+      identifier: string;
+      parentPath: "/containers";
+      path: `/containers/${string}`;
+      type: "container";
+    };
+
+export function composeProjectDetailPath(name: string): `/compose/${string}` {
+  return `/compose/${encodeURIComponent(name)}`;
+}
+
+export function containerDetailPath(id: string): `/containers/${string}` {
+  return `/containers/${encodeURIComponent(id)}`;
+}
+
+export function getAppDetailLocation(pathname: string): AppDetailLocation | undefined {
+  const [, resource, encodedIdentifier, extra] = pathname.split("/");
+  if (!resource || !encodedIdentifier || extra !== undefined) return undefined;
+  let identifier: string;
+  try {
+    identifier = decodeURIComponent(encodedIdentifier);
+  } catch {
+    return undefined;
+  }
+  if (resource === "compose" && isComposeProjectName(identifier)) {
+    return {
+      identifier,
+      parentPath: "/compose",
+      path: composeProjectDetailPath(identifier),
+      type: "compose",
+    };
+  }
+  if (resource === "containers" && isContainerReference(identifier)) {
+    return {
+      identifier,
+      parentPath: "/containers",
+      path: containerDetailPath(identifier),
+      type: "container",
+    };
+  }
+  return undefined;
+}
+
+export function getAppLocation(pathname: string): AppLocationPath {
+  return (
+    APP_ROUTES.find((route) => route.path === pathname)?.path ??
+    getAppDetailLocation(pathname)?.path ??
+    "/containers"
+  );
+}
+
 export function getAppRoute(pathname: string) {
+  const detail = getAppDetailLocation(pathname);
   return (
     APP_ROUTES.find((route) => route.path === pathname) ??
+    APP_ROUTES.find((route) => route.path === detail?.parentPath) ??
     APP_ROUTES.find((route) => route.path === "/containers")!
   );
 }
+import { isComposeProjectName, isContainerReference } from "../shared/validation.ts";

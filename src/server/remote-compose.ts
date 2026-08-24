@@ -27,7 +27,7 @@ export interface RemoteComposeProject {
   url: string;
 }
 
-interface StoredRemoteComposeProject extends RemoteComposeProject {
+export interface RemoteComposeProjectDetail extends RemoteComposeProject {
   content: string;
   etag?: string;
   lastModified?: string;
@@ -37,6 +37,8 @@ interface StoredRemoteComposeProject extends RemoteComposeProject {
   pendingHash?: string;
   pendingLastModified?: string;
 }
+
+type StoredRemoteComposeProject = RemoteComposeProjectDetail;
 
 interface RemoteComposeRow {
   build_context: number;
@@ -78,7 +80,7 @@ export interface RemoteComposeFetcher {
 export interface RemoteComposeRegistry {
   applyUpdate(name: string, progress?: OperationProgress): Promise<void>;
   checkUpdate(name: string, progress?: OperationProgress): Promise<void>;
-  get(name: string): Promise<RemoteComposeProject | undefined>;
+  get(name: string): Promise<RemoteComposeProjectDetail | undefined>;
   list(): Promise<RemoteComposeProject[]>;
   register(
     input: RegisterRemoteComposeInput,
@@ -670,9 +672,23 @@ export class RemoteComposeService implements RemoteComposeRegistry {
     return Promise.all(this.store.list().map((project) => this.materialized(project)));
   }
 
-  async get(name: string): Promise<RemoteComposeProject | undefined> {
+  async get(name: string): Promise<RemoteComposeProjectDetail | undefined> {
     const project = this.store.get(name);
-    return project ? this.materialized(project) : undefined;
+    if (!project) return undefined;
+    const summary = await this.materialized(project);
+    return {
+      ...summary,
+      content: project.content,
+      ...(project.etag ? { etag: project.etag } : {}),
+      ...(project.lastModified ? { lastModified: project.lastModified } : {}),
+      ...(project.pendingBuildContext === undefined
+        ? {}
+        : { pendingBuildContext: project.pendingBuildContext }),
+      ...(project.pendingContent ? { pendingContent: project.pendingContent } : {}),
+      ...(project.pendingEtag ? { pendingEtag: project.pendingEtag } : {}),
+      ...(project.pendingHash ? { pendingHash: project.pendingHash } : {}),
+      ...(project.pendingLastModified ? { pendingLastModified: project.pendingLastModified } : {}),
+    };
   }
 
   async register(
