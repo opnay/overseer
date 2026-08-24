@@ -1433,6 +1433,7 @@
     overflow: hidden;
     border: 1px solid var(--city-color-border);
     border-radius: var(--city-radius-md);
+    align-self: start;
   }
 
   .overseer-startup-command > div {
