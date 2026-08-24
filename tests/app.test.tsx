@@ -169,7 +169,15 @@ describe("App", () => {
       "raw.githubusercontent.com/Homebrew/install",
     );
     expect(screen.queryByRole("button", { name: /Homebrew 자동 설치/ })).not.toBeInTheDocument();
-    expect(screen.getByText("Terminal에서 설치하십시오.")).toBeInTheDocument();
+    expect(
+      screen.getByText("다음 단계부터 Docker CLI와 Lima를 자동 설치할 수 있습니다."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Terminal에서 설치하십시오.")).not.toBeInTheDocument();
+    expect(screen.queryByText("또는")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "공식 홈페이지" })).toHaveAttribute(
+      "href",
+      "https://brew.sh/",
+    );
 
     await user.click(screen.getByRole("button", { name: "설치 확인" }));
     await waitFor(() => expect(startupRequests).toBeGreaterThan(1));

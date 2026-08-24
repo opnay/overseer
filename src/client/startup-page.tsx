@@ -4,7 +4,7 @@ import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { Checkbox } from "@opnay/city-ds-react/checkbox";
 import { Progress } from "@opnay/city-ds-react/progress";
-import { Check, Copy, Download, PackageCheck, RefreshCw } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, PackageCheck, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import type {
   OperationSnapshot,
@@ -236,9 +236,11 @@ export function StartupPage({
                 </pre>
               </div>
 
-              <div aria-hidden="true" className="overseer-startup-divider">
-                <span>또는</span>
-              </div>
+              {prerequisite.automaticInstall ? (
+                <div aria-hidden="true" className="overseer-startup-divider">
+                  <span>또는</span>
+                </div>
+              ) : null}
 
               {prerequisite.automaticInstall ? (
                 <div
@@ -266,13 +268,15 @@ export function StartupPage({
                 </div>
               ) : (
                 <div className="overseer-startup-manual">
-                  <Alert.Root appearance="subtle" tone="info">
-                    <Alert.Title level={3}>Terminal에서 설치하십시오.</Alert.Title>
-                    <Alert.Description>
-                      {prerequisite.automaticInstallUnavailableReason}
-                    </Alert.Description>
-                  </Alert.Root>
-                  <div className="overseer-startup-primary-action">
+                  <p>다음 단계부터 Docker CLI와 Lima를 자동 설치할 수 있습니다.</p>
+                  <div className="overseer-startup-decision-actions">
+                    <Button
+                      render={<a href="https://brew.sh/" rel="noreferrer" target="_blank" />}
+                      variant="outline"
+                    >
+                      <ExternalLink aria-hidden="true" size={16} />
+                      공식 홈페이지
+                    </Button>
                     <Button disabled={active} onClick={() => void onRefresh()}>
                       <RefreshCw aria-hidden="true" size={16} />
                       설치 확인
