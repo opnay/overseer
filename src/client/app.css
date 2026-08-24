@@ -1010,43 +1010,17 @@
   }
 
   .overseer-table {
-    width: 100%;
+    width: max-content;
     min-width: 100%;
   }
 
-  .overseer-table--containers {
-    min-width: 44rem;
+  .overseer-table th,
+  .overseer-table td {
+    white-space: nowrap;
   }
 
-  .overseer-table--compose-projects {
-    min-width: 58rem;
-  }
-
-  .overseer-table--compose-services {
-    min-width: 44rem;
-  }
-
-  .overseer-table--images {
-    min-width: 46rem;
-    table-layout: fixed;
-  }
-
-  .overseer-table--image-tags {
-    min-width: 42rem;
-    table-layout: fixed;
-  }
-
-  .overseer-table--volumes {
-    min-width: 38rem;
-  }
-
-  .overseer-table--networks {
-    min-width: 46rem;
-  }
-
-  .overseer-table--operations {
-    min-width: 45rem;
-    table-layout: fixed;
+  .overseer-table-column-wide {
+    min-width: 30rem;
   }
 
   .overseer-table-caption {
@@ -1075,6 +1049,7 @@
     border: 0;
     border-radius: 0;
     background: transparent;
+    white-space: normal;
   }
 
   .overseer-table code,
@@ -1102,67 +1077,7 @@
   }
 
   .overseer-actions-column {
-    width: 5rem;
     text-align: right;
-  }
-
-  .overseer-table--containers .overseer-actions-column {
-    width: 12rem;
-  }
-
-  .overseer-table--compose-projects .overseer-actions-column {
-    width: 17rem;
-  }
-
-  .overseer-table--operations .overseer-actions-column {
-    width: 4.5rem;
-  }
-
-  .overseer-table--images th:nth-child(2),
-  .overseer-table--images td:nth-child(2) {
-    width: 7rem;
-  }
-
-  .overseer-table--images th:nth-child(3),
-  .overseer-table--images td:nth-child(3) {
-    width: 9rem;
-  }
-
-  .overseer-table--images th:nth-child(4),
-  .overseer-table--images td:nth-child(4) {
-    width: 7.5rem;
-  }
-
-  .overseer-table--images th:nth-child(5),
-  .overseer-table--images td:nth-child(5) {
-    width: 5.5rem;
-  }
-
-  .overseer-table--image-tags th:nth-child(2),
-  .overseer-table--image-tags td:nth-child(2) {
-    width: 17rem;
-  }
-
-  .overseer-table--image-tags th:nth-child(3),
-  .overseer-table--image-tags td:nth-child(3) {
-    width: 6rem;
-  }
-
-  .overseer-table--image-tags th:nth-child(4),
-  .overseer-table--image-tags td:nth-child(4) {
-    width: 10rem;
-  }
-
-  .overseer-operation-time-column {
-    width: 10rem;
-  }
-
-  .overseer-operation-status-column {
-    width: 5.5rem;
-  }
-
-  .overseer-operation-duration-column {
-    width: 4.5rem;
   }
 
   .overseer-operation-summary {

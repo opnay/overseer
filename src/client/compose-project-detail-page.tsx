@@ -10,6 +10,7 @@ import { useEffect, useState, type MouseEvent } from "react";
 import type { ComposeBuilderSpec, ComposeProjectDetail } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
 import { BuilderComposeDialog } from "./builder-compose-dialog.tsx";
+import { formatDateTime } from "./date-time.ts";
 import { LogViewer } from "./log-display-options.tsx";
 import { containerDetailPath } from "./routes.ts";
 
@@ -243,16 +244,14 @@ export function ComposeProjectDetailPage({
                   </Table.Caption>
                   <Table.Header>
                     <Table.Row>
-                      <Table.Head>서비스</Table.Head>
-                      <Table.Head>컨테이너</Table.Head>
-                      <Table.Head>이미지</Table.Head>
+                      <Table.Head className="overseer-table-column-wide">서비스</Table.Head>
                       <Table.Head>상태</Table.Head>
                       <Table.Head>포트</Table.Head>
                     </Table.Row>
                   </Table.Header>
                   <Table.Body>
                     {detail.services.length === 0 ? (
-                      <Table.StateRow colSpan={5}>
+                      <Table.StateRow colSpan={3}>
                         <EmptyState.Root className="overseer-table-empty-state" density="compact">
                           <EmptyState.Icon>
                             <Boxes aria-hidden="true" />
@@ -268,25 +267,27 @@ export function ComposeProjectDetailPage({
                         const serviceRunning = service.state === "running";
                         return (
                           <Table.Row key={service.id || service.name}>
-                            <Table.Cell>
-                              <strong>{service.service}</strong>
+                            <Table.Cell className="overseer-table-column-wide">
+                              <div className="overseer-primary-cell">
+                                <strong>{service.service}</strong>
+                                <div className="overseer-primary-meta">
+                                  {service.id ? (
+                                    <a
+                                      className="overseer-detail-link"
+                                      href={containerDetailPath(service.id)}
+                                      onClick={(event) =>
+                                        followContainerLink(event, service.id, onOpenContainer)
+                                      }
+                                    >
+                                      {service.name}
+                                    </a>
+                                  ) : (
+                                    <span>{service.name || "—"}</span>
+                                  )}
+                                  <code>{service.image}</code>
+                                </div>
+                              </div>
                             </Table.Cell>
-                            <Table.Cell>
-                              {service.id ? (
-                                <a
-                                  className="overseer-detail-link"
-                                  href={containerDetailPath(service.id)}
-                                  onClick={(event) =>
-                                    followContainerLink(event, service.id, onOpenContainer)
-                                  }
-                                >
-                                  {service.name}
-                                </a>
-                              ) : (
-                                service.name || "—"
-                              )}
-                            </Table.Cell>
-                            <Table.Cell>{service.image}</Table.Cell>
                             <Table.Cell>
                               <span className="overseer-container-status">
                                 <Badge
@@ -378,7 +379,11 @@ export function ComposeProjectDetailPage({
                 </div>
                 <div>
                   <dt>최근 확인</dt>
-                  <dd>{detail.configuration.checkedAt}</dd>
+                  <dd>
+                    <time dateTime={detail.configuration.checkedAt}>
+                      {formatDateTime(detail.configuration.checkedAt)}
+                    </time>
+                  </dd>
                 </div>
                 <div>
                   <dt>현재 hash</dt>

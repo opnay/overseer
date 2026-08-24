@@ -15,6 +15,7 @@ import type {
   ImageSummary,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
+import { formatDateTime } from "./date-time.ts";
 import { reconstructDockerfileLayers } from "./image-history-presentation.ts";
 import { LogViewer } from "./log-display-options.tsx";
 
@@ -68,11 +69,6 @@ const sectionOrder: ImageDetailSection[] = [
   "layers",
 ];
 
-const createdAtFormatter = new Intl.DateTimeFormat("ko-KR", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
 const tagPaginationLabels = {
   first: "첫 페이지",
   last: "마지막 페이지",
@@ -83,11 +79,6 @@ const tagPaginationLabels = {
   previous: "이전 페이지",
   previousGroup: (count: number) => `이전 ${count}개 페이지`,
 };
-
-function formatCreatedAt(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : createdAtFormatter.format(date);
-}
 
 function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value < 0) return "—";
@@ -329,7 +320,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                 <div>
                   <span>생성</span>
                   <strong>
-                    <time dateTime={detail.createdAt}>{formatCreatedAt(detail.createdAt)}</time>
+                    <time dateTime={detail.createdAt}>{formatDateTime(detail.createdAt)}</time>
                   </strong>
                 </div>
                 <div>
@@ -419,7 +410,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                     </Table.Caption>
                     <Table.Header>
                       <Table.Row>
-                        <Table.Head>태그</Table.Head>
+                        <Table.Head className="overseer-table-column-wide">태그</Table.Head>
                         <Table.Head>플랫폼</Table.Head>
                         <Table.Head>크기</Table.Head>
                         <Table.Head>업데이트</Table.Head>
@@ -429,7 +420,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                       {repositoryTags.tags.length > 0 ? (
                         repositoryTags.tags.map((tag) => (
                           <Table.Row key={tag.name}>
-                            <Table.Cell>
+                            <Table.Cell className="overseer-table-column-wide">
                               <strong>{tag.name}</strong>
                             </Table.Cell>
                             <Table.Cell>
@@ -438,7 +429,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                             <Table.Cell>{formatBytes(tag.sizeBytes)}</Table.Cell>
                             <Table.Cell>
                               <time dateTime={tag.lastUpdated}>
-                                {formatCreatedAt(tag.lastUpdated)}
+                                {formatDateTime(tag.lastUpdated)}
                               </time>
                             </Table.Cell>
                           </Table.Row>

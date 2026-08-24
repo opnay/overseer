@@ -147,6 +147,7 @@ interface DockerComposeServiceRow {
 }
 
 interface DockerImageRow {
+  CreatedAt: string;
   CreatedSince: string;
   ID: string;
   Repository: string;
@@ -1091,6 +1092,7 @@ export class LimaDockerRuntime implements RuntimeController {
       platforms.set(id.slice(0, 12), platform);
     }
     return rows.map((row) => ({
+      createdAt: row.CreatedAt,
       createdSince: row.CreatedSince,
       id: row.ID,
       platform: platforms.get(row.ID) ?? "—",

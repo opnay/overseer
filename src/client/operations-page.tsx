@@ -39,7 +39,7 @@ export function OperationsPage({
       <section className="overseer-panel" id="operations">
         <DataTableRegion
           className="overseer-data-table-region"
-          hint="작은 화면에서는 모든 열을 보려면 표를 가로로 스크롤하십시오."
+          hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
           label="작업 기록 표"
         >
           <Table.Root
@@ -53,7 +53,7 @@ export function OperationsPage({
             <Table.Header>
               <Table.Row>
                 <Table.Head className="overseer-operation-time-column">요청 시각</Table.Head>
-                <Table.Head>작업</Table.Head>
+                <Table.Head className="overseer-table-column-wide">작업</Table.Head>
                 <Table.Head className="overseer-operation-status-column">상태</Table.Head>
                 <Table.Head className="overseer-operation-duration-column">소요</Table.Head>
                 <Table.Head className="overseer-actions-column">상세</Table.Head>
@@ -91,7 +91,7 @@ export function OperationsPage({
                           {operationListTime(operation.createdAt)}
                         </time>
                       </Table.Cell>
-                      <Table.Cell>
+                      <Table.Cell className="overseer-table-column-wide">
                         <div className="overseer-operation-summary">
                           <strong>{operation.title}</strong>
                           <span className="overseer-operation-context">

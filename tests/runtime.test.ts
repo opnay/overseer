@@ -100,6 +100,7 @@ describe("LimaDockerRuntime image inspection", () => {
         return {
           stderr: "",
           stdout: `${JSON.stringify({
+            CreatedAt: "2026-08-22 18:22:08 +0900 KST",
             CreatedSince: "2 days ago",
             ID: "3e24e96c89ef",
             Repository: "louislam/uptime-kuma",
@@ -175,6 +176,7 @@ describe("LimaDockerRuntime image inspection", () => {
 
     await expect(runtime.getImages()).resolves.toEqual([
       {
+        createdAt: "2026-08-22 18:22:08 +0900 KST",
         createdSince: "2 days ago",
         id: "3e24e96c89ef",
         platform: "linux/arm64",

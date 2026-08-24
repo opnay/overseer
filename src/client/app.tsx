@@ -80,6 +80,7 @@ import type {
 } from "../shared/contracts.ts";
 import { isImageReference, isResourceName } from "../shared/validation.ts";
 import { ApiRequestError, apiRequest } from "./api.ts";
+import { formatDateTime } from "./date-time.ts";
 import { LogViewer } from "./log-display-options.tsx";
 import {
   APP_ROUTES,
@@ -758,15 +759,14 @@ function ComposePage({
           </Table.Caption>
           <Table.Header>
             <Table.Row>
-              <Table.Head>프로젝트</Table.Head>
+              <Table.Head className="overseer-table-column-wide">프로젝트</Table.Head>
               <Table.Head>상태</Table.Head>
-              <Table.Head>구성 파일</Table.Head>
               <Table.Head className="overseer-actions-column">작업</Table.Head>
             </Table.Row>
           </Table.Header>
           <Table.Body>
             {projects.length === 0 ? (
-              <Table.StateRow colSpan={4}>
+              <Table.StateRow colSpan={3}>
                 <EmptyState.Root className="overseer-table-empty-state" density="compact">
                   <EmptyState.Icon>
                     <Layers3 aria-hidden="true" />
@@ -788,7 +788,7 @@ function ComposePage({
                 );
                 return (
                   <Table.Row key={project.name}>
-                    <Table.Cell>
+                    <Table.Cell className="overseer-table-column-wide">
                       <div className="overseer-primary-cell">
                         <a
                           className="overseer-detail-link"
@@ -797,11 +797,22 @@ function ComposePage({
                         >
                           {project.name}
                         </a>
-                        {project.remote ? (
-                          <span className="overseer-primary-meta">URL 등록</span>
-                        ) : project.builder ? (
-                          <span className="overseer-primary-meta">폼 등록</span>
-                        ) : null}
+                        <div className="overseer-primary-meta">
+                          {project.remote ? (
+                            <span>URL 등록</span>
+                          ) : project.builder ? (
+                            <span>폼 등록</span>
+                          ) : null}
+                          <code
+                            className="overseer-compose-config"
+                            title={project.remote?.url ?? project.configFiles.join(", ")}
+                          >
+                            {project.remote?.url ??
+                              (project.builder
+                                ? "SQLite 생성 compose.yaml"
+                                : project.configFiles.map(composeFileName).join(" · "))}
+                          </code>
+                        </div>
                       </div>
                     </Table.Cell>
                     <Table.Cell>
@@ -840,17 +851,6 @@ function ComposePage({
                           </div>
                         ) : null}
                       </div>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <code
-                        className="overseer-compose-config"
-                        title={project.remote?.url ?? project.configFiles.join(", ")}
-                      >
-                        {project.remote?.url ??
-                          (project.builder
-                            ? "SQLite 생성 compose.yaml"
-                            : project.configFiles.map(composeFileName).join(" · "))}
-                      </code>
                     </Table.Cell>
                     <Table.Cell>
                       <div className="overseer-row-actions">
@@ -2440,7 +2440,7 @@ function VolumesPage({
           </Table.Caption>
           <Table.Header>
             <Table.Row>
-              <Table.Head>이름</Table.Head>
+              <Table.Head className="overseer-table-column-wide">이름</Table.Head>
               <Table.Head>드라이버</Table.Head>
               <Table.Head>범위</Table.Head>
               <Table.Head>레이블</Table.Head>
@@ -2463,7 +2463,7 @@ function VolumesPage({
             ) : (
               volumes.map((volume) => (
                 <Table.Row key={volume.name}>
-                  <Table.Cell>
+                  <Table.Cell className="overseer-table-column-wide">
                     <strong>{volume.name}</strong>
                   </Table.Cell>
                   <Table.Cell>{volume.driver}</Table.Cell>
@@ -2520,7 +2520,7 @@ function NetworksPage({
           </Table.Caption>
           <Table.Header>
             <Table.Row>
-              <Table.Head>이름</Table.Head>
+              <Table.Head className="overseer-table-column-wide">이름</Table.Head>
               <Table.Head>드라이버</Table.Head>
               <Table.Head>범위</Table.Head>
               <Table.Head>IP</Table.Head>
@@ -2545,7 +2545,7 @@ function NetworksPage({
             ) : (
               networks.map((network) => (
                 <Table.Row key={network.id}>
-                  <Table.Cell>
+                  <Table.Cell className="overseer-table-column-wide">
                     <div className="overseer-primary-cell">
                       <strong>{network.name}</strong>
                       {network.builtIn ? (
@@ -2622,8 +2622,7 @@ function ContainerTable({
         </Table.Caption>
         <Table.Header>
           <Table.Row>
-            <Table.Head>이름</Table.Head>
-            <Table.Head>이미지</Table.Head>
+            <Table.Head className="overseer-table-column-wide">이름</Table.Head>
             <Table.Head>상태</Table.Head>
             <Table.Head>포트</Table.Head>
             <Table.Head className="overseer-actions-column">작업</Table.Head>
@@ -2631,7 +2630,7 @@ function ContainerTable({
         </Table.Header>
         <Table.Body>
           {containers.length === 0 ? (
-            <Table.StateRow colSpan={5}>
+            <Table.StateRow colSpan={4}>
               <EmptyState.Root className="overseer-table-empty-state" density="compact">
                 <EmptyState.Icon>
                   <Box aria-hidden="true" />
@@ -2648,7 +2647,7 @@ function ContainerTable({
               const rowBusy = isBusy(container);
               return (
                 <Table.Row key={container.id}>
-                  <Table.Cell>
+                  <Table.Cell className="overseer-table-column-wide">
                     <div className="overseer-primary-cell">
                       <a
                         className="overseer-detail-link"
@@ -2658,6 +2657,7 @@ function ContainerTable({
                         {container.name}
                       </a>
                       <div className="overseer-primary-meta">
+                        <code>{container.image}</code>
                         {container.composeProject ? (
                           <span
                             title={`Compose 프로젝트 ${container.composeProject}${
@@ -2677,7 +2677,6 @@ function ContainerTable({
                       </div>
                     </div>
                   </Table.Cell>
-                  <Table.Cell>{container.image}</Table.Cell>
                   <Table.Cell>
                     <span className="overseer-container-status">
                       <Badge
@@ -2798,7 +2797,7 @@ function ImageTable({
         </Table.Caption>
         <Table.Header>
           <Table.Row>
-            <Table.Head>이미지</Table.Head>
+            <Table.Head className="overseer-table-column-wide">이미지</Table.Head>
             <Table.Head>플랫폼</Table.Head>
             <Table.Head>이미지 ID</Table.Head>
             <Table.Head>생성</Table.Head>
@@ -2822,7 +2821,7 @@ function ImageTable({
           ) : (
             images.map((image) => (
               <Table.Row key={`${image.id}-${image.repository}-${image.tag}`}>
-                <Table.Cell>
+                <Table.Cell className="overseer-table-column-wide">
                   <div className="overseer-primary-cell">
                     <a
                       className="overseer-detail-link"
@@ -2842,7 +2841,9 @@ function ImageTable({
                 <Table.Cell>
                   <code>{image.id}</code>
                 </Table.Cell>
-                <Table.Cell>{image.createdSince}</Table.Cell>
+                <Table.Cell>
+                  <time dateTime={image.createdAt}>{formatDateTime(image.createdAt)}</time>
+                </Table.Cell>
                 <Table.Cell>{image.size}</Table.Cell>
                 <Table.Cell>
                   <div className="overseer-row-actions">

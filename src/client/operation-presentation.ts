@@ -1,4 +1,5 @@
 import type { OperationSnapshot, OperationStatus } from "../shared/contracts.ts";
+import { formatDateTime } from "./date-time.ts";
 
 export const operationStatusPresentation: Record<
   OperationStatus,
@@ -11,25 +12,6 @@ export const operationStatusPresentation: Record<
   succeeded: { label: "완료", tone: "success" },
 };
 
-const dateTimeFormatter = new Intl.DateTimeFormat("ko-KR", {
-  day: "2-digit",
-  hour: "2-digit",
-  hour12: false,
-  minute: "2-digit",
-  month: "2-digit",
-  second: "2-digit",
-  year: "numeric",
-});
-
-const listDateTimeFormatter = new Intl.DateTimeFormat("ko-KR", {
-  day: "2-digit",
-  hour: "2-digit",
-  hour12: false,
-  minute: "2-digit",
-  month: "2-digit",
-  second: "2-digit",
-});
-
 export function operationElapsed(operation: OperationSnapshot): string {
   const start = new Date(operation.startedAt ?? operation.createdAt).getTime();
   const end = operation.finishedAt ? new Date(operation.finishedAt).getTime() : Date.now();
@@ -39,11 +21,11 @@ export function operationElapsed(operation: OperationSnapshot): string {
 }
 
 export function operationTime(value: string): string {
-  return dateTimeFormatter.format(new Date(value));
+  return formatDateTime(value);
 }
 
 export function operationListTime(value: string): string {
-  return listDateTimeFormatter.format(new Date(value));
+  return formatDateTime(value);
 }
 
 export const operationResourceLabel = {

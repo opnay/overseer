@@ -244,6 +244,7 @@ export interface ComposeProjectDetail extends ComposeProjectSummary {
 export type ComposeProjectAction = "down" | "restart" | "stop" | "up";
 
 export interface ImageSummary {
+  createdAt: string;
   createdSince: string;
   id: string;
   platform: string;

@@ -1213,6 +1213,9 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "도구 업데이트", level: 3 }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/^마지막 확인 \d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/),
+    ).toBeInTheDocument();
     const docker = await screen.findByRole("listitem", { name: "Docker CLI" });
     expect(docker).toHaveTextContent("현재29.7.2");
     expect(docker).toHaveTextContent("최신30.0.0");
@@ -1264,6 +1267,7 @@ describe("App", () => {
       ],
       images: [
         {
+          createdAt: "2026-08-24T10:00:00.000Z",
           createdSince: "today",
           id: "image-id",
           platform: "linux/arm64",
@@ -1391,6 +1395,7 @@ describe("App", () => {
       containers: [],
       images: [
         {
+          createdAt: "2026-08-24T10:00:00.000Z",
           createdSince: "today",
           id: "image-id",
           platform: "linux/arm64",
@@ -1646,6 +1651,10 @@ describe("App", () => {
         .getAllByRole("columnheader")
         .map((header) => header.textContent),
     ).toEqual(["요청 시각", "작업", "상태", "소요", "상세"]);
+    expect(historyTable.querySelectorAll("thead .overseer-table-column-wide")).toHaveLength(1);
+    expect(historyTable.querySelector("time")).toHaveTextContent(
+      /^\d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/,
+    );
     expect(screen.getByText("완료 작업")).toBeInTheDocument();
     expect(screen.getByText("취소 작업")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/operations");
@@ -1960,6 +1969,7 @@ describe("App", () => {
       containers: [],
       images: [
         {
+          createdAt: "2026-08-22T09:22:08.000Z",
           createdSince: "2 days ago",
           id: "3e24e96c89ef",
           platform: "linux/arm64",
@@ -2335,6 +2345,16 @@ describe("App", () => {
     await user.keyboard("{Escape}");
 
     await user.click(within(composeGroup).getByRole("button", { name: "서비스" }));
+    const serviceTable = await screen.findByRole("table", {
+      name: "demo-stack 서비스 컨테이너 목록",
+    });
+    expect(
+      within(serviceTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["서비스", "상태", "포트"]);
+    expect(serviceTable.querySelectorAll("thead .overseer-table-column-wide")).toHaveLength(1);
+    expect(within(serviceTable).getByText("nginx:alpine")).toBeInTheDocument();
     const containerLink = await screen.findByRole("link", { name: "demo-stack-web-1" });
     expect(containerLink).toHaveAttribute("href", "/containers/container-id");
 
@@ -2421,6 +2441,7 @@ describe("App", () => {
     await user.click(within(group).getByRole("button", { name: "업데이트" }));
 
     expect(screen.getByText("적용 대기 YAML")).toBeInTheDocument();
+    expect(screen.getByText(/^\d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/)).toBeInTheDocument();
     expect(screen.getByText(/nginx:1\.29/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "업데이트 적용" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
@@ -2773,9 +2794,7 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("실행 제한")).toBeInTheDocument();
-    expect(
-      screen.getByText("URL 등록", { selector: ".overseer-primary-meta" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("URL 등록").closest(".overseer-primary-meta")).toBeInTheDocument();
     expect(screen.getByText("build context")).toBeInTheDocument();
     expect(screen.getByText("업데이트 있음")).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "URL 관리" }));
@@ -2827,6 +2846,7 @@ describe("App", () => {
       ],
       images: [
         {
+          createdAt: "2026-08-24T10:00:00.000Z",
           createdSince: "today",
           id: "image-id",
           platform: "linux/arm64",
@@ -2872,21 +2892,48 @@ describe("App", () => {
     const composeContext = await screen.findByText("Compose · remote-stack / web");
     expect(composeContext.closest(".overseer-primary-meta")).toBeInTheDocument();
     expect(screen.queryByText("remote-stack · web")).not.toBeInTheDocument();
+    const containerTable = screen.getByRole("table", { name: "컨테이너 목록" });
+    expect(
+      within(containerTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["이름", "상태", "포트", "작업"]);
+    expect(containerTable.querySelectorAll("thead .overseer-table-column-wide")).toHaveLength(1);
+    expect(
+      containerTable.querySelectorAll("tbody tr:first-child .overseer-table-column-wide"),
+    ).toHaveLength(1);
+    expect(within(containerTable).getByText("nginx:alpine")).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Compose" }));
     expect(screen.getByText("1개 생성됨")).toBeInTheDocument();
-    expect(
-      screen.getByText("URL 등록", { selector: ".overseer-primary-meta" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("URL 등록").closest(".overseer-primary-meta")).toBeInTheDocument();
     expect(screen.queryByText("최신")).not.toBeInTheDocument();
+    const composeTable = screen.getByRole("table", { name: "Compose 프로젝트 목록" });
+    expect(
+      within(composeTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["프로젝트", "상태", "작업"]);
+    expect(composeTable.querySelectorAll("thead .overseer-table-column-wide")).toHaveLength(1);
+    expect(within(composeTable).getByText("https://example.com/compose.yaml")).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "이미지" }));
     expect(screen.getByRole("link", { name: "nginx:alpine" })).toBeInTheDocument();
     expect(screen.getByText("docker.io/library/nginx:alpine").tagName).toBe("CODE");
     expect(screen.queryByRole("columnheader", { name: "태그" })).not.toBeInTheDocument();
+    const imageTable = screen.getByRole("table", { name: "이미지 목록" });
+    expect(imageTable.querySelectorAll("thead .overseer-table-column-wide")).toHaveLength(1);
+    expect(
+      within(imageTable).getByText(/^\d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "네트워크" }));
     expect(screen.getByText("Docker 기본 네트워크")).toHaveClass("overseer-primary-meta");
+    expect(
+      screen
+        .getByRole("table", { name: "네트워크 목록" })
+        .querySelectorAll("thead .overseer-table-column-wide"),
+    ).toHaveLength(1);
   });
 
   it("renders volumes and networks as direct pages", async () => {

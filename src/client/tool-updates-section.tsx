@@ -11,15 +11,7 @@ import type {
   ToolUpdateSnapshot,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
-
-const checkedAtFormatter = new Intl.DateTimeFormat("ko-KR", {
-  day: "2-digit",
-  hour: "2-digit",
-  hour12: false,
-  minute: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
+import { formatDateTime } from "./date-time.ts";
 
 function statusPresentation(
   item: ToolUpdateItem,
@@ -101,7 +93,7 @@ export function ToolUpdatesSection({
           <p>Homebrew로 설치된 Docker CLI·Compose·Lima의 새 버전을 확인합니다.</p>
           <span aria-live="polite" className="city-text-caption">
             {snapshot?.checkedAt
-              ? `마지막 확인 ${checkedAtFormatter.format(new Date(snapshot.checkedAt))}`
+              ? `마지막 확인 ${formatDateTime(snapshot.checkedAt)}`
               : "아직 업데이트를 확인하지 않았습니다."}
           </span>
         </div>
