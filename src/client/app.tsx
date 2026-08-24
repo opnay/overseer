@@ -854,6 +854,7 @@ export function App() {
 function AppContent() {
   const [startupPreview] = useState(startupPreviewFromLocation);
   const [startupRoute, setStartupRoute] = useState(startupRouteFromLocation);
+  const [startupReviewMode, setStartupReviewMode] = useState(startupRouteFromLocation);
   const [dashboard, setDashboard] = useState<DashboardSnapshot>();
   const [loadError, setLoadError] = useState<string>();
   const [startup, setStartup] = useState<StartupSnapshot>();
@@ -936,7 +937,7 @@ function AppContent() {
   const detectedStartupStep = composeDecisionPending
     ? "compose"
     : firstMissingRequiredPrerequisite?.id;
-  const entryStartupStep = startupRoute && !startupPreview ? "homebrew" : detectedStartupStep;
+  const entryStartupStep = startupReviewMode && !startupPreview ? "homebrew" : detectedStartupStep;
   const currentStartupStep = startupStep ?? entryStartupStep;
   const startupVisible = Boolean(displayedStartup && currentStartupStep);
   const startupCheckPending = Boolean(
@@ -956,6 +957,13 @@ function AppContent() {
     if (startupStep || !entryStartupStep) return;
     setStartupStep(entryStartupStep);
   }, [entryStartupStep, startupStep]);
+
+  useEffect(() => {
+    if (!displayedStartup || startupRoute || !detectedStartupStep) return;
+    setStartupReviewMode(false);
+    setStartupRoute(true);
+    window.history.replaceState(null, "", `/startup${window.location.search}`);
+  }, [detectedStartupStep, displayedStartup, startupRoute]);
 
   useEffect(() => {
     if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview && !startupRoute)) {
@@ -1093,6 +1101,7 @@ function AppContent() {
     const syncResourcePath = () => {
       const nextStartupRoute = startupRouteFromLocation();
       setStartupRoute(nextStartupRoute);
+      setStartupReviewMode(nextStartupRoute);
       setStartupOperationId(undefined);
       setStartupStep(nextStartupRoute ? "homebrew" : undefined);
       if (!nextStartupRoute) setResourcePath(resourcePathFromLocation());
@@ -1103,6 +1112,7 @@ function AppContent() {
 
   const selectResourcePath = useCallback((nextPath: AppLocationPath) => {
     setStartupRoute(false);
+    setStartupReviewMode(false);
     setResourcePath(nextPath);
     if (window.location.pathname !== nextPath) window.history.pushState(null, "", nextPath);
   }, []);
@@ -1223,7 +1233,7 @@ function AppContent() {
         return;
       }
       setStartupStep(undefined);
-      if (startupRoute) selectResourcePath("/containers");
+      if (startupRoute) selectResourcePath(resourcePath);
     };
     return (
       <Suspense fallback={<LoadingScreen />}>

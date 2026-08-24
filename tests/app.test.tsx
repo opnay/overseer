@@ -174,6 +174,8 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/startup");
+    expect(window.location.search).toBe("?startup-preview=homebrew");
   });
 
   it("guides manual Homebrew installation before enabling automatic steps", async () => {
@@ -207,12 +209,14 @@ describe("App", () => {
         return jsonResponse(dashboard);
       }),
     );
+    window.history.replaceState(null, "", "/containers");
 
     render(<App />);
 
     expect(
       await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/startup");
     expect(screen.getByText("CLI 설치")).toBeInTheDocument();
     expect(screen.getByText("zshrc 등록")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CLI 설치 명령 복사" })).toBeEnabled();
@@ -285,7 +289,7 @@ describe("App", () => {
         return jsonResponse(dashboard);
       }),
     );
-    window.history.replaceState(null, "", "/containers?startup-preview=homebrew");
+    window.history.replaceState(null, "", "/startup?startup-preview=homebrew");
 
     render(<App />);
 
@@ -293,6 +297,7 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
     expect(screen.getByText("미리보기")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/startup");
     expect(screen.getByLabelText("Homebrew CLI 설치 명령")).toHaveTextContent(
       "raw.githubusercontent.com/Homebrew/install",
     );
@@ -339,12 +344,13 @@ describe("App", () => {
           return jsonResponse(dashboard);
         }),
       );
-      window.history.replaceState(null, "", `/containers?startup-preview=${preview}`);
+      window.history.replaceState(null, "", `/startup?startup-preview=${preview}`);
 
       render(<App />);
 
       expect(await screen.findByRole("heading", { name: heading, level: 2 })).toBeInTheDocument();
       expect(screen.getByText("미리보기")).toBeInTheDocument();
+      expect(window.location.pathname).toBe("/startup");
       expect(screen.getAllByText("완료")).toHaveLength(completedSteps);
       expect(screen.getByLabelText(commandLabel)).toHaveTextContent(command);
     },
@@ -617,13 +623,14 @@ describe("App", () => {
         return jsonResponse(dashboard);
       }),
     );
-    window.history.replaceState(null, "", "/containers");
+    window.history.replaceState(null, "", "/images");
 
     render(<App />);
 
     expect(
       await screen.findByRole("heading", { name: "Lima를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/startup");
 
     await user.click(screen.getByRole("button", { name: "상태 새로고침" }));
 
@@ -636,7 +643,8 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "다음" }));
 
-    expect(await screen.findByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "이미지", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/images");
   });
 
   it("keeps non-Compose resources available when optional Compose is missing", async () => {
