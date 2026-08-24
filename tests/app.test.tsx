@@ -132,6 +132,50 @@ describe("App", () => {
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
   });
 
+  it("does not flash the requested resource page before startup state resolves", async () => {
+    let resolveStartup!: (response: Response) => void;
+    const delayedStartup = new Promise<Response>((resolve) => {
+      resolveStartup = resolve;
+    });
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return delayedStartup;
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/containers?startup-preview=homebrew");
+
+    render(<App />);
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/api/startup"))).toBe(
+        true,
+      ),
+    );
+    expect(screen.getByLabelText("화면 준비 중")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "컨테이너", level: 1 })).not.toBeInTheDocument();
+
+    resolveStartup(jsonResponse(startupSnapshot()));
+
+    expect(
+      await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
+    ).toBeInTheDocument();
+  });
+
   it("guides manual Homebrew installation before enabling automatic steps", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {

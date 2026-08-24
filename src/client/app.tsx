@@ -166,7 +166,7 @@ function actionError(error: unknown): string {
 
 function LoadingScreen() {
   return (
-    <div aria-busy="true" aria-label="대시보드 불러오는 중" className="overseer-shell">
+    <div aria-busy="true" aria-label="화면 준비 중" className="overseer-shell">
       <aside aria-hidden="true" className="overseer-sidebar overseer-loading-sidebar">
         <Skeleton className="overseer-loading-brand" />
         <div className="overseer-loading-nav">
@@ -928,6 +928,12 @@ function AppContent() {
   const startupVisible = Boolean(
     displayedStartup && (!displayedStartup.ready || composeDecisionPending),
   );
+  const startupCheckPending = Boolean(
+    dashboard &&
+    (dashboard.runtime.phase !== "running" || startupPreview) &&
+    !startup &&
+    !startupError,
+  );
 
   useEffect(() => {
     if (!startupVisible) return;
@@ -1163,7 +1169,7 @@ function AppContent() {
         }),
     });
 
-  if (!dashboard && !loadError) return <LoadingScreen />;
+  if ((!dashboard && !loadError) || startupCheckPending) return <LoadingScreen />;
 
   if (displayedStartup && startupVisible) {
     const targetName = composeDecisionPending ? "compose" : firstMissingRequiredPrerequisite?.id;
