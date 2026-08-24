@@ -76,6 +76,7 @@ import type {
   StartupPrerequisiteId,
   StartupSnapshot,
   StartupStepId,
+  ToolUpdateId,
   VolumeSummary,
 } from "../shared/contracts.ts";
 import { isImageReference, isResourceName } from "../shared/validation.ts";
@@ -1400,6 +1401,24 @@ function AppContent() {
     });
   };
 
+  const checkToolUpdates = () =>
+    mutate({
+      key: "startup-update-check",
+      request: () =>
+        apiRequest<OperationAccepted>("/startup/updates/check", {
+          method: "POST",
+        }),
+    });
+
+  const updateTool = (target: ToolUpdateId) =>
+    mutate({
+      key: `startup-update-${target}`,
+      request: () =>
+        apiRequest<OperationAccepted>(`/startup/prerequisites/${target}/update`, {
+          method: "POST",
+        }),
+    });
+
   const createDockerEngine = (configuration: DockerEngineConfiguration) =>
     mutate({
       key: "runtime-create",
@@ -1513,7 +1532,16 @@ function AppContent() {
     ({ status, target }) =>
       target.resource === "runtime" && status !== "queued" && status !== "running",
   );
-  const settingsRefreshToken = `${settingsRefreshRevision}:${latestFinishedRuntimeOperation?.id ?? ""}:${latestFinishedRuntimeOperation?.status ?? ""}`;
+  const latestToolUpdateOperation = operations.find(
+    ({ kind }) => kind === "startup.update" || kind === "startup.update.check",
+  );
+  const latestFinishedToolUpdateOperation = operations.find(
+    ({ kind, status }) =>
+      (kind === "startup.update" || kind === "startup.update.check") &&
+      status !== "queued" &&
+      status !== "running",
+  );
+  const settingsRefreshToken = `${settingsRefreshRevision}:${latestFinishedRuntimeOperation?.id ?? ""}:${latestFinishedRuntimeOperation?.status ?? ""}:${latestFinishedToolUpdateOperation?.id ?? ""}:${latestFinishedToolUpdateOperation?.status ?? ""}`;
   const currentDetail = getAppDetailLocation(resourcePath);
   const currentRoute = getAppRoute(resourcePath);
   const currentContainer =
@@ -1988,9 +2016,13 @@ function AppContent() {
               <SettingsPage
                 busy={runtimeBusy || Boolean(submitting)}
                 dashboard={dashboard}
+                onCheckToolUpdates={checkToolUpdates}
                 onCreate={createDockerEngine}
                 onRecreate={recreateDockerEngine}
+                onUpdateTool={updateTool}
                 refreshToken={settingsRefreshToken}
+                toolOperation={latestToolUpdateOperation}
+                toolRequestPending={Boolean(submitting?.startsWith("startup-update"))}
               />
             </Suspense>
           ) : null}

@@ -39,6 +39,6 @@ export const operationResourceLabel = {
   image: "이미지",
   network: "네트워크",
   runtime: "런타임",
-  startup: "시작 준비",
+  startup: "시스템 도구",
   volume: "볼륨",
 } as const;

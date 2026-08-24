@@ -59,6 +59,25 @@ export interface StartupSnapshot {
   ready: boolean;
 }
 
+export type ToolUpdateId = Exclude<StartupPrerequisiteId, "homebrew">;
+
+export interface ToolUpdateItem {
+  automaticUpdate: boolean;
+  automaticUpdateUnavailableReason?: string;
+  currentVersion?: string;
+  id: ToolUpdateId;
+  installed: boolean;
+  label: string;
+  latestVersion?: string;
+  managedByHomebrew: boolean;
+  updateAvailable?: boolean;
+}
+
+export interface ToolUpdateSnapshot {
+  checkedAt?: string;
+  items: ToolUpdateItem[];
+}
+
 export interface ContainerSummary {
   composeProject?: string;
   composeService?: string;
@@ -309,6 +328,8 @@ export type OperationKind =
   | "runtime.recreate"
   | "runtime.stop"
   | "startup.install"
+  | "startup.update"
+  | "startup.update.check"
   | "volume.create"
   | "volume.remove";
 

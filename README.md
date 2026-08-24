@@ -33,7 +33,7 @@ pnpm dev
 
 도구를 제거하지 않고 각 미설치 화면을 확인하려면 `/startup?startup-preview=homebrew`, `/startup?startup-preview=docker`, `/startup?startup-preview=lima`를 사용하십시오. 미리보기는 대상보다 앞선 단계를 완료 상태로 구성하며 실제 도구 감지 결과와 호스트 패키지를 변경하지 않습니다. 다른 페이지에서 필수 설치가 감지되면 `/startup`으로 이동하고, 완료 후 원래 페이지로 돌아갑니다.
 
-도구 준비가 끝나면 **설정 > Docker Engine**의 **실행 환경**에서 VM 드라이버를 선택하고, **엔진 설정**에서 단일 `overseer` VM의 자원을 구성하십시오. 기본값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB입니다. QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
+도구 준비가 끝나면 **설정 > 일반**에서 Homebrew로 설치된 Docker CLI·Compose·Lima의 업데이트를 한 번에 확인하고, 새 버전이 있는 항목만 개별 업데이트할 수 있습니다. 외부 설치본은 현재 버전과 수동 관리 사유만 표시합니다. 업데이트는 호스트 명령 도구만 교체하며 실행 중인 Lima VM과 컨테이너를 재생성하지 않습니다. **설정 > Docker Engine**의 **실행 환경**에서 VM 드라이버를 선택하고, **엔진 설정**에서 단일 `overseer` VM의 자원을 구성하십시오. 기본값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB입니다. QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
 
 리소스는 독립 URL에서 관리합니다.
 
@@ -81,6 +81,9 @@ pnpm check
 - `POST /api/runtime/recreate`: 확인 문자열과 선택 설정으로 단일 VM 재생성
 - `GET /api/startup`: Homebrew·Docker CLI와 Compose·Lima 설치 상태
 - `POST /api/startup/prerequisites/:id/install`: Docker·Compose·Lima Homebrew 설치 작업 접수
+- `GET /api/startup/updates`: Docker CLI·Compose·Lima의 현재·최신 버전과 관리 방식
+- `POST /api/startup/updates/check`: Homebrew 저장소 갱신 및 업데이트 확인 작업 접수
+- `POST /api/startup/prerequisites/:id/update`: 확인된 Homebrew formula 개별 업데이트 작업 접수
 
 ## URL Compose
 
@@ -109,7 +112,7 @@ Compose 페이지의 **폼으로 추가**에서 복수 서비스와 image·tag, 
 - 서버는 `127.0.0.1`에만 바인딩합니다.
 - 컨테이너 포트는 기본적으로 `127.0.0.1`의 빈 포트에 게시합니다.
 - 컨테이너 설정은 named volume만 연결하며 bind mount, privileged, device와 host network를 노출하지 않습니다.
-- 브라우저 요청은 고정된 Homebrew formula 설치만 실행하며 임의 셸 명령을 실행할 수 없습니다.
+- 브라우저 요청은 고정된 Homebrew formula 설치·확인·업데이트만 실행하며 임의 셸 명령을 실행할 수 없습니다.
 - URL Compose fetch는 공개 HTTPS와 1MiB 이하 raw 문서로 제한합니다.
 - Compose 작업은 Docker가 보고한 프로젝트명과 구성 파일만 사용합니다.
 - Compose 프로젝트 내리기는 named volume과 구성 파일을 삭제하지 않습니다.

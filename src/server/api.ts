@@ -5,6 +5,7 @@ import type {
   PullImageInput,
   RegisterRemoteComposeInput,
   StartupInstallTarget,
+  ToolUpdateId,
 } from "../shared/contracts.ts";
 import { parseContainerSpec, parseUpdateContainerInput } from "./container-spec.ts";
 import {
@@ -94,6 +95,42 @@ export function createApi(
 
   app.get("/health", (context) => context.json({ ok: true }));
   app.get("/startup", async (context) => context.json(await startup.getSnapshot()));
+  app.get("/startup/updates", async (context) => context.json(await startup.getUpdates()));
+  app.post("/startup/updates/check", (context) => {
+    const operation = enqueue(context, {
+      kind: "startup.update.check",
+      locks: ["homebrew"],
+      run: (progress) => startup.checkUpdates(progress),
+      successMessage: "Docker CLI·Compose·Lima 업데이트를 확인했습니다.",
+      target: { name: "Docker CLI·Compose·Lima", resource: "startup" },
+      title: "도구 업데이트 확인",
+    });
+    return context.json({ operation }, 202);
+  });
+  app.post("/startup/prerequisites/:id/update", (context) => {
+    const source = context.req.param("id");
+    if (source !== "docker" && source !== "compose" && source !== "lima") {
+      throw new ExpectedError("invalid_tool_update", "지원하지 않는 업데이트 항목입니다.", 400);
+    }
+    const target: ToolUpdateId = source;
+    const label =
+      target === "docker" ? "Docker CLI" : target === "compose" ? "Docker Compose" : "Lima";
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "startup.update",
+        locks: ["homebrew"],
+        run: (progress) => startup.update(target, progress),
+        successMessage: `${label}를 업데이트했습니다.`,
+        target: { id: target, name: label, resource: "startup" },
+        title: `${label} 업데이트`,
+      },
+      undefined,
+      false,
+    );
+    return context.json({ operation }, 202);
+  });
   app.post("/startup/prerequisites/:id/install", async (context) => {
     const source = context.req.param("id");
     if (

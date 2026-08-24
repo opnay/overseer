@@ -12,6 +12,7 @@ import type {
   DockerEngineConfigurationSnapshot,
   OperationSnapshot,
   StartupSnapshot,
+  ToolUpdateSnapshot,
 } from "../src/shared/contracts.ts";
 
 function jsonResponse(value: unknown, status = 200) {
@@ -115,6 +116,43 @@ function startupSnapshot(
       },
     ],
     ready: values.homebrew && values.docker && values.lima,
+  };
+}
+
+function toolUpdateSnapshot(): ToolUpdateSnapshot {
+  return {
+    checkedAt: "2026-08-24T10:00:00.000Z",
+    items: [
+      {
+        automaticUpdate: true,
+        currentVersion: "29.7.2",
+        id: "docker",
+        installed: true,
+        label: "Docker CLI",
+        latestVersion: "30.0.0",
+        managedByHomebrew: true,
+        updateAvailable: true,
+      },
+      {
+        automaticUpdate: true,
+        currentVersion: "5.5.0",
+        id: "compose",
+        installed: true,
+        label: "Docker Compose",
+        latestVersion: "5.5.0",
+        managedByHomebrew: true,
+        updateAvailable: false,
+      },
+      {
+        automaticUpdate: false,
+        automaticUpdateUnavailableReason: "Homebrew로 설치된 도구만 자동 업데이트할 수 있습니다.",
+        currentVersion: "2.2.0",
+        id: "lima",
+        installed: true,
+        label: "Lima",
+        managedByHomebrew: false,
+      },
+    ],
   };
 }
 
@@ -911,6 +949,7 @@ describe("App", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) return jsonResponse(dockerEngineSnapshot());
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/runtime/start") && init?.method === "POST") {
@@ -983,6 +1022,93 @@ describe("App", () => {
     });
   });
 
+  it("checks and updates Homebrew-managed tools from general settings", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/runtime/configuration")) return jsonResponse(dockerEngineSnapshot());
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/startup/updates/check") && init?.method === "POST") {
+        return jsonResponse(
+          {
+            operation: operation("succeeded", {
+              id: "tool-check",
+              kind: "startup.update.check",
+              successMessage: "도구 업데이트를 확인했습니다.",
+              target: { name: "Docker CLI·Compose·Lima", resource: "startup" },
+              title: "도구 업데이트 확인",
+            }),
+          },
+          202,
+        );
+      }
+      if (url.endsWith("/api/startup/prerequisites/docker/update") && init?.method === "POST") {
+        return jsonResponse(
+          {
+            operation: operation("succeeded", {
+              id: "docker-update",
+              kind: "startup.update",
+              successMessage: "Docker CLI를 업데이트했습니다.",
+              target: { id: "docker", name: "Docker CLI", resource: "startup" },
+              title: "Docker CLI 업데이트",
+            }),
+          },
+          202,
+        );
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/settings");
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "도구 업데이트", level: 3 }),
+    ).toBeInTheDocument();
+    const docker = screen.getByRole("listitem", { name: "Docker CLI" });
+    expect(docker).toHaveTextContent("현재29.7.2");
+    expect(docker).toHaveTextContent("최신30.0.0");
+    expect(docker).toHaveTextContent("업데이트 있음");
+    expect(screen.getByRole("listitem", { name: "Docker Compose" })).toHaveTextContent("최신");
+    expect(screen.getByRole("listitem", { name: "Lima" })).toHaveTextContent(
+      "Homebrew로 설치된 도구만 자동 업데이트할 수 있습니다.",
+    );
+
+    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
+    await user.click(screen.getByRole("button", { name: "Docker CLI 업데이트" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/startup/updates/check") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith("/api/startup/prerequisites/docker/update") &&
+          init?.method === "POST",
+      ),
+    ).toBe(true);
+  });
+
   it("requires typing overseer before recreating the single VM", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
@@ -1032,6 +1158,7 @@ describe("App", () => {
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
       }

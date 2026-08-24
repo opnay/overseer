@@ -14,8 +14,10 @@ import type {
   DockerEngineConfiguration,
   DockerEngineConfigurationSnapshot,
   LimaVmType,
+  OperationSnapshot,
   RecreateDockerEngineInput,
   RuntimePhase,
+  ToolUpdateId,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
 import {
@@ -25,13 +27,18 @@ import {
   type DockerEngineConfigurationForm,
 } from "./docker-engine-configuration.ts";
 import { DockerEngineNumberSetting } from "./docker-engine-number-setting.tsx";
+import { ToolUpdatesSection } from "./tool-updates-section.tsx";
 
 interface SettingsPageProps {
   busy: boolean;
   dashboard: DashboardSnapshot;
+  onCheckToolUpdates(): Promise<void>;
   onCreate(configuration: DockerEngineConfiguration): Promise<void>;
   onRecreate(input: RecreateDockerEngineInput): Promise<void>;
+  onUpdateTool(id: ToolUpdateId): Promise<void>;
   refreshToken: string;
+  toolOperation?: OperationSnapshot;
+  toolRequestPending: boolean;
 }
 
 type SettingsSection = "engine" | "environment" | "general";
@@ -72,9 +79,13 @@ const runtimeStatus: Record<
 export function SettingsPage({
   busy,
   dashboard,
+  onCheckToolUpdates,
   onCreate,
   onRecreate,
+  onUpdateTool,
   refreshToken,
+  toolOperation,
+  toolRequestPending,
 }: SettingsPageProps) {
   const [snapshot, setSnapshot] = useState<DockerEngineConfigurationSnapshot>();
   const [form, setForm] = useState<DockerEngineConfigurationForm>();
@@ -211,24 +222,33 @@ export function SettingsPage({
 
           <div className="overseer-settings-panel">
             {section === "general" ? (
-              <section
-                aria-labelledby="overseer-settings-startup"
-                className="overseer-settings-general-section"
-              >
-                <div className="overseer-settings-general-copy">
-                  <span aria-hidden="true">
-                    <PackageCheck size={18} strokeWidth={1.8} />
-                  </span>
-                  <div>
-                    <h3 id="overseer-settings-startup">시작 준비</h3>
-                    <p>필수 도구와 Docker Engine 준비 과정을 다시 확인합니다.</p>
+              <>
+                <section
+                  aria-labelledby="overseer-settings-startup"
+                  className="overseer-settings-general-section"
+                >
+                  <div className="overseer-settings-general-copy">
+                    <span aria-hidden="true">
+                      <PackageCheck size={18} strokeWidth={1.8} />
+                    </span>
+                    <div>
+                      <h3 id="overseer-settings-startup">시작 준비</h3>
+                      <p>필수 도구와 Docker Engine 준비 과정을 다시 확인합니다.</p>
+                    </div>
                   </div>
-                </div>
-                <Button nativeButton={false} render={<a href="/startup" />} variant="outline">
-                  시작 준비 열기
-                  <ArrowRight aria-hidden="true" size={15} />
-                </Button>
-              </section>
+                  <Button nativeButton={false} render={<a href="/startup" />} variant="outline">
+                    시작 준비 열기
+                    <ArrowRight aria-hidden="true" size={15} />
+                  </Button>
+                </section>
+                <ToolUpdatesSection
+                  onCheck={onCheckToolUpdates}
+                  onUpdate={onUpdateTool}
+                  operation={toolOperation}
+                  refreshToken={refreshToken}
+                  requestPending={toolRequestPending}
+                />
+              </>
             ) : null}
 
             {section !== "general" && !snapshot && !loadError ? (

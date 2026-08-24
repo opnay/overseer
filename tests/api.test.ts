@@ -122,6 +122,7 @@ describe("API boundary", () => {
 
   it("reports prerequisites and enqueues supported automatic installs", async () => {
     const startup: StartupPrerequisiteController = {
+      checkUpdates: vi.fn(async () => undefined),
       getSnapshot: vi.fn(async (): Promise<StartupSnapshot> => ({
         prerequisites: [
           {
@@ -163,7 +164,9 @@ describe("API boundary", () => {
         ],
         ready: false,
       })),
+      getUpdates: vi.fn(async () => ({ items: [] })),
       install: vi.fn(async () => undefined),
+      update: vi.fn(async () => undefined),
     };
     const app = createApi(createController(), new OperationQueue(), startup);
 
@@ -179,10 +182,27 @@ describe("API boundary", () => {
     await vi.waitFor(() =>
       expect(startup.install).toHaveBeenCalledWith("docker-with-compose", expect.any(Object)),
     );
+
+    const updates = await app.request("/startup/updates", { headers: localHeaders });
+    expect(updates.status).toBe(200);
+    const check = await app.request("/startup/updates/check", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    const update = await app.request("/startup/prerequisites/docker/update", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect([check.status, update.status]).toEqual([202, 202]);
+    await vi.waitFor(() => expect(startup.checkUpdates).toHaveBeenCalledWith(expect.any(Object)));
+    await vi.waitFor(() =>
+      expect(startup.update).toHaveBeenCalledWith("docker", expect.any(Object)),
+    );
   });
 
   it("does not enqueue automatic Homebrew installation", async () => {
     const startup: StartupPrerequisiteController = {
+      checkUpdates: vi.fn(async () => undefined),
       getSnapshot: vi.fn(async (): Promise<StartupSnapshot> => ({
         prerequisites: [
           {
@@ -198,7 +218,9 @@ describe("API boundary", () => {
         ],
         ready: false,
       })),
+      getUpdates: vi.fn(async () => ({ items: [] })),
       install: vi.fn(async () => undefined),
+      update: vi.fn(async () => undefined),
     };
     const app = createApi(createController(), new OperationQueue(), startup);
 
@@ -209,6 +231,13 @@ describe("API boundary", () => {
 
     expect(response.status).toBe(409);
     expect(startup.install).not.toHaveBeenCalled();
+
+    const unsupportedUpdate = await app.request("/startup/prerequisites/homebrew/update", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(unsupportedUpdate.status).toBe(400);
+    expect(startup.update).not.toHaveBeenCalled();
   });
 
   it("returns Docker Engine configuration and capabilities", async () => {

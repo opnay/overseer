@@ -8,6 +8,28 @@ import { StartupPrerequisiteService } from "../src/server/startup.ts";
 
 const temporaryDirectories: string[] = [];
 
+function brewInfo(dockerOutdated: boolean): string {
+  return JSON.stringify({
+    formulae: [
+      {
+        name: "docker",
+        outdated: dockerOutdated,
+        versions: { stable: "30.0.0" },
+      },
+      {
+        name: "docker-compose",
+        outdated: false,
+        versions: { stable: "5.5.0" },
+      },
+      {
+        name: "lima",
+        outdated: false,
+        versions: { stable: "2.2.0" },
+      },
+    ],
+  });
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories
@@ -183,6 +205,147 @@ describe("StartupPrerequisiteService", () => {
       code: "homebrew_manual_install_required",
     });
     expect(command).not.toHaveBeenCalled();
+  });
+
+  it("checks Homebrew versions and upgrades only an available formula", async () => {
+    let dockerVersion = "29.7.2";
+    let dockerOutdated = true;
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      const name = basename(executable);
+      if (name === "brew" && args[0] === "--version") {
+        return { stderr: "", stdout: "Homebrew 6.0.18\n" };
+      }
+      if (name === "brew" && args[0] === "list") {
+        return {
+          stderr: "",
+          stdout: `docker ${dockerVersion}\ndocker-compose 5.5.0\nlima 2.2.0\n`,
+        };
+      }
+      if (name === "brew" && args[0] === "update") {
+        return { stderr: "", stdout: "Already up-to-date.\n" };
+      }
+      if (name === "brew" && args[0] === "info") {
+        return { stderr: "", stdout: brewInfo(dockerOutdated) };
+      }
+      if (name === "brew" && args[0] === "upgrade" && args[1] === "docker") {
+        dockerVersion = "30.0.0";
+        dockerOutdated = false;
+        return { stderr: "", stdout: "docker upgraded\n" };
+      }
+      if (name === "docker" && args[0] === "--version") {
+        return { stderr: "", stdout: `Docker version ${dockerVersion}, build abc\n` };
+      }
+      if (name === "docker" && args[0] === "compose") {
+        return { stderr: "", stdout: "Docker Compose version 5.5.0\n" };
+      }
+      if (name === "limactl") {
+        return { stderr: "", stdout: "limactl version 2.2.0\n" };
+      }
+      throw new Error("missing");
+    });
+    const service = new StartupPrerequisiteService(command);
+    const progress = { output: vi.fn(), step: vi.fn() };
+
+    await expect(service.update("docker")).rejects.toMatchObject({
+      code: "tool_update_check_required",
+    });
+    await service.checkUpdates(progress);
+    await expect(service.getUpdates()).resolves.toMatchObject({
+      checkedAt: expect.any(String),
+      items: [
+        {
+          automaticUpdate: true,
+          currentVersion: "29.7.2",
+          id: "docker",
+          latestVersion: "30.0.0",
+          managedByHomebrew: true,
+          updateAvailable: true,
+        },
+        {
+          automaticUpdate: true,
+          currentVersion: "5.5.0",
+          id: "compose",
+          latestVersion: "5.5.0",
+          updateAvailable: false,
+        },
+        {
+          automaticUpdate: true,
+          currentVersion: "2.2.0",
+          id: "lima",
+          latestVersion: "2.2.0",
+          updateAvailable: false,
+        },
+      ],
+    });
+
+    await service.update("docker", progress);
+
+    expect(command).toHaveBeenCalledWith(
+      expect.stringMatching(/brew$/),
+      ["upgrade", "docker"],
+      expect.objectContaining({ timeoutMs: 20 * 60_000 }),
+    );
+    const updated = await service.getUpdates();
+    expect(updated.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          currentVersion: "30.0.0",
+          id: "docker",
+          updateAvailable: false,
+        }),
+      ]),
+    );
+  });
+
+  it("does not automatically update a tool outside Homebrew", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      const name = basename(executable);
+      if (name === "brew" && args[0] === "--version") {
+        return { stderr: "", stdout: "Homebrew 6.0.18\n" };
+      }
+      if (name === "brew" && args[0] === "list") {
+        return { stderr: "", stdout: "docker 29.7.2\ndocker-compose 5.5.0\n" };
+      }
+      if (name === "docker" && args[0] === "--version") {
+        return { stderr: "", stdout: "Docker version 29.7.2, build abc\n" };
+      }
+      if (name === "docker" && args[0] === "compose") {
+        return { stderr: "", stdout: "Docker Compose version 5.5.0\n" };
+      }
+      if (name === "limactl") {
+        return { stderr: "", stdout: "limactl version 2.2.0\n" };
+      }
+      throw new Error("missing");
+    });
+    const service = new StartupPrerequisiteService(command);
+
+    const updates = await service.getUpdates();
+
+    expect(updates.items.find(({ id }) => id === "lima")).toMatchObject({
+      automaticUpdate: false,
+      automaticUpdateUnavailableReason: "Homebrew로 설치된 도구만 자동 업데이트할 수 있습니다.",
+      managedByHomebrew: false,
+    });
+  });
+
+  it("rejects an invalid Homebrew update response", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (basename(executable) === "brew" && args[0] === "--version") {
+        return { stderr: "", stdout: "Homebrew 6.0.18\n" };
+      }
+      if (basename(executable) === "brew" && args[0] === "update") {
+        return { stderr: "", stdout: "Already up-to-date.\n" };
+      }
+      if (basename(executable) === "brew" && args[0] === "info") {
+        return { stderr: "", stdout: "not-json" };
+      }
+      throw new Error("missing");
+    });
+    const service = new StartupPrerequisiteService(command);
+
+    await expect(service.checkUpdates()).rejects.toMatchObject({
+      code: "tool_update_check_invalid",
+    });
   });
 
   it("preserves the package manager failure detail", async () => {
