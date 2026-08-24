@@ -1539,14 +1539,15 @@
     gap: var(--city-space-3);
   }
 
-  .overseer-startup-separator {
-    height: 1px;
-    background: var(--city-color-border);
-  }
-
   .overseer-startup-primary-action {
     display: flex;
     justify-content: flex-end;
+  }
+
+  .overseer-startup-completion-action {
+    margin-top: var(--city-space-3);
+    padding-top: var(--city-space-3);
+    border-top: 1px solid var(--city-color-border);
   }
 
   .overseer-startup-decision-actions {

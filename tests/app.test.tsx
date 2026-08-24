@@ -255,9 +255,7 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("또는")).not.toBeInTheDocument();
     const nextButton = screen.getByRole("button", { name: "다음" });
-    const separator = document.querySelector(".overseer-startup-separator");
-    expect(separator).not.toBeNull();
-    expect(separator?.nextElementSibling).toContainElement(nextButton);
+    expect(nextButton.closest(".overseer-startup-completion-action")).not.toBeNull();
 
     await user.click(screen.getByRole("button", { name: "다음" }));
 
@@ -514,7 +512,6 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Docker CLI와 Compose 설치 명령")).toBeInTheDocument();
     expect(screen.queryByText("또는")).not.toBeInTheDocument();
-    expect(document.querySelector(".overseer-startup-separator")).not.toBeNull();
     const automaticInstallLog = screen.getByRole("button", { name: "자동 설치 로그" });
     expect(automaticInstallLog.closest(".overseer-startup-install-group")).not.toBeNull();
     expect(automaticInstallLog).toHaveAttribute("aria-expanded", "false");

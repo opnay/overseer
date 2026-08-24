@@ -369,15 +369,12 @@ export function StartupPage({
               ) : null}
 
               {detected && !active ? (
-                <>
-                  <div aria-hidden="true" className="overseer-startup-separator" />
-                  <div className="overseer-startup-primary-action">
-                    <Button onClick={onContinue}>
-                      다음
-                      <ArrowRight aria-hidden="true" size={16} />
-                    </Button>
-                  </div>
-                </>
+                <div className="overseer-startup-primary-action overseer-startup-completion-action">
+                  <Button onClick={onContinue}>
+                    다음
+                    <ArrowRight aria-hidden="true" size={16} />
+                  </Button>
+                </div>
               ) : null}
             </div>
 
