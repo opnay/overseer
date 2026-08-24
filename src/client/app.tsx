@@ -4,6 +4,7 @@ import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
 import { Dialog } from "@opnay/city-ds-react/dialog";
+import { Drawer } from "@opnay/city-ds-react/drawer";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Field } from "@opnay/city-ds-react/field";
 import { Input } from "@opnay/city-ds-react/input";
@@ -11,6 +12,7 @@ import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
 import { Toolbar } from "@opnay/city-ds-react/toolbar";
 import { Toast } from "@opnay/city-ds-react/toast";
+import { Tooltip } from "@opnay/city-ds-react/tooltip";
 import {
   ArrowLeft,
   ArrowDownToLine,
@@ -27,6 +29,7 @@ import {
   Layers3,
   ListChecks,
   ListTree,
+  Menu,
   Moon,
   Network as NetworkIcon,
   Play,
@@ -39,6 +42,7 @@ import {
   Sun,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   lazy,
@@ -149,6 +153,100 @@ const resourceRouteIcon = {
 
 const STARTUP_REFRESH_FEEDBACK_MS = 500;
 
+type NavigationMode = "desktop" | "mobile" | "rail";
+
+function navigationMode(): NavigationMode {
+  if (window.matchMedia("(max-width: 42rem)").matches) return "mobile";
+  if (window.matchMedia("(max-width: 52rem)").matches) return "rail";
+  return "desktop";
+}
+
+function useNavigationMode(): NavigationMode {
+  const [mode, setMode] = useState(navigationMode);
+
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 42rem)");
+    const rail = window.matchMedia("(max-width: 52rem)");
+    const sync = () => setMode(mobile.matches ? "mobile" : rail.matches ? "rail" : "desktop");
+    sync();
+    mobile.addEventListener("change", sync);
+    rail.addEventListener("change", sync);
+    return () => {
+      mobile.removeEventListener("change", sync);
+      rail.removeEventListener("change", sync);
+    };
+  }, []);
+
+  return mode;
+}
+
+function AppBrand() {
+  return (
+    <div className="overseer-brand">
+      <span aria-hidden="true">
+        <Container size={20} strokeWidth={1.8} />
+      </span>
+      <div>
+        <strong>Overseer</strong>
+        <small>Lima control plane</small>
+      </div>
+    </div>
+  );
+}
+
+function PrimaryNavigation({
+  currentPath,
+  mode,
+  onSelect,
+}: {
+  currentPath: AppPath;
+  mode: Exclude<NavigationMode, "mobile"> | "drawer";
+  onSelect(path: AppPath): void;
+}) {
+  return (
+    <nav aria-label="주요 메뉴" className="overseer-navigation">
+      {APP_ROUTE_GROUPS.map((group) => {
+        const labelId = `overseer-nav-${mode}-${group.id}`;
+        return (
+          <div aria-labelledby={labelId} className="overseer-nav-group" key={group.id} role="group">
+            <span className="overseer-nav-group-label" id={labelId}>
+              {group.label}
+            </span>
+            <div className="overseer-nav-group-items">
+              {APP_ROUTES.filter((route) => route.group === group.id).map((route) => {
+                const Icon = resourceRouteIcon[route.path];
+                const link = (
+                  <a
+                    aria-current={currentPath === route.path ? "page" : undefined}
+                    aria-label={mode === "rail" ? route.label : undefined}
+                    href={route.path}
+                    key={route.path}
+                    onClick={(event) => followAppLink(event, () => onSelect(route.path))}
+                  >
+                    <Icon aria-hidden="true" size={16} />
+                    <span className="overseer-nav-link-label">{route.label}</span>
+                  </a>
+                );
+                if (mode !== "rail") return link;
+                return (
+                  <Tooltip.Root key={route.path}>
+                    <Tooltip.Trigger render={link} />
+                    <Tooltip.Portal>
+                      <Tooltip.Positioner side="right" sideOffset={8}>
+                        <Tooltip.Popup>{route.label}</Tooltip.Popup>
+                      </Tooltip.Positioner>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 const runtimePresentation: Record<
   RuntimePhase,
   { label: string; tone: "destructive" | "info" | "neutral" | "success" | "warning" }
@@ -161,33 +259,115 @@ const runtimePresentation: Record<
   stopping: { label: "중지 중", tone: "info" },
 };
 
+function MobileNavigationDrawer({
+  currentPath,
+  dockerVersion,
+  instance,
+  onSelect,
+  status,
+}: {
+  currentPath: AppPath;
+  dockerVersion?: string;
+  instance: string;
+  onSelect(path: AppPath): void;
+  status: (typeof runtimePresentation)[RuntimePhase];
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Drawer.Root modal onOpenChange={setOpen} open={open} swipeDirection="left">
+      <Drawer.Trigger
+        render={<Button aria-label="주요 메뉴 열기" iconOnly size="sm" variant="ghost" />}
+      >
+        <Menu aria-hidden="true" size={17} />
+      </Drawer.Trigger>
+      <Drawer.Portal>
+        <Drawer.Backdrop />
+        <Drawer.Viewport side="left">
+          <Drawer.Popup side="left" size="sm">
+            <Drawer.Header>
+              <div>
+                <Drawer.Title>주요 메뉴</Drawer.Title>
+                <Drawer.Description>Overseer 전역 화면으로 이동합니다.</Drawer.Description>
+              </div>
+              <Drawer.Close
+                render={<Button aria-label="주요 메뉴 닫기" iconOnly size="sm" variant="ghost" />}
+              >
+                <X aria-hidden="true" size={16} />
+              </Drawer.Close>
+            </Drawer.Header>
+            <Drawer.Body className="overseer-mobile-navigation-body">
+              <PrimaryNavigation
+                currentPath={currentPath}
+                mode="drawer"
+                onSelect={(path) => {
+                  setOpen(false);
+                  onSelect(path);
+                }}
+              />
+              <section aria-label="Docker Engine 상태" className="overseer-mobile-runtime">
+                <div>
+                  <Badge dot size="sm" tone={status.tone} />
+                  <strong>{status.label}</strong>
+                </div>
+                <span>{instance}</span>
+                <span>Docker {dockerVersion ?? "-"}</span>
+              </section>
+            </Drawer.Body>
+          </Drawer.Popup>
+        </Drawer.Viewport>
+      </Drawer.Portal>
+    </Drawer.Root>
+  );
+}
+
 function actionError(error: unknown): string {
   return error instanceof Error ? error.message : "요청을 완료하지 못했습니다.";
 }
 
 function LoadingScreen() {
+  const mode = useNavigationMode();
+
   return (
-    <div aria-busy="true" aria-label="화면 준비 중" className="overseer-shell">
-      <aside aria-hidden="true" className="overseer-sidebar overseer-loading-sidebar">
-        <Skeleton className="overseer-loading-brand" />
-        <div className="overseer-loading-nav">
-          {APP_ROUTE_GROUPS.map((group) => (
-            <div className="overseer-loading-nav-group" key={group.id}>
-              <Skeleton className="overseer-loading-nav-label" />
-              <div className="overseer-loading-nav-items">
-                {APP_ROUTES.filter((route) => route.group === group.id).map((route) => (
-                  <Skeleton className="overseer-loading-nav-item" key={route.path} />
-                ))}
+    <div
+      aria-busy="true"
+      aria-label="화면 준비 중"
+      className="overseer-shell"
+      data-navigation-mode={mode}
+    >
+      {mode !== "mobile" ? (
+        <aside
+          aria-hidden="true"
+          className="overseer-sidebar overseer-loading-sidebar"
+          data-navigation-mode={mode}
+        >
+          <Skeleton className="overseer-loading-brand" />
+          <div className="overseer-loading-nav">
+            {APP_ROUTE_GROUPS.map((group) => (
+              <div className="overseer-loading-nav-group" key={group.id}>
+                <Skeleton className="overseer-loading-nav-label" />
+                <div className="overseer-loading-nav-items">
+                  {APP_ROUTES.filter((route) => route.group === group.id).map((route) => (
+                    <Skeleton className="overseer-loading-nav-item" key={route.path} />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </aside>
+            ))}
+          </div>
+        </aside>
+      ) : null}
       <div className="overseer-workspace">
-        <header aria-hidden="true" className="overseer-topbar">
-          <Skeleton className="overseer-loading-topbar-context" />
-          <Skeleton className="overseer-loading-topbar-action" />
-        </header>
+        {mode === "mobile" ? (
+          <header aria-hidden="true" className="overseer-mobile-header">
+            <Skeleton className="overseer-loading-mobile-brand" />
+            <Skeleton className="overseer-loading-mobile-actions" />
+          </header>
+        ) : (
+          <header aria-hidden="true" className="overseer-topbar">
+            <Skeleton className="overseer-loading-topbar-context" />
+            <Skeleton className="overseer-loading-topbar-action" />
+          </header>
+        )}
         <main className="overseer-main">
           <div aria-hidden="true" className="overseer-loading-heading">
             <Skeleton className="overseer-loading-eyebrow" />
@@ -853,6 +1033,7 @@ export function App() {
 }
 
 function AppContent() {
+  const navigationMode = useNavigationMode();
   const [startupPreview] = useState(startupPreviewFromLocation);
   const [startupRoute, setStartupRoute] = useState(startupRouteFromLocation);
   const [startupReviewMode, setStartupReviewMode] = useState(startupRouteFromLocation);
@@ -1139,14 +1320,6 @@ function AppContent() {
     setResourcePath(nextPath);
     if (window.location.pathname !== nextPath) window.history.pushState(null, "", nextPath);
   }, []);
-
-  const handleResourceLink = (event: MouseEvent<HTMLAnchorElement>, nextPath: AppLocationPath) => {
-    if (event.button > 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-      return;
-    }
-    event.preventDefault();
-    selectResourcePath(nextPath);
-  };
 
   const mutate = async ({ key, onAccepted, request }: MutationOptions) => {
     setSubmitting(key);
@@ -1527,100 +1700,118 @@ function AppContent() {
   ) : null;
 
   return (
-    <div className="overseer-shell">
+    <div className="overseer-shell" data-navigation-mode={navigationMode}>
       <a className="overseer-skip-link" href="#main-content">
         본문으로 건너뛰기
       </a>
-      <aside className="overseer-sidebar">
-        <div className="overseer-brand">
-          <span aria-hidden="true">
-            <Container size={20} strokeWidth={1.8} />
-          </span>
-          <div>
-            <strong>Overseer</strong>
-            <small>Lima control plane</small>
+      {navigationMode !== "mobile" ? (
+        <aside className="overseer-sidebar" data-navigation-mode={navigationMode}>
+          <AppBrand />
+          <PrimaryNavigation
+            currentPath={currentRoute.path}
+            mode={navigationMode}
+            onSelect={selectResourcePath}
+          />
+          <div className="overseer-sidebar-status">
+            <span aria-hidden="true" data-state={runtimeStatus.tone} />
+            <div>
+              <strong>{runtimeStatus.label}</strong>
+              <small>{runtime?.instance ?? "overseer"}</small>
+            </div>
           </div>
-        </div>
-        <nav aria-label="주요 메뉴">
-          {APP_ROUTE_GROUPS.map((group) => {
-            const labelId = `overseer-nav-${group.id}`;
-            return (
-              <div
-                aria-labelledby={labelId}
-                className="overseer-nav-group"
-                key={group.id}
-                role="group"
-              >
-                <span className="overseer-nav-group-label" id={labelId}>
-                  {group.label}
-                </span>
-                <div className="overseer-nav-group-items">
-                  {APP_ROUTES.filter((route) => route.group === group.id).map((route) => {
-                    const Icon = resourceRouteIcon[route.path];
-                    return (
-                      <a
-                        aria-current={currentRoute.path === route.path ? "page" : undefined}
-                        href={route.path}
-                        key={route.path}
-                        onClick={(event) => handleResourceLink(event, route.path)}
-                      >
-                        <Icon aria-hidden="true" size={16} />
-                        {route.label}
-                      </a>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </nav>
-        <div className="overseer-sidebar-status">
-          <span aria-hidden="true" data-state={runtimeStatus.tone} />
-          <div>
-            <strong>{runtimeStatus.label}</strong>
-            <small>{runtime?.instance ?? "overseer"}</small>
-          </div>
-        </div>
-      </aside>
+        </aside>
+      ) : null}
 
       <div className="overseer-workspace">
-        <header className="overseer-topbar">
-          <div>
-            <span>Local container console</span>
-            <strong>127.0.0.1 전용</strong>
-          </div>
-          <div className="overseer-topbar-actions">
-            {runtime?.dockerVersion ? (
-              <span className="overseer-runtime-version">Docker {runtime.dockerVersion}</span>
-            ) : null}
-            <span className="overseer-runtime-state">
+        {navigationMode === "mobile" ? (
+          <header className="overseer-mobile-header">
+            <div className="overseer-mobile-brand">
+              <span aria-hidden="true">
+                <Container size={17} strokeWidth={1.8} />
+              </span>
+              <strong>Overseer</strong>
+            </div>
+            <div className="overseer-mobile-header-actions">
               <Badge
                 aria-label={`Lima ${runtimeStatus.label}`}
                 dot
                 size="sm"
                 tone={runtimeStatus.tone}
               />
-              <span>{runtimeStatus.label}</span>
-            </span>
-            <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
-              <OperationsDrawer
-                onCancel={cancelOperation}
-                onRetry={retryOperation}
-                onViewAll={() => selectResourcePath("/operations")}
-                operations={operations}
+              <Suspense fallback={<Skeleton className="overseer-loading-mobile-action" />}>
+                <OperationsDrawer
+                  compactTrigger
+                  onCancel={cancelOperation}
+                  onRetry={retryOperation}
+                  onViewAll={() => selectResourcePath("/operations")}
+                  operations={operations}
+                />
+              </Suspense>
+              <Button
+                aria-label={dark ? "라이트 테마 사용" : "다크 테마 사용"}
+                iconOnly
+                onClick={() => setDark((value) => !value)}
+                size="sm"
+                variant="ghost"
+              >
+                {dark ? (
+                  <Sun aria-hidden="true" size={16} />
+                ) : (
+                  <Moon aria-hidden="true" size={16} />
+                )}
+              </Button>
+              <MobileNavigationDrawer
+                currentPath={currentRoute.path}
+                dockerVersion={runtime?.dockerVersion}
+                instance={runtime?.instance ?? "overseer"}
+                onSelect={selectResourcePath}
+                status={runtimeStatus}
               />
-            </Suspense>
-            <Button
-              aria-label={dark ? "라이트 테마 사용" : "다크 테마 사용"}
-              iconOnly
-              onClick={() => setDark((value) => !value)}
-              size="sm"
-              variant="ghost"
-            >
-              {dark ? <Sun aria-hidden="true" size={16} /> : <Moon aria-hidden="true" size={16} />}
-            </Button>
-          </div>
-        </header>
+            </div>
+          </header>
+        ) : (
+          <header className="overseer-topbar">
+            <div>
+              <span>Local container console</span>
+              <strong>127.0.0.1 전용</strong>
+            </div>
+            <div className="overseer-topbar-actions">
+              {runtime?.dockerVersion ? (
+                <span className="overseer-runtime-version">Docker {runtime.dockerVersion}</span>
+              ) : null}
+              <span className="overseer-runtime-state">
+                <Badge
+                  aria-label={`Lima ${runtimeStatus.label}`}
+                  dot
+                  size="sm"
+                  tone={runtimeStatus.tone}
+                />
+                <span>{runtimeStatus.label}</span>
+              </span>
+              <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+                <OperationsDrawer
+                  onCancel={cancelOperation}
+                  onRetry={retryOperation}
+                  onViewAll={() => selectResourcePath("/operations")}
+                  operations={operations}
+                />
+              </Suspense>
+              <Button
+                aria-label={dark ? "라이트 테마 사용" : "다크 테마 사용"}
+                iconOnly
+                onClick={() => setDark((value) => !value)}
+                size="sm"
+                variant="ghost"
+              >
+                {dark ? (
+                  <Sun aria-hidden="true" size={16} />
+                ) : (
+                  <Moon aria-hidden="true" size={16} />
+                )}
+              </Button>
+            </div>
+          </header>
+        )}
 
         <main className="overseer-main" id="main-content">
           <section className="overseer-page-header">

@@ -118,6 +118,23 @@ function startupSnapshot(
   };
 }
 
+function mockViewport(width: number) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => {
+      const maximumRem = Number(query.match(/max-width:\s*([\d.]+)rem/)?.[1]);
+      return {
+        addEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        matches: Number.isFinite(maximumRem) ? width <= maximumRem * 16 : false,
+        media: query,
+        onchange: null,
+        removeEventListener: vi.fn(),
+      };
+    }),
+  );
+}
+
 describe("App", () => {
   it("matches the loading skeleton to the page shell and table", () => {
     vi.stubGlobal(
@@ -130,6 +147,20 @@ describe("App", () => {
     expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(7);
     expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
+  });
+
+  it("uses the mobile header skeleton without flashing desktop navigation", () => {
+    mockViewport(390);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+
+    const { container } = render(<App />);
+
+    expect(container.querySelector(".overseer-mobile-header")).toBeInTheDocument();
+    expect(container.querySelector(".overseer-sidebar")).not.toBeInTheDocument();
+    expect(container.querySelector(".overseer-loading-mobile-brand")).toBeInTheDocument();
   });
 
   it("does not flash the requested resource page before startup state resolves", async () => {
@@ -1360,6 +1391,93 @@ describe("App", () => {
       "/operations",
     );
     expect(within(system).getByRole("link", { name: "설정" })).toHaveAttribute("href", "/settings");
+  });
+
+  it("uses an accessible icon rail at tablet width", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    mockViewport(783);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/api/operations")
+          ? jsonResponse({ operations: [] })
+          : jsonResponse(dashboard),
+      ),
+    );
+    window.history.replaceState(null, "", "/compose");
+
+    render(<App />);
+    await screen.findByRole("heading", { name: "Compose", level: 1 });
+
+    const sidebar = screen.getByRole("complementary");
+    expect(sidebar).toHaveAttribute("data-navigation-mode", "rail");
+    const composeLink = within(sidebar).getByRole("link", { name: "Compose" });
+    expect(composeLink).toHaveAttribute("aria-current", "page");
+    await user.hover(composeLink);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Compose");
+  });
+
+  it("opens all navigation groups from one mobile header", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    mockViewport(390);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/api/operations")
+          ? jsonResponse({ operations: [] })
+          : jsonResponse(dashboard),
+      ),
+    );
+    window.history.replaceState(null, "", "/containers");
+
+    render(<App />);
+    await screen.findByRole("heading", { name: "컨테이너", level: 1 });
+
+    expect(screen.queryByRole("navigation", { name: "주요 메뉴" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "주요 메뉴 열기" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "주요 메뉴" });
+    const navigation = within(drawer).getByRole("navigation", { name: "주요 메뉴" });
+    expect(within(navigation).getByRole("group", { name: "워크로드" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "리소스" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "운영" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "시스템" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: "컨테이너" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(drawer).getByText("Docker 29.7.2")).toBeInTheDocument();
+
+    await user.click(within(navigation).getByRole("link", { name: "이미지" }));
+    expect(await screen.findByRole("heading", { name: "이미지", level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "주요 메뉴" })).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/images");
   });
 
   it("renders container logs in the terminal viewer", async () => {

@@ -21,11 +21,13 @@ function useCompactDrawer(): boolean {
 }
 
 export function OperationsDrawer({
+  compactTrigger = false,
   onCancel,
   onRetry,
   onViewAll,
   operations,
 }: {
+  compactTrigger?: boolean;
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
   onViewAll: () => void;
@@ -40,11 +42,26 @@ export function OperationsDrawer({
 
   return (
     <Drawer.Root modal={compact} swipeDirection={compact ? "down" : "right"}>
-      <Drawer.Trigger render={<Button size="sm" variant="outline" />}>
+      <Drawer.Trigger
+        render={
+          <Button
+            aria-label={
+              compactTrigger ? `작업${visible.length > 0 ? ` ${visible.length}개` : ""}` : undefined
+            }
+            iconOnly={compactTrigger}
+            size="sm"
+            variant={compactTrigger ? "ghost" : "outline"}
+          />
+        }
+      >
         <Activity aria-hidden="true" size={14} />
-        작업
+        {compactTrigger ? null : "작업"}
         {visible.length > 0 ? (
-          <Badge size="sm" tone={hasFailures ? "destructive" : "warning"}>
+          <Badge
+            className={compactTrigger ? "overseer-operation-trigger-count" : undefined}
+            size="sm"
+            tone={hasFailures ? "destructive" : "warning"}
+          >
             {visible.length}
           </Badge>
         ) : null}
