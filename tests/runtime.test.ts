@@ -68,6 +68,29 @@ function inspectFixture() {
   };
 }
 
+describe("LimaDockerRuntime optional Compose capability", () => {
+  it("keeps the Docker dashboard available when the host Compose plugin is missing", async () => {
+    const dockerCommands: string[][] = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      if (args[0] === "compose" && args[1] === "version") {
+        throw commandFailure("docker compose version", "compose is not a docker command");
+      }
+      dockerCommands.push([...args]);
+      if (args.includes("version")) return { stderr: "", stdout: "29.7.2\n" };
+      return { stderr: "", stdout: "[]" };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getDashboard()).resolves.toMatchObject({
+      capabilities: { dockerCompose: false },
+      composeProjects: [],
+      runtime: { phase: "running" },
+    });
+    expect(dockerCommands.some((args) => args.includes("compose"))).toBe(false);
+  });
+});
+
 describe("LimaDockerRuntime container configuration", () => {
   it("passes the supported create options without a shell", async () => {
     const dockerCommands: string[][] = [];

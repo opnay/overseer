@@ -69,9 +69,9 @@ function dockerEngineSnapshot(
 }
 
 function startupSnapshot(
-  installed: { docker?: boolean; homebrew?: boolean; lima?: boolean } = {},
+  installed: { compose?: boolean; docker?: boolean; homebrew?: boolean; lima?: boolean } = {},
 ): StartupSnapshot {
-  const values = { docker: true, homebrew: true, lima: true, ...installed };
+  const values = { compose: true, docker: true, homebrew: true, lima: true, ...installed };
   return {
     prerequisites: [
       {
@@ -84,14 +84,25 @@ function startupSnapshot(
           '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
         installed: values.homebrew,
         label: "Homebrew",
+        required: true,
       },
       {
         automaticInstall: values.homebrew,
-        description: "Overseer가 Lima의 Docker Engine과 Compose 프로젝트를 제어합니다.",
+        description: "Overseer가 Lima의 Docker Engine을 제어할 때 사용하는 명령 도구입니다.",
         id: "docker",
-        installCommand: "brew install docker docker-compose",
+        installCommand: "brew install docker",
         installed: values.docker,
-        label: "Docker CLI와 Compose",
+        label: "Docker CLI",
+        required: true,
+      },
+      {
+        automaticInstall: values.homebrew && values.docker,
+        description: "Compose 프로젝트를 사용하려는 경우에만 추가로 설치합니다.",
+        id: "compose",
+        installCommand: "brew install docker-compose",
+        installed: values.compose,
+        label: "Docker Compose",
+        required: false,
       },
       {
         automaticInstall: values.homebrew,
@@ -100,6 +111,7 @@ function startupSnapshot(
         installCommand: "brew install lima",
         installed: values.lima,
         label: "Lima",
+        required: true,
       },
     ],
     ready: values.homebrew && values.docker && values.lima,
@@ -163,7 +175,7 @@ describe("App", () => {
     await waitFor(() => expect(startupRequests).toBeGreaterThan(1));
   });
 
-  it("starts Docker CLI and Compose installation from the startup funnel", async () => {
+  it("lets the user choose Docker CLI only or include Compose", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -186,10 +198,13 @@ describe("App", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/startup")) {
-        return jsonResponse(startupSnapshot({ docker: false, lima: false }));
+        return jsonResponse(startupSnapshot({ compose: false, docker: false, lima: false }));
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
-      if (url.endsWith("/api/startup/prerequisites/docker/install") && init?.method === "POST") {
+      if (
+        url.endsWith("/api/startup/prerequisites/docker-with-compose/install") &&
+        init?.method === "POST"
+      ) {
         return jsonResponse({ operation: accepted }, 202);
       }
       return jsonResponse(dashboard);
@@ -200,10 +215,15 @@ describe("App", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: "Docker CLI와 Compose를 설치해야 합니다.",
+        name: "Docker CLI를 설치해야 합니다.",
         level: 2,
       }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("Docker CLI 설치 명령")).toHaveTextContent("brew install docker");
+    expect(screen.getByRole("button", { name: "Docker CLI 자동 설치" })).toBeEnabled();
+    expect(screen.queryByText(/cli-plugins/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Docker Compose도 함께 설치" }));
     expect(screen.getByText("brew install docker docker-compose")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Docker CLI와 Compose 자동 설치" }));
@@ -215,7 +235,114 @@ describe("App", () => {
       expect(
         fetchMock.mock.calls.some(
           ([input, init]) =>
-            String(input).endsWith("/api/startup/prerequisites/docker/install") &&
+            String(input).endsWith("/api/startup/prerequisites/docker-with-compose/install") &&
+            init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("refreshes startup status every 10 seconds and allows skipping Compose", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer",
+        message: "전용 Lima 인스턴스가 아직 없습니다.",
+        phase: "missing",
+      },
+      volumes: [],
+    };
+    const snapshot = startupSnapshot({ compose: false, lima: false });
+    let startupRequests = 0;
+    let releaseRefresh: ((response: Response) => void) | undefined;
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/startup")) {
+          startupRequests += 1;
+          if (startupRequests === 1) return jsonResponse(snapshot);
+          return new Promise<Response>((resolve) => {
+            releaseRefresh = resolve;
+          });
+        }
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        return jsonResponse(dashboard);
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Docker Compose를 설치할까요?", level: 2 }),
+    ).toBeInTheDocument();
+    expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
+
+    await user.click(screen.getByRole("button", { name: "상태 새로고침" }));
+    expect(screen.getByRole("button", { name: "새로고침 중…" })).toBeDisabled();
+    releaseRefresh?.(jsonResponse(snapshot));
+    expect(await screen.findByRole("button", { name: "상태 새로고침" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "건너뛰기" }));
+    expect(
+      await screen.findByRole("heading", { name: "Lima를 설치해야 합니다.", level: 2 }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps non-Compose resources available when optional Compose is missing", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      capabilities: { dockerCompose: false },
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "startup.install",
+      successMessage: "Docker Compose를 설치했습니다.",
+      target: { name: "compose", resource: "startup" },
+      title: "Docker Compose 설치",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/startup/prerequisites/compose/install") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/compose");
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Docker Compose가 설치되지 않았습니다.",
+        level: 2,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "폼으로 추가" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Docker Compose 설치" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/startup/prerequisites/compose/install") &&
             init?.method === "POST",
         ),
       ).toBe(true),

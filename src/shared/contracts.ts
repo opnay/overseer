@@ -37,7 +37,8 @@ export interface RecreateDockerEngineInput {
   confirmation: string;
 }
 
-export type StartupPrerequisiteId = "docker" | "homebrew" | "lima";
+export type StartupPrerequisiteId = "compose" | "docker" | "homebrew" | "lima";
+export type StartupInstallTarget = StartupPrerequisiteId | "docker-with-compose";
 
 export interface StartupPrerequisite {
   automaticInstall: boolean;
@@ -48,6 +49,7 @@ export interface StartupPrerequisite {
   installed: boolean;
   label: string;
   missingReason?: string;
+  required: boolean;
   version?: string;
 }
 
@@ -250,6 +252,9 @@ export interface NetworkSummary {
 }
 
 export interface DashboardSnapshot {
+  capabilities?: {
+    dockerCompose: boolean;
+  };
   composeProjects: ComposeProjectSummary[];
   containers: ContainerSummary[];
   images: ImageSummary[];

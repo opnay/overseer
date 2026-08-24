@@ -3,8 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type {
+  StartupInstallTarget,
   StartupPrerequisite,
-  StartupPrerequisiteId,
   StartupSnapshot,
 } from "../shared/contracts.ts";
 import { ExpectedError } from "./errors.ts";
@@ -14,9 +14,8 @@ import { CommandError, runCommand } from "./process.ts";
 
 const HOMEBREW_INSTALL_COMMAND =
   '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"';
-const DOCKER_INSTALL_COMMAND = `brew install docker docker-compose
-mkdir -p "$HOME/.docker/cli-plugins"
-test -e "$HOME/.docker/cli-plugins/docker-compose" || ln -s "$(brew --prefix)/lib/docker/cli-plugins/docker-compose" "$HOME/.docker/cli-plugins/docker-compose"`;
+const DOCKER_INSTALL_COMMAND = "brew install docker";
+const COMPOSE_INSTALL_COMMAND = "brew install docker-compose";
 const LIMA_INSTALL_COMMAND = "brew install lima";
 
 interface ResolvedCommand {
@@ -26,7 +25,7 @@ interface ResolvedCommand {
 
 export interface StartupPrerequisiteController {
   getSnapshot(): Promise<StartupSnapshot>;
-  install(id: StartupPrerequisiteId, progress?: OperationProgress): Promise<void>;
+  install(target: StartupInstallTarget, progress?: OperationProgress): Promise<void>;
 }
 
 function candidates(name: "brew" | "docker" | "limactl"): string[] {
@@ -96,6 +95,7 @@ export class StartupPrerequisiteService implements StartupPrerequisiteController
         installCommand: HOMEBREW_INSTALL_COMMAND,
         installed: homebrewInstalled,
         label: "Homebrew",
+        required: true,
         ...(homebrew
           ? { version: version(homebrew.output, /^Homebrew\s+/) }
           : { missingReason: "Homebrew 실행 파일을 찾을 수 없습니다." }),
@@ -105,22 +105,34 @@ export class StartupPrerequisiteService implements StartupPrerequisiteController
         ...(homebrewInstalled
           ? {}
           : { automaticInstallUnavailableReason: "Homebrew를 먼저 설치해야 합니다." }),
-        description: "Overseer가 Lima의 Docker Engine과 Compose 프로젝트를 제어합니다.",
+        description: "Overseer가 Lima의 Docker Engine을 제어할 때 사용하는 명령 도구입니다.",
         id: "docker",
         installCommand: DOCKER_INSTALL_COMMAND,
-        installed: Boolean(docker && compose),
-        label: "Docker CLI와 Compose",
-        ...(docker && compose
-          ? {
-              version: [dockerVersion, composeVersion ? `Compose ${composeVersion}` : undefined]
-                .filter(Boolean)
-                .join(" · "),
-            }
+        installed: Boolean(docker),
+        label: "Docker CLI",
+        required: true,
+        ...(docker
+          ? { version: dockerVersion }
+          : { missingReason: "Docker CLI를 찾을 수 없습니다." }),
+      },
+      {
+        automaticInstall: homebrewInstalled && Boolean(docker),
+        ...(homebrewInstalled && docker
+          ? {}
           : {
-              missingReason: docker
-                ? "Docker Compose 플러그인을 찾을 수 없습니다."
-                : "Docker CLI를 찾을 수 없습니다.",
+              automaticInstallUnavailableReason: homebrewInstalled
+                ? "Docker CLI를 먼저 설치해야 합니다."
+                : "Homebrew를 먼저 설치해야 합니다.",
             }),
+        description: "Compose 프로젝트를 사용하려는 경우에만 추가로 설치합니다.",
+        id: "compose",
+        installCommand: COMPOSE_INSTALL_COMMAND,
+        installed: Boolean(compose),
+        label: "Docker Compose",
+        required: false,
+        ...(compose
+          ? { version: composeVersion }
+          : { missingReason: "Docker Compose 플러그인을 찾을 수 없습니다." }),
       },
       {
         automaticInstall: homebrewInstalled,
@@ -132,16 +144,20 @@ export class StartupPrerequisiteService implements StartupPrerequisiteController
         installCommand: LIMA_INSTALL_COMMAND,
         installed: Boolean(lima),
         label: "Lima",
+        required: true,
         ...(lima
           ? { version: version(lima.output, /^limactl version\s+/) }
           : { missingReason: "Lima 실행 파일을 찾을 수 없습니다." }),
       },
     ];
-    return { prerequisites, ready: prerequisites.every(({ installed }) => installed) };
+    return {
+      prerequisites,
+      ready: prerequisites.filter(({ required }) => required).every(({ installed }) => installed),
+    };
   }
 
-  async install(id: StartupPrerequisiteId, progress?: OperationProgress): Promise<void> {
-    if (id === "homebrew") {
+  async install(target: StartupInstallTarget, progress?: OperationProgress): Promise<void> {
+    if (target === "homebrew") {
       throw new ExpectedError(
         "homebrew_manual_install_required",
         "Homebrew는 Terminal에서 공식 설치 명령을 실행하십시오.",
@@ -157,16 +173,35 @@ export class StartupPrerequisiteService implements StartupPrerequisiteController
       );
     }
 
-    const label = id === "docker" ? "Docker CLI와 Compose" : "Lima";
+    const label =
+      target === "docker-with-compose"
+        ? "Docker CLI와 Compose"
+        : target === "docker"
+          ? "Docker CLI"
+          : target === "compose"
+            ? "Docker Compose"
+            : "Lima";
     try {
       progress?.step(`${label} 설치 중`);
       await this.command(
         homebrew.executable,
-        ["install", ...(id === "docker" ? ["docker", "docker-compose"] : ["lima"])],
+        [
+          "install",
+          ...(target === "docker-with-compose"
+            ? ["docker", "docker-compose"]
+            : target === "compose"
+              ? ["docker-compose"]
+              : [target]),
+        ],
         { onOutput: progress?.output, timeoutMs: 20 * 60_000 },
       );
-      if (id === "docker") await this.ensureDockerReady(homebrew.executable, progress);
-      else if (!(await this.probe(candidates("limactl"), ["--version"]))) {
+      if (target === "docker" || target === "docker-with-compose") {
+        await this.requireDockerCli();
+      }
+      if (target === "compose" || target === "docker-with-compose") {
+        await this.ensureDockerComposeReady(homebrew.executable, progress);
+      }
+      if (target === "lima" && !(await this.probe(candidates("limactl"), ["--version"]))) {
         throw new ExpectedError(
           "prerequisite_verification_failed",
           "Lima 설치 후 실행 파일을 찾을 수 없습니다.",
@@ -192,10 +227,7 @@ export class StartupPrerequisiteService implements StartupPrerequisiteController
     }
   }
 
-  private async ensureDockerReady(
-    homebrewExecutable: string,
-    progress?: OperationProgress,
-  ): Promise<void> {
+  private async requireDockerCli(): Promise<ResolvedCommand> {
     const docker = await this.probe(candidates("docker"), ["--version"]);
     if (!docker) {
       throw new ExpectedError(
@@ -204,6 +236,14 @@ export class StartupPrerequisiteService implements StartupPrerequisiteController
         503,
       );
     }
+    return docker;
+  }
+
+  private async ensureDockerComposeReady(
+    homebrewExecutable: string,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    const docker = await this.requireDockerCli();
     if (await this.probe([docker.executable], ["compose", "version"])) return;
 
     progress?.step("Docker Compose 플러그인 연결 중");

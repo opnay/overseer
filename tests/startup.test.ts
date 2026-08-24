@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("StartupPrerequisiteService", () => {
-  it("groups Docker CLI and Compose into one visible prerequisite", async () => {
+  it("keeps Compose optional after Docker CLI is available", async () => {
     const command: CommandRunner = vi.fn(async (executable, args) => {
       const name = basename(executable);
       if (name === "brew") return { stderr: "", stdout: "Homebrew 5.0.0\n" };
@@ -30,14 +30,21 @@ describe("StartupPrerequisiteService", () => {
 
     await expect(service.getSnapshot()).resolves.toMatchObject({
       prerequisites: [
-        { automaticInstall: false, id: "homebrew", installed: true },
+        { automaticInstall: false, id: "homebrew", installed: true, required: true },
         {
           automaticInstall: true,
           id: "docker",
+          installed: true,
+          required: true,
+        },
+        {
+          automaticInstall: true,
+          id: "compose",
           installed: false,
           missingReason: "Docker Compose 플러그인을 찾을 수 없습니다.",
+          required: false,
         },
-        { automaticInstall: true, id: "lima", installed: false },
+        { automaticInstall: true, id: "lima", installed: false, required: true },
       ],
       ready: false,
     });
@@ -81,7 +88,7 @@ describe("StartupPrerequisiteService", () => {
     const service = new StartupPrerequisiteService(command, home);
     const progress = { output: vi.fn(), step: vi.fn() };
 
-    await service.install("docker", progress);
+    await service.install("docker-with-compose", progress);
 
     expect(command).toHaveBeenCalledWith(
       expect.stringMatching(/brew$/),
@@ -98,10 +105,45 @@ describe("StartupPrerequisiteService", () => {
         expect.objectContaining({
           id: "docker",
           installed: true,
-          version: "29.7.2 · Compose 5.5.0",
+          version: "29.7.2",
+        }),
+        expect.objectContaining({
+          id: "compose",
+          installed: true,
+          version: "5.5.0",
         }),
       ]),
     });
+  });
+
+  it("installs Docker CLI without Compose when selected", async () => {
+    let dockerInstalled = false;
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      const name = basename(executable);
+      if (name === "brew" && args[0] === "--version") {
+        return { stderr: "", stdout: "Homebrew 5.0.0\n" };
+      }
+      if (name === "brew" && args[0] === "install") {
+        dockerInstalled = true;
+        return { stderr: "", stdout: "installed\n" };
+      }
+      if (name === "docker" && args[0] === "--version" && dockerInstalled) {
+        return { stderr: "", stdout: "Docker version 29.7.2, build abc\n" };
+      }
+      throw new Error("missing");
+    });
+    const service = new StartupPrerequisiteService(command);
+
+    await service.install("docker");
+
+    expect(command).toHaveBeenCalledWith(
+      expect.stringMatching(/brew$/),
+      ["install", "docker"],
+      expect.objectContaining({ timeoutMs: 20 * 60_000 }),
+    );
+    expect(vi.mocked(command).mock.calls.some(([, args]) => args.includes("docker-compose"))).toBe(
+      false,
+    );
   });
 
   it("installs Lima through Homebrew and verifies limactl", async () => {

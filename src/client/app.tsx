@@ -68,7 +68,7 @@ import type {
   RegisterRemoteComposeInput,
   RecreateDockerEngineInput,
   RuntimePhase,
-  StartupPrerequisiteId,
+  StartupInstallTarget,
   StartupSnapshot,
   VolumeSummary,
 } from "../shared/contracts.ts";
@@ -144,6 +144,8 @@ const resourceRouteIcon = {
   "/settings": Settings2,
   "/volumes": Database,
 } satisfies Record<AppPath, typeof Layers3>;
+
+const STARTUP_REFRESH_FEEDBACK_MS = 500;
 
 const runtimePresentation: Record<
   RuntimePhase,
@@ -806,6 +808,10 @@ function AppContent() {
   const [loadError, setLoadError] = useState<string>();
   const [startup, setStartup] = useState<StartupSnapshot>();
   const [startupError, setStartupError] = useState<string>();
+  const [startupRefreshing, setStartupRefreshing] = useState(false);
+  const [composeSkipped, setComposeSkipped] = useState(
+    () => window.localStorage.getItem("overseer-compose-setup") === "skipped",
+  );
   const [operationError, setOperationError] = useState<string>();
   const [submitting, setSubmitting] = useState<string>();
   const [operations, setOperations] = useState<OperationSnapshot[]>([]);
@@ -817,6 +823,8 @@ function AppContent() {
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
   const notifiedOperations = useRef(new Set<string>());
   const operationsInitialized = useRef(false);
+  const startupLoaded = useRef(false);
+  const startupRefreshInFlight = useRef(false);
   const toastManager = Toast.useToastManager();
 
   const refresh = useCallback(async (quiet = false) => {
@@ -833,13 +841,47 @@ function AppContent() {
   }, [refresh]);
 
   const refreshStartup = useCallback(async () => {
+    if (startupRefreshInFlight.current) return;
+    startupRefreshInFlight.current = true;
+    const showFeedback = startupLoaded.current;
+    if (showFeedback) setStartupRefreshing(true);
     setStartupError(undefined);
+    const startedAt = Date.now();
     try {
       setStartup(await apiRequest<StartupSnapshot>("/startup"));
     } catch (error) {
       setStartupError(actionError(error));
+    } finally {
+      const remaining = STARTUP_REFRESH_FEEDBACK_MS - (Date.now() - startedAt);
+      if (showFeedback && remaining > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, remaining));
+      }
+      startupLoaded.current = true;
+      startupRefreshInFlight.current = false;
+      if (showFeedback) setStartupRefreshing(false);
     }
   }, []);
+
+  const firstMissingRequiredPrerequisite = startup?.prerequisites.find(
+    ({ installed, required }) => required && !installed,
+  );
+  const composePrerequisite = startup?.prerequisites.find(({ id }) => id === "compose");
+  const dockerInstalled = startup?.prerequisites.find(({ id }) => id === "docker")?.installed;
+  const composeDecisionPending = Boolean(
+    composePrerequisite &&
+    !composePrerequisite.installed &&
+    !composeSkipped &&
+    dockerInstalled &&
+    firstMissingRequiredPrerequisite?.id !== "homebrew" &&
+    firstMissingRequiredPrerequisite?.id !== "docker",
+  );
+  const startupVisible = Boolean(startup && (!startup.ready || composeDecisionPending));
+
+  useEffect(() => {
+    if (!startupVisible) return;
+    const interval = window.setInterval(() => void refreshStartup(), 10_000);
+    return () => window.clearInterval(interval);
+  }, [refreshStartup, startupVisible]);
 
   useEffect(() => {
     if (!dashboard || dashboard.runtime.phase === "running") return;
@@ -1035,6 +1077,15 @@ function AppContent() {
         }),
     });
 
+  const installStartupTarget = (target: StartupInstallTarget) =>
+    mutate({
+      key: `startup-install-${target}`,
+      request: () =>
+        apiRequest<OperationAccepted>(`/startup/prerequisites/${target}/install`, {
+          method: "POST",
+        }),
+    });
+
   const createDockerEngine = (configuration: DockerEngineConfiguration) =>
     mutate({
       key: "runtime-create",
@@ -1057,35 +1108,33 @@ function AppContent() {
 
   if (!dashboard && !loadError) return <LoadingScreen />;
 
-  if (startup && !startup.ready) {
-    const prerequisite = startup.prerequisites.find(({ installed }) => !installed);
-    const startupOperation = prerequisite
+  if (startup && startupVisible) {
+    const targetName = composeDecisionPending ? "compose" : firstMissingRequiredPrerequisite?.id;
+    const startupOperation = targetName
       ? operations.find(
           ({ status, target }) =>
             target.resource === "startup" &&
-            target.name === prerequisite.id &&
+            target.name === targetName &&
             status !== "succeeded" &&
             status !== "cancelled",
         )
       : undefined;
-    const installPrerequisite = (id: StartupPrerequisiteId) =>
-      mutate({
-        key: `startup-install-${id}`,
-        request: () =>
-          apiRequest<OperationAccepted>(`/startup/prerequisites/${id}/install`, {
-            method: "POST",
-          }),
-      });
     return (
       <Suspense fallback={<LoadingScreen />}>
         <StartupPage
+          composeSkipped={composeSkipped}
           error={startupError ?? operationError}
-          onInstall={installPrerequisite}
+          onInstall={installStartupTarget}
           onRefresh={async () => {
             setOperationError(undefined);
             await refreshStartup();
           }}
+          onSkipCompose={() => {
+            window.localStorage.setItem("overseer-compose-setup", "skipped");
+            setComposeSkipped(true);
+          }}
           operation={startupOperation}
+          refreshing={startupRefreshing}
           snapshot={startup}
         />
       </Suspense>
@@ -1095,6 +1144,7 @@ function AppContent() {
   const runtime = dashboard?.runtime;
   const runtimeStatus = runtime ? runtimePresentation[runtime.phase] : runtimePresentation.error;
   const runtimeRunning = runtime?.phase === "running";
+  const dockerComposeAvailable = dashboard?.capabilities?.dockerCompose ?? true;
   const activeOperations = operations.filter(
     ({ status }) => status === "queued" || status === "running",
   );
@@ -1207,7 +1257,7 @@ function AppContent() {
         내리기
       </ConfirmAction>
     </div>
-  ) : resourcePath === "/compose" ? (
+  ) : resourcePath === "/compose" && dockerComposeAvailable ? (
     <div className="overseer-compose-create-actions">
       <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
         <CreateBuilderComposeDialog
@@ -1584,7 +1634,10 @@ function AppContent() {
             </Suspense>
           ) : null}
 
-          {dashboard && runtimeRunning && currentDetail?.type === "compose" ? (
+          {dashboard &&
+          runtimeRunning &&
+          dockerComposeAvailable &&
+          currentDetail?.type === "compose" ? (
             <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
               <ComposeProjectDetailPage
                 busy={runtimeBusy || targetBusy("compose", currentDetail.identifier)}
@@ -1628,6 +1681,33 @@ function AppContent() {
             </Suspense>
           ) : null}
 
+          {dashboard &&
+          runtimeRunning &&
+          !dockerComposeAvailable &&
+          currentRoute.path === "/compose" ? (
+            <section className="overseer-runtime-empty">
+              <EmptyState.Root>
+                <EmptyState.Icon>
+                  <Layers3 aria-hidden="true" />
+                </EmptyState.Icon>
+                <EmptyState.Title level={2}>Docker Compose가 설치되지 않았습니다.</EmptyState.Title>
+                <EmptyState.Description>
+                  Compose 기능은 선택 사항입니다. 사용하려면 Docker Compose 플러그인을 설치하십시오.
+                </EmptyState.Description>
+                <EmptyState.Actions>
+                  <Button
+                    disabled={targetBusy("startup", "compose")}
+                    onClick={() => void installStartupTarget("compose").catch(() => undefined)}
+                    size="sm"
+                  >
+                    <Download aria-hidden="true" size={14} />
+                    {targetBusy("startup", "compose") ? "설치 중…" : "Docker Compose 설치"}
+                  </Button>
+                </EmptyState.Actions>
+              </EmptyState.Root>
+            </section>
+          ) : null}
+
           {dashboard && runtimeRunning && currentDetail?.type === "container" ? (
             <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
               <ContainerDetailPage
@@ -1645,7 +1725,7 @@ function AppContent() {
           resourcePath !== "/operations" &&
           resourcePath !== "/settings" ? (
             <>
-              {resourcePath === "/compose" ? (
+              {resourcePath === "/compose" && dockerComposeAvailable ? (
                 <ComposePage
                   isBusy={(project) => runtimeBusy || targetBusy("compose", project.name)}
                   onAction={(project, action) => runComposeAction(project.name, action)}

@@ -131,14 +131,25 @@ describe("API boundary", () => {
             installCommand: "install brew",
             installed: true,
             label: "Homebrew",
+            required: true,
           },
           {
             automaticInstall: true,
             description: "Docker 도구",
             id: "docker",
-            installCommand: "brew install docker docker-compose",
+            installCommand: "brew install docker",
             installed: false,
-            label: "Docker CLI와 Compose",
+            label: "Docker CLI",
+            required: true,
+          },
+          {
+            automaticInstall: false,
+            description: "Compose 도구",
+            id: "compose",
+            installCommand: "brew install docker-compose",
+            installed: false,
+            label: "Docker Compose",
+            required: false,
           },
           {
             automaticInstall: true,
@@ -147,6 +158,7 @@ describe("API boundary", () => {
             installCommand: "brew install lima",
             installed: false,
             label: "Lima",
+            required: true,
           },
         ],
         ready: false,
@@ -159,13 +171,13 @@ describe("API boundary", () => {
     expect(status.status).toBe(200);
     await expect(status.json()).resolves.toMatchObject({ ready: false });
 
-    const install = await app.request("/startup/prerequisites/docker/install", {
+    const install = await app.request("/startup/prerequisites/docker-with-compose/install", {
       headers: localHeaders,
       method: "POST",
     });
     expect(install.status).toBe(202);
     await vi.waitFor(() =>
-      expect(startup.install).toHaveBeenCalledWith("docker", expect.any(Object)),
+      expect(startup.install).toHaveBeenCalledWith("docker-with-compose", expect.any(Object)),
     );
   });
 
@@ -181,6 +193,7 @@ describe("API boundary", () => {
             installCommand: "install brew",
             installed: false,
             label: "Homebrew",
+            required: true,
           },
         ],
         ready: false,

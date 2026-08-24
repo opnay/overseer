@@ -4,7 +4,7 @@ import type {
   OperationAccepted,
   PullImageInput,
   RegisterRemoteComposeInput,
-  StartupPrerequisiteId,
+  StartupInstallTarget,
 } from "../shared/contracts.ts";
 import { parseContainerSpec, parseUpdateContainerInput } from "./container-spec.ts";
 import {
@@ -96,14 +96,21 @@ export function createApi(
   app.get("/startup", async (context) => context.json(await startup.getSnapshot()));
   app.post("/startup/prerequisites/:id/install", async (context) => {
     const source = context.req.param("id");
-    if (source !== "homebrew" && source !== "docker" && source !== "lima") {
+    if (
+      source !== "homebrew" &&
+      source !== "docker" &&
+      source !== "docker-with-compose" &&
+      source !== "compose" &&
+      source !== "lima"
+    ) {
       throw new ExpectedError(
         "invalid_startup_prerequisite",
         "지원하지 않는 설치 항목입니다.",
         400,
       );
     }
-    const id: StartupPrerequisiteId = source;
+    const target: StartupInstallTarget = source;
+    const id = target === "docker-with-compose" ? "docker" : target;
     const prerequisite = (await startup.getSnapshot()).prerequisites.find(
       (candidate) => candidate.id === id,
     );
@@ -133,10 +140,10 @@ export function createApi(
       exclusive: true,
       kind: "startup.install",
       locks: ["homebrew"],
-      run: (progress) => startup.install(id, progress),
-      successMessage: `${prerequisite.label}를 설치했습니다.`,
+      run: (progress) => startup.install(target, progress),
+      successMessage: `${target === "docker-with-compose" ? "Docker CLI와 Compose" : prerequisite.label}를 설치했습니다.`,
       target: { name: id, resource: "startup" },
-      title: `${prerequisite.label} 설치`,
+      title: `${target === "docker-with-compose" ? "Docker CLI와 Compose" : prerequisite.label} 설치`,
     });
     return context.json({ operation }, 202);
   });

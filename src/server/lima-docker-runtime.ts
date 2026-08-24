@@ -306,14 +306,32 @@ export class LimaDockerRuntime implements RuntimeController {
         volumes: [],
       };
     }
+    const dockerComposeAvailable = await this.isHostDockerComposeAvailable();
     const [composeProjects, containers, images, volumes, networks] = await Promise.all([
-      this.getComposeProjects(),
+      dockerComposeAvailable ? this.getComposeProjects() : Promise.resolve([]),
       this.getContainers(),
       this.getImages(),
       this.getVolumes(),
       this.getNetworks(),
     ]);
-    return { composeProjects, containers, images, networks, runtime, volumes };
+    return {
+      capabilities: { dockerCompose: dockerComposeAvailable },
+      composeProjects,
+      containers,
+      images,
+      networks,
+      runtime,
+      volumes,
+    };
+  }
+
+  private async isHostDockerComposeAvailable(): Promise<boolean> {
+    try {
+      await this.command("docker", ["compose", "version"], { timeoutMs: 5_000 });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async getDockerEngineConfiguration(): Promise<DockerEngineConfigurationSnapshot> {

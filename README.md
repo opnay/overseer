@@ -7,7 +7,8 @@ Lima의 공식 Docker 템플릿으로 만든 전용 VM을 브라우저에서 관
 - macOS
 - Homebrew
 - Lima 2.0 이상
-- Docker CLI와 Compose 플러그인
+- Docker CLI
+- Docker Compose 플러그인(Compose 기능 사용 시 선택)
 - Node.js 24 이상
 - pnpm 11
 
@@ -28,7 +29,7 @@ pnpm dev
 
 기본 주소는 `http://overseer.localhost:1355`입니다. Portless가 실제 앱에 비어 있는 포트를 자동 배정합니다. Portless를 통하지 않으려면 `pnpm dev:direct`를 사용하십시오.
 
-필수 도구가 없으면 시작 준비 화면이 Homebrew, Docker CLI와 Compose, Lima 순서로 설치를 안내합니다. 모든 단계는 Terminal용 명령을 복사할 수 있으며 Docker와 Lima는 UI에서 Homebrew 설치 작업을 시작하고 진행 출력도 확인할 수 있습니다. Homebrew는 관리자 인증이 필요하므로 공식 명령을 Terminal에서 직접 실행해야 합니다.
+필수 도구가 없으면 시작 준비 화면이 Homebrew, Docker CLI, Lima 순서로 설치를 안내합니다. Docker Compose는 Docker 단계에서 선택하거나 건너뛸 수 있습니다. 모든 단계는 Terminal용 명령을 복사할 수 있으며 Docker·Compose·Lima는 UI에서 Homebrew 설치 작업을 시작하고 진행 출력도 확인할 수 있습니다. Homebrew는 관리자 인증이 필요하므로 공식 명령을 Terminal에서 직접 실행해야 합니다. 설치 상태는 시작 화면에서 10초마다 다시 확인합니다.
 
 도구 준비가 끝나면 **설정 > Docker Engine**의 **실행 환경**에서 VM 드라이버를 선택하고, **엔진 설정**에서 단일 `overseer` VM의 자원을 구성하십시오. 기본값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB입니다. QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
 
@@ -76,7 +77,7 @@ pnpm check
 - `POST /api/runtime/start`: 중지된 VM 시작 또는 선택 설정으로 첫 VM 생성
 - `POST /api/runtime/recreate`: 확인 문자열과 선택 설정으로 단일 VM 재생성
 - `GET /api/startup`: Homebrew·Docker CLI와 Compose·Lima 설치 상태
-- `POST /api/startup/prerequisites/:id/install`: Docker 또는 Lima Homebrew 설치 작업 접수
+- `POST /api/startup/prerequisites/:id/install`: Docker·Compose·Lima Homebrew 설치 작업 접수
 
 ## URL Compose
 
