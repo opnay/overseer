@@ -38,6 +38,7 @@ export interface RecreateDockerEngineInput {
 }
 
 export type StartupPrerequisiteId = "compose" | "docker" | "homebrew" | "lima";
+export type StartupStepId = StartupPrerequisiteId | "engine";
 export type StartupInstallTarget = StartupPrerequisiteId | "docker-with-compose";
 
 export interface StartupPrerequisite {

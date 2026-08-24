@@ -71,6 +71,7 @@ import type {
   StartupInstallTarget,
   StartupPrerequisiteId,
   StartupSnapshot,
+  StartupStepId,
   VolumeSummary,
 } from "../shared/contracts.ts";
 import { isImageReference, isResourceName } from "../shared/validation.ts";
@@ -861,7 +862,7 @@ function AppContent() {
   const [startupError, setStartupError] = useState<string>();
   const [startupOperationId, setStartupOperationId] = useState<string>();
   const [startupRefreshing, setStartupRefreshing] = useState(false);
-  const [startupStep, setStartupStep] = useState<StartupPrerequisiteId>();
+  const [startupStep, setStartupStep] = useState<StartupStepId>();
   const [composeSkipped, setComposeSkipped] = useState(
     () =>
       startupPreview !== "docker" &&
@@ -934,10 +935,19 @@ function AppContent() {
     firstMissingRequiredPrerequisite?.id !== "homebrew" &&
     firstMissingRequiredPrerequisite?.id !== "docker",
   );
-  const detectedStartupStep = composeDecisionPending
+  const prerequisiteStartupStep = composeDecisionPending
     ? "compose"
     : firstMissingRequiredPrerequisite?.id;
-  const entryStartupStep = startupReviewMode && !startupPreview ? "homebrew" : detectedStartupStep;
+  const detectedStartupStep: StartupStepId | undefined =
+    prerequisiteStartupStep ??
+    (displayedStartup?.ready && dashboard?.runtime.phase !== "running" ? "engine" : undefined);
+  const engineSettingsRoute = detectedStartupStep === "engine" && resourcePath === "/settings";
+  const entryStartupStep =
+    startupReviewMode && !startupPreview
+      ? "homebrew"
+      : engineSettingsRoute
+        ? undefined
+        : detectedStartupStep;
   const currentStartupStep = startupStep ?? entryStartupStep;
   const startupVisible = Boolean(displayedStartup && currentStartupStep);
   const startupCheckPending = Boolean(
@@ -949,9 +959,15 @@ function AppContent() {
 
   useEffect(() => {
     if (!startupVisible) return;
-    const interval = window.setInterval(() => void refreshStartup(), 10_000);
+    const interval = window.setInterval(() => {
+      if (currentStartupStep === "engine") {
+        void Promise.all([refreshStartup(), refresh(true)]);
+        return;
+      }
+      void refreshStartup();
+    }, 10_000);
     return () => window.clearInterval(interval);
-  }, [refreshStartup, startupVisible]);
+  }, [currentStartupStep, refresh, refreshStartup, startupVisible]);
 
   useEffect(() => {
     if (startupStep || !entryStartupStep) return;
@@ -959,11 +975,18 @@ function AppContent() {
   }, [entryStartupStep, startupStep]);
 
   useEffect(() => {
-    if (!displayedStartup || startupRoute || !detectedStartupStep) return;
+    if (
+      !displayedStartup ||
+      startupRoute ||
+      !detectedStartupStep ||
+      (detectedStartupStep === "engine" && resourcePath === "/settings")
+    ) {
+      return;
+    }
     setStartupReviewMode(false);
     setStartupRoute(true);
     window.history.replaceState(null, "", `/startup${window.location.search}`);
-  }, [detectedStartupStep, displayedStartup, startupRoute]);
+  }, [detectedStartupStep, displayedStartup, resourcePath, startupRoute]);
 
   useEffect(() => {
     if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview && !startupRoute)) {
@@ -1196,6 +1219,17 @@ function AppContent() {
         }),
     });
 
+  const startDockerEngineForStartup = (configuration?: DockerEngineConfiguration) =>
+    mutate({
+      key: "runtime-start",
+      onAccepted: (operation) => setStartupOperationId(operation.id),
+      request: () =>
+        apiRequest<OperationAccepted>("/runtime/start", {
+          ...(configuration ? { body: JSON.stringify({ configuration }) } : {}),
+          method: "POST",
+        }),
+    });
+
   const recreateDockerEngine = (input: RecreateDockerEngineInput) =>
     mutate({
       key: "runtime-recreate",
@@ -1208,7 +1242,7 @@ function AppContent() {
 
   if ((!dashboard && !loadError) || startupCheckPending) return <LoadingScreen />;
 
-  if (displayedStartup && currentStartupStep) {
+  if (dashboard && displayedStartup && currentStartupStep) {
     const startupOperation = startupOperationId
       ? operations.find(({ id }) => id === startupOperationId)
       : undefined;
@@ -1232,6 +1266,10 @@ function AppContent() {
         setStartupStep("lima");
         return;
       }
+      if (currentStartupStep === "lima") {
+        setStartupStep("engine");
+        return;
+      }
       setStartupStep(undefined);
       if (startupRoute) selectResourcePath(resourcePath);
     };
@@ -1239,11 +1277,16 @@ function AppContent() {
       <Suspense fallback={<LoadingScreen />}>
         <StartupPage
           composeSkipped={composeSkipped}
+          engineBusy={submitting === "runtime-start"}
           error={startupError ?? operationError}
           onContinue={continueStartup}
           onInstall={installStartupTarget}
           onRefresh={async () => {
             setOperationError(undefined);
+            if (currentStartupStep === "engine") {
+              await Promise.all([refreshStartup(), refresh(true)]);
+              return;
+            }
             await refreshStartup();
           }}
           onSkipCompose={() => {
@@ -1253,7 +1296,9 @@ function AppContent() {
           operation={startupOperation}
           preview={Boolean(startupPreview)}
           refreshing={startupRefreshing}
+          runtime={dashboard.runtime}
           snapshot={displayedStartup}
+          onStartEngine={startDockerEngineForStartup}
           step={currentStartupStep}
         />
       </Suspense>

@@ -1,6 +1,6 @@
 # Overseer
 
-Lima의 공식 Docker 템플릿으로 만든 전용 VM을 브라우저에서 관리하는 로컬 컨트롤 패널입니다. 첫 실행에서 Homebrew·Docker CLI와 Compose·Lima를 확인하고, 전역 Docker context를 변경하지 않습니다.
+Lima의 공식 Docker 템플릿으로 만든 전용 VM을 브라우저에서 관리하는 로컬 컨트롤 패널입니다. 첫 실행에서 Homebrew·Docker CLI와 Compose·Lima·Docker Engine을 준비하고, 전역 Docker context를 변경하지 않습니다.
 
 ## 요구 사항
 
@@ -29,7 +29,7 @@ pnpm dev
 
 기본 주소는 `http://overseer.localhost:1355`입니다. Portless가 실제 앱에 비어 있는 포트를 자동 배정합니다. Portless를 통하지 않으려면 `pnpm dev:direct`를 사용하십시오.
 
-필수 도구가 없으면 시작 준비 화면이 Homebrew, Docker CLI, Lima 순서로 설치를 안내합니다. Docker Compose는 Docker 단계에서 선택하거나 건너뛸 수 있습니다. 모든 단계는 Terminal용 명령을 복사할 수 있으며 Docker·Compose·Lima는 UI에서 Homebrew 설치 작업을 시작하고 진행 출력도 확인할 수 있습니다. Homebrew는 관리자 인증이 필요하므로 공식 명령을 Terminal에서 직접 실행해야 합니다. 설치 상태는 시작 화면에서 10초마다 다시 확인합니다. 설치가 감지되면 자동 설치 로그를 접고 일반 구분선 뒤에 **다음**을 표시하며, 사용자가 선택할 때만 다음 단계로 이동합니다.
+시작 준비 화면은 Homebrew, Docker CLI, Lima, Docker Engine 순서로 안내합니다. Docker Compose는 Docker 단계에서 선택하거나 건너뛸 수 있습니다. 모든 도구 설치 단계는 Terminal용 명령을 복사할 수 있으며 Docker·Compose·Lima는 UI에서 Homebrew 설치 작업을 시작하고 진행 출력도 확인할 수 있습니다. Homebrew는 관리자 인증이 필요하므로 공식 명령을 Terminal에서 직접 실행해야 합니다. 마지막 단계는 전용 Lima VM과 Docker Engine의 준비 상태를 확인하고, 설정이 필요하면 실행 환경·VM 드라이버·자원을 간략한 폼에서 선택해 Engine을 만듭니다. 상태는 시작 화면에서 10초마다 다시 확인합니다. 준비가 감지되면 자동 설치 로그를 접고 일반 구분선 뒤에 **다음**을 표시하며, 사용자가 선택할 때만 다음 단계로 이동합니다.
 
 도구를 제거하지 않고 각 미설치 화면을 확인하려면 `/startup?startup-preview=homebrew`, `/startup?startup-preview=docker`, `/startup?startup-preview=lima`를 사용하십시오. 미리보기는 대상보다 앞선 단계를 완료 상태로 구성하며 실제 도구 감지 결과와 호스트 패키지를 변경하지 않습니다. 다른 페이지에서 필수 설치가 감지되면 `/startup`으로 이동하고, 완료 후 원래 페이지로 돌아갑니다.
 
@@ -37,7 +37,7 @@ pnpm dev
 
 리소스는 독립 URL에서 관리합니다.
 
-- `/startup`: 설치 완료 후에도 Homebrew·Docker CLI·Compose·Lima 시작 준비 흐름 확인
+- `/startup`: 설치 완료 후에도 Homebrew·Docker CLI·Compose·Lima·Docker Engine 시작 준비 흐름 확인
 - `/compose`, `/compose/:name`: 폼 또는 raw HTTPS URL 프로젝트 등록, 개요·서비스·구성·로그 상세, URL 업데이트와 폼 설정, 실행·중지·재시작·내리기
 - `/containers`, `/containers/:id`: 확장 설정으로 실행·수정, 개요·실행 설정·연결·환경 변수·Label 상세, 시작·중지·재시작·로그·삭제
 - `/images`: pull·삭제

@@ -5,7 +5,6 @@ import { Button } from "@opnay/city-ds-react/button";
 import { Field } from "@opnay/city-ds-react/field";
 import { Fieldset } from "@opnay/city-ds-react/fieldset";
 import { Input } from "@opnay/city-ds-react/input";
-import { NumberField } from "@opnay/city-ds-react/number-field";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { RotateCcw, ServerCog } from "lucide-react";
@@ -19,6 +18,13 @@ import type {
   RuntimePhase,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
+import {
+  configurationToForm,
+  validateDockerEngineConfiguration,
+  type DockerEngineConfigurationErrors,
+  type DockerEngineConfigurationForm,
+} from "./docker-engine-configuration.ts";
+import { DockerEngineNumberSetting } from "./docker-engine-number-setting.tsx";
 
 interface SettingsPageProps {
   busy: boolean;
@@ -26,22 +32,6 @@ interface SettingsPageProps {
   onCreate(configuration: DockerEngineConfiguration): Promise<void>;
   onRecreate(input: RecreateDockerEngineInput): Promise<void>;
   refreshToken: string;
-}
-
-interface ConfigurationForm {
-  cpus: number | null;
-  diskGiB: number | null;
-  memoryGiB: number | null;
-  provider: "lima";
-  vmType: LimaVmType;
-}
-
-interface ConfigurationErrors {
-  cpus?: string;
-  diskGiB?: string;
-  form?: string;
-  memoryGiB?: string;
-  vmType?: string;
 }
 
 type SettingsSection = "engine" | "environment";
@@ -58,52 +48,6 @@ const runtimeStatus: Record<
   stopping: { label: "중지 중", tone: "info" },
 };
 
-function toForm(configuration: DockerEngineConfiguration): ConfigurationForm {
-  return { ...configuration };
-}
-
-function integer(value: number | null, minimum: number): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum
-    ? value
-    : undefined;
-}
-
-function NumberSetting({
-  description,
-  error,
-  label,
-  min,
-  onChange,
-  value,
-}: {
-  description: string;
-  error?: string;
-  label: string;
-  min: number;
-  onChange(value: number | null): void;
-  value: number | null;
-}) {
-  return (
-    <Field.Root invalid={Boolean(error)}>
-      <Field.Label>{label}</Field.Label>
-      <NumberField.Root
-        min={min}
-        onValueChange={(nextValue) => onChange(nextValue ?? null)}
-        step={1}
-        value={value}
-      >
-        <NumberField.Group>
-          <NumberField.Input aria-label={label} />
-          <NumberField.Decrement aria-label={`${label} 감소`} />
-          <NumberField.Increment aria-label={`${label} 증가`} />
-        </NumberField.Group>
-      </NumberField.Root>
-      <Field.Description>{description}</Field.Description>
-      <Field.Error match>{error}</Field.Error>
-    </Field.Root>
-  );
-}
-
 export function SettingsPage({
   busy,
   dashboard,
@@ -112,8 +56,8 @@ export function SettingsPage({
   refreshToken,
 }: SettingsPageProps) {
   const [snapshot, setSnapshot] = useState<DockerEngineConfigurationSnapshot>();
-  const [form, setForm] = useState<ConfigurationForm>();
-  const [errors, setErrors] = useState<ConfigurationErrors>({});
+  const [form, setForm] = useState<DockerEngineConfigurationForm>();
+  const [errors, setErrors] = useState<DockerEngineConfigurationErrors>({});
   const [loadError, setLoadError] = useState<string>();
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
@@ -125,7 +69,7 @@ export function SettingsPage({
     try {
       const next = await apiRequest<DockerEngineConfigurationSnapshot>("/runtime/configuration");
       setSnapshot(next);
-      setForm(toForm(next.configuration));
+      setForm(configurationToForm(next.configuration));
       setErrors({});
     } catch (error) {
       setLoadError(
@@ -140,27 +84,9 @@ export function SettingsPage({
 
   const configuration = (): DockerEngineConfiguration | undefined => {
     if (!form || !snapshot) return undefined;
-    const nextErrors: ConfigurationErrors = {};
-    const cpus = integer(form.cpus, 1);
-    const memoryGiB = integer(form.memoryGiB, 1);
-    const diskGiB = integer(form.diskGiB, 10);
-    if (cpus === undefined) nextErrors.cpus = "CPU는 1 이상의 정수여야 합니다.";
-    if (memoryGiB === undefined) nextErrors.memoryGiB = "메모리는 1GiB 이상의 정수여야 합니다.";
-    if (diskGiB === undefined) nextErrors.diskGiB = "디스크는 10GiB 이상의 정수여야 합니다.";
-    const vmType = snapshot.vmTypes.find(({ value }) => value === form.vmType);
-    if (!vmType?.available) {
-      nextErrors.vmType = vmType?.unavailableReason ?? "선택한 VM 드라이버를 사용할 수 없습니다.";
-    }
-    setErrors(nextErrors);
-    if (
-      cpus === undefined ||
-      memoryGiB === undefined ||
-      diskGiB === undefined ||
-      nextErrors.vmType
-    ) {
-      return undefined;
-    }
-    return { cpus, diskGiB, memoryGiB, provider: form.provider, vmType: form.vmType };
+    const result = validateDockerEngineConfiguration(form, snapshot);
+    setErrors(result.errors);
+    return result.configuration;
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -301,7 +227,7 @@ export function SettingsPage({
                         모든 값은 전역 단일 overseer VM에 적용됩니다.
                       </Fieldset.Description>
                       <Fieldset.Content className="overseer-settings-resource-grid">
-                        <NumberSetting
+                        <DockerEngineNumberSetting
                           description="가상 CPU 수"
                           error={errors.cpus}
                           label="CPU"
@@ -311,7 +237,7 @@ export function SettingsPage({
                           }
                           value={form.cpus}
                         />
-                        <NumberSetting
+                        <DockerEngineNumberSetting
                           description="GiB 단위"
                           error={errors.memoryGiB}
                           label="메모리"
@@ -321,7 +247,7 @@ export function SettingsPage({
                           }
                           value={form.memoryGiB}
                         />
-                        <NumberSetting
+                        <DockerEngineNumberSetting
                           description="GiB 단위, 최소 10GiB"
                           error={errors.diskGiB}
                           label="디스크"
@@ -345,7 +271,7 @@ export function SettingsPage({
                       <Button
                         disabled={busy}
                         onClick={() => {
-                          setForm(toForm(snapshot.configuration));
+                          setForm(configurationToForm(snapshot.configuration));
                           setErrors({});
                         }}
                         type="button"
