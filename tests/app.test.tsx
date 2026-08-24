@@ -350,6 +350,58 @@ describe("App", () => {
     },
   );
 
+  it("keeps the startup flow available at /startup after every tool is installed", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/startup");
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Homebrew 설치를 확인했습니다.", level: 2 }),
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/startup");
+    expect(screen.getByLabelText("Homebrew CLI 설치 명령")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "Docker CLI 설치를 확인했습니다.",
+        level: 2,
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    expect(
+      await screen.findByRole("heading", { name: "Lima 설치를 확인했습니다.", level: 2 }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "다음" }));
+    expect(await screen.findByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/containers");
+  });
+
   it("lets the user choose Docker CLI only or include Compose", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {

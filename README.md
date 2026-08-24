@@ -37,6 +37,7 @@ pnpm dev
 
 리소스는 독립 URL에서 관리합니다.
 
+- `/startup`: 설치 완료 후에도 Homebrew·Docker CLI·Compose·Lima 시작 준비 흐름 확인
 - `/compose`, `/compose/:name`: 폼 또는 raw HTTPS URL 프로젝트 등록, 개요·서비스·구성·로그 상세, URL 업데이트와 폼 설정, 실행·중지·재시작·내리기
 - `/containers`, `/containers/:id`: 확장 설정으로 실행·수정, 개요·실행 설정·연결·환경 변수·Label 상세, 시작·중지·재시작·로그·삭제
 - `/images`: pull·삭제

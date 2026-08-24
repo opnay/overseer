@@ -797,6 +797,10 @@ function resourcePathFromLocation(): AppLocationPath {
   return getAppLocation(window.location.pathname);
 }
 
+function startupRouteFromLocation(): boolean {
+  return window.location.pathname === "/startup";
+}
+
 type StartupPreview = Exclude<StartupPrerequisiteId, "compose">;
 
 function startupPreviewFromLocation(): StartupPreview | undefined {
@@ -849,6 +853,7 @@ export function App() {
 
 function AppContent() {
   const [startupPreview] = useState(startupPreviewFromLocation);
+  const [startupRoute, setStartupRoute] = useState(startupRouteFromLocation);
   const [dashboard, setDashboard] = useState<DashboardSnapshot>();
   const [loadError, setLoadError] = useState<string>();
   const [startup, setStartup] = useState<StartupSnapshot>();
@@ -931,11 +936,12 @@ function AppContent() {
   const detectedStartupStep = composeDecisionPending
     ? "compose"
     : firstMissingRequiredPrerequisite?.id;
-  const currentStartupStep = startupStep ?? detectedStartupStep;
+  const entryStartupStep = startupRoute && !startupPreview ? "homebrew" : detectedStartupStep;
+  const currentStartupStep = startupStep ?? entryStartupStep;
   const startupVisible = Boolean(displayedStartup && currentStartupStep);
   const startupCheckPending = Boolean(
     dashboard &&
-    (dashboard.runtime.phase !== "running" || startupPreview) &&
+    (dashboard.runtime.phase !== "running" || startupPreview || startupRoute) &&
     !startup &&
     !startupError,
   );
@@ -947,14 +953,16 @@ function AppContent() {
   }, [refreshStartup, startupVisible]);
 
   useEffect(() => {
-    if (startupStep || !detectedStartupStep) return;
-    setStartupStep(detectedStartupStep);
-  }, [detectedStartupStep, startupStep]);
+    if (startupStep || !entryStartupStep) return;
+    setStartupStep(entryStartupStep);
+  }, [entryStartupStep, startupStep]);
 
   useEffect(() => {
-    if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview)) return;
+    if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview && !startupRoute)) {
+      return;
+    }
     void refreshStartup();
-  }, [dashboard?.runtime.phase, refreshStartup, startupPreview]);
+  }, [dashboard?.runtime.phase, refreshStartup, startupPreview, startupRoute]);
 
   const refreshResource = useCallback(
     async (resource: OperationResource) => {
@@ -1079,15 +1087,22 @@ function AppContent() {
   }, [dark]);
 
   useEffect(() => {
-    if (window.location.pathname !== resourcePath) {
+    if (!startupRoute && window.location.pathname !== resourcePath) {
       window.history.replaceState(null, "", resourcePath);
     }
-    const syncResourcePath = () => setResourcePath(resourcePathFromLocation());
+    const syncResourcePath = () => {
+      const nextStartupRoute = startupRouteFromLocation();
+      setStartupRoute(nextStartupRoute);
+      setStartupOperationId(undefined);
+      setStartupStep(nextStartupRoute ? "homebrew" : undefined);
+      if (!nextStartupRoute) setResourcePath(resourcePathFromLocation());
+    };
     window.addEventListener("popstate", syncResourcePath);
     return () => window.removeEventListener("popstate", syncResourcePath);
   }, []);
 
   const selectResourcePath = useCallback((nextPath: AppLocationPath) => {
+    setStartupRoute(false);
     setResourcePath(nextPath);
     if (window.location.pathname !== nextPath) window.history.pushState(null, "", nextPath);
   }, []);
@@ -1208,6 +1223,7 @@ function AppContent() {
         return;
       }
       setStartupStep(undefined);
+      if (startupRoute) selectResourcePath("/containers");
     };
     return (
       <Suspense fallback={<LoadingScreen />}>
