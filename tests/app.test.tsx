@@ -245,8 +245,15 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Homebrew 설치를 확인했습니다.", level: 2 }),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Homebrew CLI 설치 명령")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
+    expect(screen.getByLabelText("Homebrew CLI 설치 명령")).toBeInTheDocument();
+    expect(
+      screen.getByText("Docker CLI와 Lima를 설치하는 macOS 패키지 관리자입니다."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("또는")).not.toBeInTheDocument();
+    const nextButton = screen.getByRole("button", { name: "다음" });
+    const separator = document.querySelector(".overseer-startup-separator");
+    expect(separator).not.toBeNull();
+    expect(separator?.nextElementSibling).toContainElement(nextButton);
 
     await user.click(screen.getByRole("button", { name: "다음" }));
 
@@ -447,8 +454,11 @@ describe("App", () => {
         { timeout: 3_000 },
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Docker CLI와 Compose 설치 명령")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Docker CLI와 Compose 설치 명령")).toBeInTheDocument();
+    expect(screen.queryByText("또는")).not.toBeInTheDocument();
+    expect(document.querySelector(".overseer-startup-separator")).not.toBeNull();
     const automaticInstallLog = screen.getByRole("button", { name: "자동 설치 로그" });
+    expect(automaticInstallLog.closest(".overseer-startup-install-group")).not.toBeNull();
     expect(automaticInstallLog).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
 
@@ -517,7 +527,8 @@ describe("App", () => {
         level: 2,
       }),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Docker Compose 설치 명령")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Docker Compose 설치 명령")).toBeInTheDocument();
+    expect(screen.queryByText("또는")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "다음" }));
     expect(
@@ -567,7 +578,8 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Lima 설치를 확인했습니다.", level: 2 }),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Lima 설치 명령")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Lima 설치 명령")).toBeInTheDocument();
+    expect(screen.queryByText("또는")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "다음" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "다음" }));

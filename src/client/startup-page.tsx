@@ -204,9 +204,7 @@ export function StartupPage({
                       ? "Docker Compose를 설치할까요?"
                       : `${prerequisite.label}를 설치해야 합니다.`}
                 </h2>
-                {!detected ? (
-                  <span className="city-text-supporting">{prerequisite.description}</span>
-                ) : null}
+                <span className="city-text-supporting">{prerequisite.description}</span>
               </div>
               {!detected ? (
                 <Button
@@ -268,85 +266,120 @@ export function StartupPage({
               </Accordion.Root>
             ) : null}
 
-            {!detected ? (
-              <div className="overseer-startup-install-group">
-                {installCommands.map(({ accessibleLabel, command, id, label }) => {
-                  const copied = copiedCommand === id;
-                  return (
-                    <div className="overseer-startup-command" key={id}>
-                      <div>
-                        <span>{label}</span>
-                        <Button
-                          aria-label={`${label} 명령 복사`}
-                          onClick={() => void copyCommand(command, id)}
-                          size="sm"
-                          variant="ghost"
-                        >
-                          {copied ? (
-                            <Check aria-hidden="true" size={14} />
-                          ) : (
-                            <Copy aria-hidden="true" size={14} />
-                          )}
-                          {copied ? "복사됨" : "복사"}
-                        </Button>
-                      </div>
-                      <pre aria-label={accessibleLabel} tabIndex={0}>
-                        <code>{command}</code>
-                      </pre>
-                    </div>
-                  );
-                })}
-
-                {prerequisite.automaticInstall ? (
-                  <div aria-hidden="true" className="overseer-startup-divider">
-                    <span>또는</span>
-                  </div>
-                ) : null}
-
-                {prerequisite.automaticInstall ? (
-                  <div
-                    className={
-                      composeOptional
-                        ? "overseer-startup-decision-actions"
-                        : "overseer-startup-primary-action"
-                    }
-                  >
-                    {composeOptional ? (
-                      <Button disabled={active} onClick={onSkipCompose} variant="outline">
-                        건너뛰기
+            <div className="overseer-startup-install-group">
+              {installCommands.map(({ accessibleLabel, command, id, label }) => {
+                const copied = copiedCommand === id;
+                return (
+                  <div className="overseer-startup-command" key={id}>
+                    <div>
+                      <span>{label}</span>
+                      <Button
+                        aria-label={`${label} 명령 복사`}
+                        onClick={() => void copyCommand(command, id)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {copied ? (
+                          <Check aria-hidden="true" size={14} />
+                        ) : (
+                          <Copy aria-hidden="true" size={14} />
+                        )}
+                        {copied ? "복사됨" : "복사"}
                       </Button>
-                    ) : null}
+                    </div>
+                    <pre aria-label={accessibleLabel} tabIndex={0}>
+                      <code>{command}</code>
+                    </pre>
+                  </div>
+                );
+              })}
+
+              {!detected && prerequisite.automaticInstall ? (
+                <div aria-hidden="true" className="overseer-startup-divider">
+                  <span>또는</span>
+                </div>
+              ) : null}
+
+              {!detected && prerequisite.automaticInstall ? (
+                <div
+                  className={
+                    composeOptional
+                      ? "overseer-startup-decision-actions"
+                      : "overseer-startup-primary-action"
+                  }
+                >
+                  {composeOptional ? (
+                    <Button disabled={active} onClick={onSkipCompose} variant="outline">
+                      건너뛰기
+                    </Button>
+                  ) : null}
+                  <Button
+                    disabled={active}
+                    onClick={() => {
+                      if (prerequisite.id === "docker" && !includeCompose) onSkipCompose();
+                      void onInstall(installTarget).catch(() => undefined);
+                    }}
+                  >
+                    <Download aria-hidden="true" size={16} />
+                    {active ? `${prerequisite.label} 설치 중…` : automaticInstallLabel}
+                  </Button>
+                </div>
+              ) : null}
+
+              {!detected && !prerequisite.automaticInstall ? (
+                <div className="overseer-startup-manual">
+                  <p>다음 단계부터 Docker CLI와 Lima를 자동 설치할 수 있습니다.</p>
+                  <div className="overseer-startup-decision-actions">
                     <Button
-                      disabled={active}
-                      onClick={() => {
-                        if (prerequisite.id === "docker" && !includeCompose) onSkipCompose();
-                        void onInstall(installTarget).catch(() => undefined);
-                      }}
+                      render={<a href="https://brew.sh/" rel="noreferrer" target="_blank" />}
+                      variant="outline"
                     >
-                      <Download aria-hidden="true" size={16} />
-                      {active ? `${prerequisite.label} 설치 중…` : automaticInstallLabel}
+                      <ExternalLink aria-hidden="true" size={16} />
+                      공식 홈페이지
+                    </Button>
+                    <Button disabled={active} onClick={() => void onRefresh()}>
+                      <RefreshCw aria-hidden="true" size={16} />
+                      설치 확인
                     </Button>
                   </div>
-                ) : (
-                  <div className="overseer-startup-manual">
-                    <p>다음 단계부터 Docker CLI와 Lima를 자동 설치할 수 있습니다.</p>
-                    <div className="overseer-startup-decision-actions">
-                      <Button
-                        render={<a href="https://brew.sh/" rel="noreferrer" target="_blank" />}
-                        variant="outline"
+                </div>
+              ) : null}
+
+              {detected && succeeded && operation ? (
+                <Accordion.Root>
+                  <Accordion.Item value="automatic-install-log">
+                    <Accordion.Header>
+                      <Accordion.Trigger>자동 설치 로그</Accordion.Trigger>
+                    </Accordion.Header>
+                    <Accordion.Panel>
+                      <pre
+                        aria-label={`${operation.title} 로그`}
+                        className="overseer-startup-output"
+                        tabIndex={0}
                       >
-                        <ExternalLink aria-hidden="true" size={16} />
-                        공식 홈페이지
-                      </Button>
-                      <Button disabled={active} onClick={() => void onRefresh()}>
-                        <RefreshCw aria-hidden="true" size={16} />
-                        설치 확인
-                      </Button>
-                    </div>
+                        <code>
+                          {operation.output.length > 0
+                            ? operation.output.slice(-12).join("\n")
+                            : operation.step}
+                        </code>
+                      </pre>
+                    </Accordion.Panel>
+                  </Accordion.Item>
+                </Accordion.Root>
+              ) : null}
+
+              {detected && !active ? (
+                <>
+                  <div aria-hidden="true" className="overseer-startup-separator" />
+                  <div className="overseer-startup-primary-action">
+                    <Button onClick={onContinue}>
+                      다음
+                      <ArrowRight aria-hidden="true" size={16} />
+                    </Button>
                   </div>
-                )}
-              </div>
-            ) : null}
+                </>
+              ) : null}
+            </div>
 
             {active && operation ? (
               <section aria-live="polite" className="overseer-startup-progress">
@@ -368,39 +401,6 @@ export function StartupPage({
               <pre className="overseer-startup-output" tabIndex={0}>
                 <code>{operation.output.slice(-12).join("\n")}</code>
               </pre>
-            ) : null}
-
-            {detected && succeeded && operation ? (
-              <Accordion.Root className="overseer-startup-operation-log">
-                <Accordion.Item value="automatic-install-log">
-                  <Accordion.Header>
-                    <Accordion.Trigger>자동 설치 로그</Accordion.Trigger>
-                  </Accordion.Header>
-                  <Accordion.Panel>
-                    <div className="overseer-startup-operation-log-content">
-                      <strong>{operation.step}</strong>
-                      {operation.output.length > 0 ? (
-                        <pre
-                          aria-label={`${operation.title} 로그`}
-                          className="overseer-startup-output"
-                          tabIndex={0}
-                        >
-                          <code>{operation.output.slice(-12).join("\n")}</code>
-                        </pre>
-                      ) : null}
-                    </div>
-                  </Accordion.Panel>
-                </Accordion.Item>
-              </Accordion.Root>
-            ) : null}
-
-            {detected && !active ? (
-              <div className="overseer-startup-primary-action">
-                <Button onClick={onContinue}>
-                  다음
-                  <ArrowRight aria-hidden="true" size={16} />
-                </Button>
-              </div>
             ) : null}
           </section>
         </div>

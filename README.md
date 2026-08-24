@@ -29,7 +29,7 @@ pnpm dev
 
 기본 주소는 `http://overseer.localhost:1355`입니다. Portless가 실제 앱에 비어 있는 포트를 자동 배정합니다. Portless를 통하지 않으려면 `pnpm dev:direct`를 사용하십시오.
 
-필수 도구가 없으면 시작 준비 화면이 Homebrew, Docker CLI, Lima 순서로 설치를 안내합니다. Docker Compose는 Docker 단계에서 선택하거나 건너뛸 수 있습니다. 모든 단계는 Terminal용 명령을 복사할 수 있으며 Docker·Compose·Lima는 UI에서 Homebrew 설치 작업을 시작하고 진행 출력도 확인할 수 있습니다. Homebrew는 관리자 인증이 필요하므로 공식 명령을 Terminal에서 직접 실행해야 합니다. 설치 상태는 시작 화면에서 10초마다 다시 확인합니다. 설치가 감지되면 가이드를 숨기고 자동 설치 로그를 접으며, 사용자가 **다음**을 선택할 때만 다음 단계로 이동합니다.
+필수 도구가 없으면 시작 준비 화면이 Homebrew, Docker CLI, Lima 순서로 설치를 안내합니다. Docker Compose는 Docker 단계에서 선택하거나 건너뛸 수 있습니다. 모든 단계는 Terminal용 명령을 복사할 수 있으며 Docker·Compose·Lima는 UI에서 Homebrew 설치 작업을 시작하고 진행 출력도 확인할 수 있습니다. Homebrew는 관리자 인증이 필요하므로 공식 명령을 Terminal에서 직접 실행해야 합니다. 설치 상태는 시작 화면에서 10초마다 다시 확인합니다. 설치가 감지되면 자동 설치 로그를 접고 일반 구분선 뒤에 **다음**을 표시하며, 사용자가 선택할 때만 다음 단계로 이동합니다.
 
 도구를 제거하지 않고 각 미설치 화면을 확인하려면 URL에 `?startup-preview=homebrew`, `?startup-preview=docker`, `?startup-preview=lima`를 추가하십시오. 미리보기는 대상보다 앞선 단계를 완료 상태로 구성하며 실제 도구 감지 결과와 호스트 패키지를 변경하지 않습니다.
 

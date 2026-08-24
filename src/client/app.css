@@ -1534,18 +1534,14 @@
     font-size: var(--city-font-size-xs);
   }
 
-  .overseer-startup-operation-log-content {
-    display: grid;
-    gap: var(--city-space-3);
-  }
-
-  .overseer-startup-operation-log-content strong {
-    font-size: var(--city-font-size-sm);
-  }
-
   .overseer-startup-install-group {
     display: grid;
     gap: var(--city-space-3);
+  }
+
+  .overseer-startup-separator {
+    height: 1px;
+    background: var(--city-color-border);
   }
 
   .overseer-startup-primary-action {
