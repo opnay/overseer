@@ -19,6 +19,7 @@ interface StartupPageProps {
   onRefresh(): Promise<void>;
   onSkipCompose(): void;
   operation?: OperationSnapshot;
+  preview: boolean;
   refreshing: boolean;
   snapshot: StartupSnapshot;
 }
@@ -30,6 +31,7 @@ export function StartupPage({
   onRefresh,
   onSkipCompose,
   operation,
+  preview,
   refreshing,
   snapshot,
 }: StartupPageProps) {
@@ -80,10 +82,15 @@ export function StartupPage({
       <main className="overseer-startup">
         <header className="overseer-startup-header">
           <div className="overseer-startup-brand">
-            <span aria-hidden="true">
+            <span aria-hidden="true" className="overseer-startup-brand-icon">
               <PackageCheck size={22} strokeWidth={1.8} />
             </span>
             <strong>Overseer</strong>
+            {preview ? (
+              <Badge size="sm" tone="info">
+                미리보기
+              </Badge>
+            ) : null}
           </div>
           <p>STARTUP</p>
           <h1 className="city-text-page-title">시작 준비</h1>

@@ -1309,7 +1309,7 @@
     gap: var(--city-space-3);
   }
 
-  .overseer-startup-brand > span {
+  .overseer-startup-brand-icon {
     display: inline-flex;
     width: var(--city-control-lg);
     height: var(--city-control-lg);
