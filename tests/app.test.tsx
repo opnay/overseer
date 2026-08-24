@@ -1091,7 +1091,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "도구 업데이트", level: 3 }),
     ).toBeInTheDocument();
-    const docker = screen.getByRole("listitem", { name: "Docker CLI" });
+    const docker = await screen.findByRole("listitem", { name: "Docker CLI" });
     expect(docker).toHaveTextContent("현재29.7.2");
     expect(docker).toHaveTextContent("최신30.0.0");
     expect(docker).toHaveTextContent("업데이트 있음");
