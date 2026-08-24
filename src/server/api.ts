@@ -4,6 +4,7 @@ import type {
   OperationAccepted,
   PullImageInput,
   RegisterRemoteComposeInput,
+  StartupPrerequisiteId,
 } from "../shared/contracts.ts";
 import { parseContainerSpec, parseUpdateContainerInput } from "./container-spec.ts";
 import {
@@ -21,6 +22,7 @@ import { OperationQueue, type EnqueueOperation } from "./operations.ts";
 import { deriveRemoteComposeProjectName } from "./remote-compose.ts";
 import { parseRecreateDockerEngineInput, parseRuntimeStartInput } from "./runtime-configuration.ts";
 import { requireLocalRequest } from "./security.ts";
+import { StartupPrerequisiteService, type StartupPrerequisiteController } from "./startup.ts";
 import {
   requireContainerReference,
   requireComposeUrl,
@@ -71,7 +73,11 @@ function retryRequest(context: Context, body?: unknown): OperationRetryRequest {
   };
 }
 
-export function createApi(controller: RuntimeController, operations = new OperationQueue()) {
+export function createApi(
+  controller: RuntimeController,
+  operations = new OperationQueue(),
+  startup: StartupPrerequisiteController = new StartupPrerequisiteService(),
+) {
   const app = new Hono();
   const enqueue = (
     context: Context,
@@ -87,6 +93,53 @@ export function createApi(controller: RuntimeController, operations = new Operat
   app.use("*", requireLocalRequest);
 
   app.get("/health", (context) => context.json({ ok: true }));
+  app.get("/startup", async (context) => context.json(await startup.getSnapshot()));
+  app.post("/startup/prerequisites/:id/install", async (context) => {
+    const source = context.req.param("id");
+    if (source !== "homebrew" && source !== "docker" && source !== "lima") {
+      throw new ExpectedError(
+        "invalid_startup_prerequisite",
+        "지원하지 않는 설치 항목입니다.",
+        400,
+      );
+    }
+    const id: StartupPrerequisiteId = source;
+    const prerequisite = (await startup.getSnapshot()).prerequisites.find(
+      (candidate) => candidate.id === id,
+    );
+    if (!prerequisite) {
+      throw new ExpectedError(
+        "startup_prerequisite_not_found",
+        "설치 항목 상태를 확인할 수 없습니다.",
+        503,
+      );
+    }
+    if (prerequisite.installed) {
+      throw new ExpectedError(
+        "startup_prerequisite_installed",
+        `${prerequisite.label}는 이미 설치되어 있습니다.`,
+        409,
+      );
+    }
+    if (!prerequisite.automaticInstall) {
+      throw new ExpectedError(
+        "startup_manual_install_required",
+        prerequisite.automaticInstallUnavailableReason ??
+          "Terminal에서 설치한 뒤 상태를 다시 확인하십시오.",
+        409,
+      );
+    }
+    const operation = enqueue(context, {
+      exclusive: true,
+      kind: "startup.install",
+      locks: ["homebrew"],
+      run: (progress) => startup.install(id, progress),
+      successMessage: `${prerequisite.label}를 설치했습니다.`,
+      target: { name: id, resource: "startup" },
+      title: `${prerequisite.label} 설치`,
+    });
+    return context.json({ operation }, 202);
+  });
   app.get("/dashboard", async (context) => context.json(await controller.getDashboard()));
   app.get("/runtime/configuration", async (context) =>
     context.json(await controller.getDockerEngineConfiguration()),

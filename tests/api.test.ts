@@ -7,6 +7,9 @@ import {
 } from "../src/shared/compose-builder.ts";
 import { ExpectedError } from "../src/server/errors.ts";
 import type { RuntimeController } from "../src/server/lima-docker-runtime.ts";
+import { OperationQueue } from "../src/server/operations.ts";
+import type { StartupPrerequisiteController } from "../src/server/startup.ts";
+import type { StartupSnapshot } from "../src/shared/contracts.ts";
 
 function createController(): RuntimeController {
   return {
@@ -115,6 +118,84 @@ describe("API boundary", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ runtime: { phase: "missing" } });
+  });
+
+  it("reports prerequisites and enqueues supported automatic installs", async () => {
+    const startup: StartupPrerequisiteController = {
+      getSnapshot: vi.fn(async (): Promise<StartupSnapshot> => ({
+        prerequisites: [
+          {
+            automaticInstall: false,
+            description: "패키지 관리자",
+            id: "homebrew",
+            installCommand: "install brew",
+            installed: true,
+            label: "Homebrew",
+          },
+          {
+            automaticInstall: true,
+            description: "Docker 도구",
+            id: "docker",
+            installCommand: "brew install docker docker-compose",
+            installed: false,
+            label: "Docker CLI와 Compose",
+          },
+          {
+            automaticInstall: true,
+            description: "VM 도구",
+            id: "lima",
+            installCommand: "brew install lima",
+            installed: false,
+            label: "Lima",
+          },
+        ],
+        ready: false,
+      })),
+      install: vi.fn(async () => undefined),
+    };
+    const app = createApi(createController(), new OperationQueue(), startup);
+
+    const status = await app.request("/startup", { headers: localHeaders });
+    expect(status.status).toBe(200);
+    await expect(status.json()).resolves.toMatchObject({ ready: false });
+
+    const install = await app.request("/startup/prerequisites/docker/install", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(install.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(startup.install).toHaveBeenCalledWith("docker", expect.any(Object)),
+    );
+  });
+
+  it("does not enqueue automatic Homebrew installation", async () => {
+    const startup: StartupPrerequisiteController = {
+      getSnapshot: vi.fn(async (): Promise<StartupSnapshot> => ({
+        prerequisites: [
+          {
+            automaticInstall: false,
+            automaticInstallUnavailableReason: "Terminal에서 설치하십시오.",
+            description: "패키지 관리자",
+            id: "homebrew",
+            installCommand: "install brew",
+            installed: false,
+            label: "Homebrew",
+          },
+        ],
+        ready: false,
+      })),
+      install: vi.fn(async () => undefined),
+    };
+    const app = createApi(createController(), new OperationQueue(), startup);
+
+    const response = await app.request("/startup/prerequisites/homebrew/install", {
+      headers: localHeaders,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(409);
+    expect(startup.install).not.toHaveBeenCalled();
   });
 
   it("returns Docker Engine configuration and capabilities", async () => {

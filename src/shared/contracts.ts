@@ -37,6 +37,25 @@ export interface RecreateDockerEngineInput {
   confirmation: string;
 }
 
+export type StartupPrerequisiteId = "docker" | "homebrew" | "lima";
+
+export interface StartupPrerequisite {
+  automaticInstall: boolean;
+  automaticInstallUnavailableReason?: string;
+  description: string;
+  id: StartupPrerequisiteId;
+  installCommand: string;
+  installed: boolean;
+  label: string;
+  missingReason?: string;
+  version?: string;
+}
+
+export interface StartupSnapshot {
+  prerequisites: StartupPrerequisite[];
+  ready: boolean;
+}
+
 export interface ContainerSummary {
   composeProject?: string;
   composeService?: string;
@@ -283,6 +302,7 @@ export type OperationKind =
   | "runtime.start"
   | "runtime.recreate"
   | "runtime.stop"
+  | "startup.install"
   | "volume.create"
   | "volume.remove";
 
@@ -292,6 +312,7 @@ export type OperationResource =
   | "image"
   | "network"
   | "runtime"
+  | "startup"
   | "volume";
 
 export interface OperationTarget {

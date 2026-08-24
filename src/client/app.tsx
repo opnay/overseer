@@ -68,6 +68,8 @@ import type {
   RegisterRemoteComposeInput,
   RecreateDockerEngineInput,
   RuntimePhase,
+  StartupPrerequisiteId,
+  StartupSnapshot,
   VolumeSummary,
 } from "../shared/contracts.ts";
 import { isImageReference, isResourceName } from "../shared/validation.ts";
@@ -108,6 +110,9 @@ const OperationsPage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   import("./settings-page.tsx").then((module) => ({ default: module.SettingsPage })),
+);
+const StartupPage = lazy(() =>
+  import("./startup-page.tsx").then((module) => ({ default: module.StartupPage })),
 );
 const ComposeProjectDetailPage = lazy(() =>
   import("./compose-project-detail-page.tsx").then((module) => ({
@@ -799,6 +804,8 @@ export function App() {
 function AppContent() {
   const [dashboard, setDashboard] = useState<DashboardSnapshot>();
   const [loadError, setLoadError] = useState<string>();
+  const [startup, setStartup] = useState<StartupSnapshot>();
+  const [startupError, setStartupError] = useState<string>();
   const [operationError, setOperationError] = useState<string>();
   const [submitting, setSubmitting] = useState<string>();
   const [operations, setOperations] = useState<OperationSnapshot[]>([]);
@@ -825,9 +832,27 @@ function AppContent() {
     void refresh();
   }, [refresh]);
 
+  const refreshStartup = useCallback(async () => {
+    setStartupError(undefined);
+    try {
+      setStartup(await apiRequest<StartupSnapshot>("/startup"));
+    } catch (error) {
+      setStartupError(actionError(error));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!dashboard || dashboard.runtime.phase === "running") return;
+    void refreshStartup();
+  }, [dashboard?.runtime.phase, refreshStartup]);
+
   const refreshResource = useCallback(
     async (resource: OperationResource) => {
       try {
+        if (resource === "startup") {
+          await Promise.all([refreshStartup(), refresh(true)]);
+          return;
+        }
         if (resource === "runtime") {
           await refresh(true);
           return;
@@ -864,7 +889,7 @@ function AppContent() {
         setLoadError(actionError(error));
       }
     },
-    [refresh],
+    [refresh, refreshStartup],
   );
 
   const loadOperations = useCallback(async () => {
@@ -931,7 +956,9 @@ function AppContent() {
           title: "작업이 실패했습니다.",
           type: "warning",
         });
-        if (operation.target.resource === "runtime") void refreshResource("runtime");
+        if (operation.target.resource === "runtime" || operation.target.resource === "startup") {
+          void refreshResource(operation.target.resource);
+        }
       }
     }
   }, [operations, refreshResource, toastManager]);
@@ -1029,6 +1056,41 @@ function AppContent() {
     });
 
   if (!dashboard && !loadError) return <LoadingScreen />;
+
+  if (startup && !startup.ready) {
+    const prerequisite = startup.prerequisites.find(({ installed }) => !installed);
+    const startupOperation = prerequisite
+      ? operations.find(
+          ({ status, target }) =>
+            target.resource === "startup" &&
+            target.name === prerequisite.id &&
+            status !== "succeeded" &&
+            status !== "cancelled",
+        )
+      : undefined;
+    const installPrerequisite = (id: StartupPrerequisiteId) =>
+      mutate({
+        key: `startup-install-${id}`,
+        request: () =>
+          apiRequest<OperationAccepted>(`/startup/prerequisites/${id}/install`, {
+            method: "POST",
+          }),
+      });
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <StartupPage
+          error={startupError ?? operationError}
+          onInstall={installPrerequisite}
+          onRefresh={async () => {
+            setOperationError(undefined);
+            await refreshStartup();
+          }}
+          operation={startupOperation}
+          snapshot={startup}
+        />
+      </Suspense>
+    );
+  }
 
   const runtime = dashboard?.runtime;
   const runtimeStatus = runtime ? runtimePresentation[runtime.phase] : runtimePresentation.error;
@@ -1377,6 +1439,7 @@ function AppContent() {
                     if (currentDetail) {
                       setDetailRefreshRevision((value) => value + 1);
                     }
+                    if (!runtimeRunning) void refreshStartup();
                     void refresh();
                   }}
                   size="sm"
@@ -1441,6 +1504,18 @@ function AppContent() {
             <Alert.Root appearance="subtle" tone="destructive">
               <Alert.Title level={2}>작업을 완료하지 못했습니다.</Alert.Title>
               <Alert.Description>{operationError}</Alert.Description>
+            </Alert.Root>
+          ) : null}
+
+          {startupError && !runtimeRunning ? (
+            <Alert.Root appearance="subtle" tone="destructive">
+              <Alert.Title level={2}>필수 도구 상태를 확인하지 못했습니다.</Alert.Title>
+              <Alert.Description>{startupError}</Alert.Description>
+              <Alert.Action>
+                <Button onClick={() => void refreshStartup()} size="sm" variant="outline">
+                  다시 확인
+                </Button>
+              </Alert.Action>
             </Alert.Root>
           ) : null}
 

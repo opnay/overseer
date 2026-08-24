@@ -11,6 +11,7 @@ import type {
   DashboardSnapshot,
   DockerEngineConfigurationSnapshot,
   OperationSnapshot,
+  StartupSnapshot,
 } from "../src/shared/contracts.ts";
 
 function jsonResponse(value: unknown, status = 200) {
@@ -67,6 +68,44 @@ function dockerEngineSnapshot(
   };
 }
 
+function startupSnapshot(
+  installed: { docker?: boolean; homebrew?: boolean; lima?: boolean } = {},
+): StartupSnapshot {
+  const values = { docker: true, homebrew: true, lima: true, ...installed };
+  return {
+    prerequisites: [
+      {
+        automaticInstall: false,
+        automaticInstallUnavailableReason:
+          "Homebrew는 관리자 인증이 필요하므로 Terminal에서 설치해야 합니다.",
+        description: "Docker CLI와 Lima를 설치하는 macOS 패키지 관리자입니다.",
+        id: "homebrew",
+        installCommand:
+          '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+        installed: values.homebrew,
+        label: "Homebrew",
+      },
+      {
+        automaticInstall: values.homebrew,
+        description: "Overseer가 Lima의 Docker Engine과 Compose 프로젝트를 제어합니다.",
+        id: "docker",
+        installCommand: "brew install docker docker-compose",
+        installed: values.docker,
+        label: "Docker CLI와 Compose",
+      },
+      {
+        automaticInstall: values.homebrew,
+        description: "macOS에서 단일 overseer VM과 Docker Engine을 실행합니다.",
+        id: "lima",
+        installCommand: "brew install lima",
+        installed: values.lima,
+        label: "Lima",
+      },
+    ],
+    ready: values.homebrew && values.docker && values.lima,
+  };
+}
+
 describe("App", () => {
   it("matches the loading skeleton to the page shell and table", () => {
     vi.stubGlobal(
@@ -79,6 +118,108 @@ describe("App", () => {
     expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(7);
     expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
+  });
+
+  it("guides manual Homebrew installation before enabling automatic steps", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer",
+        message: "Lima 실행 파일을 찾을 수 없습니다.",
+        phase: "error",
+      },
+      volumes: [],
+    };
+    let startupRequests = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/startup")) {
+          startupRequests += 1;
+          return jsonResponse(startupSnapshot({ docker: false, homebrew: false, lima: false }));
+        }
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        return jsonResponse(dashboard);
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Homebrew 설치 명령")).toHaveTextContent(
+      "raw.githubusercontent.com/Homebrew/install",
+    );
+    expect(screen.queryByRole("button", { name: /Homebrew 자동 설치/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Terminal에서 설치하십시오.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "설치 확인" }));
+    await waitFor(() => expect(startupRequests).toBeGreaterThan(1));
+  });
+
+  it("starts Docker CLI and Compose installation from the startup funnel", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer",
+        message: "전용 Lima 인스턴스가 아직 없습니다.",
+        phase: "missing",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "startup.install",
+      successMessage: "Docker CLI와 Compose를 설치했습니다.",
+      target: { name: "docker", resource: "startup" },
+      title: "Docker CLI와 Compose 설치",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) {
+        return jsonResponse(startupSnapshot({ docker: false, lima: false }));
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/startup/prerequisites/docker/install") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Docker CLI와 Compose를 설치해야 합니다.",
+        level: 2,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("brew install docker docker-compose")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Docker CLI와 Compose 자동 설치" }));
+
+    expect(
+      await screen.findByRole("progressbar", { name: "Docker CLI와 Compose 설치 진행 중" }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/startup/prerequisites/docker/install") &&
+            init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
   });
 
   it("explains the first-run Lima state", async () => {
@@ -96,7 +237,11 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse(dashboard)),
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/api/startup")
+          ? jsonResponse(startupSnapshot())
+          : jsonResponse(dashboard),
+      ),
     );
 
     render(<App />);
@@ -128,6 +273,7 @@ describe("App", () => {
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/runtime/configuration")) return jsonResponse(dockerEngineSnapshot());
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/runtime/start") && init?.method === "POST") {
