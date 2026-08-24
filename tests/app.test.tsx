@@ -1983,7 +1983,7 @@ describe("App", () => {
     await user.click(within(imageGroup).getByRole("button", { name: "레이어" }));
     const layerCode = await screen.findByRole("region", { name: "Dockerfile 레이어 코드" });
     expect(layerCode.querySelector("pre")).toHaveTextContent(
-      "# Layer 1 · 12MB RUN apt update && \\ apt install curl | \\ tee /tmp/result",
+      "# Layer 1 · 12MB RUN apt update \\ && apt install curl \\ | tee /tmp/result",
     );
     expect(layerCode.querySelector("pre")).toHaveTextContent(
       '# Layer 2 · 0B CMD ["node" "server/server.js"]',

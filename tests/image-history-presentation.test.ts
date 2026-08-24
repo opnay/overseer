@@ -29,16 +29,16 @@ CMD ["node" "server.js"]`);
     expect(
       reconstructDockerfileLayers([
         history(
-          'RUN /bin/sh -c echo "a && b" && curl example.test | tee /tmp/result || printf ready; exit 1 # buildkit',
+          'RUN /bin/sh -c echo    "a  && b"\t&&   curl example.test | tee /tmp/result || printf ready; exit 1 # buildkit',
           "12kB",
         ),
       ]),
     ).toBe(`# Layer 1 · 12kB
-RUN echo "a && b" && \\
-    curl example.test | \\
-    tee /tmp/result || \\
-    printf ready; \\
-    exit 1`);
+RUN echo "a  && b" \\
+    && curl example.test \\
+    | tee /tmp/result \\
+    || printf ready \\
+    ; exit 1`);
   });
 
   it("removes BuildKit argument markers from reconstructed RUN instructions", () => {
