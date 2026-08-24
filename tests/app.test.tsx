@@ -209,9 +209,20 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Homebrew 설치 명령")).toHaveTextContent(
+    expect(screen.getByText("CLI 설치")).toBeInTheDocument();
+    expect(screen.getByText("zshrc 등록")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CLI 설치 명령 복사" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "zshrc 등록 명령 복사" })).toBeEnabled();
+    expect(screen.getByLabelText("Homebrew CLI 설치 명령")).toHaveTextContent(
       "raw.githubusercontent.com/Homebrew/install",
     );
+    expect(screen.getByLabelText("Homebrew zshrc 등록 명령")).toHaveTextContent(
+      'eval "$(/opt/homebrew/bin/brew shellenv zsh)"',
+    );
+    expect(screen.getByLabelText("Homebrew zshrc 등록 명령")).toHaveTextContent(
+      "printf '\\n%s\\n'",
+    );
+    expect(screen.getByLabelText("Homebrew zshrc 등록 명령")).toHaveTextContent(">> ~/.zshrc");
     expect(screen.queryByRole("button", { name: /Homebrew 자동 설치/ })).not.toBeInTheDocument();
     expect(
       screen.getByText("다음 단계부터 Docker CLI와 Lima를 자동 설치할 수 있습니다."),
@@ -258,9 +269,10 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
     expect(screen.getByText("미리보기")).toBeInTheDocument();
-    expect(screen.getByLabelText("Homebrew 설치 명령")).toHaveTextContent(
+    expect(screen.getByLabelText("Homebrew CLI 설치 명령")).toHaveTextContent(
       "raw.githubusercontent.com/Homebrew/install",
     );
+    expect(screen.getByLabelText("Homebrew zshrc 등록 명령")).toHaveTextContent(">> ~/.zshrc");
   });
 
   it.each([

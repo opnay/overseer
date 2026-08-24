@@ -24,6 +24,9 @@ interface StartupPageProps {
   snapshot: StartupSnapshot;
 }
 
+const HOMEBREW_ZSHRC_COMMAND = String.raw`grep -qxF 'eval "$(/opt/homebrew/bin/brew shellenv zsh)"' ~/.zshrc 2>/dev/null || printf '\n%s\n' 'eval "$(/opt/homebrew/bin/brew shellenv zsh)"' >> ~/.zshrc
+eval "$(/opt/homebrew/bin/brew shellenv zsh)"`;
+
 export function StartupPage({
   composeSkipped,
   error,
@@ -35,7 +38,7 @@ export function StartupPage({
   refreshing,
   snapshot,
 }: StartupPageProps) {
-  const [copied, setCopied] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState<string>();
   const [includeCompose, setIncludeCompose] = useState(!composeSkipped);
   const requiredPrerequisites = snapshot.prerequisites.filter(({ required }) => required);
   const compose = snapshot.prerequisites.find(({ id }) => id === "compose");
@@ -64,16 +67,43 @@ export function StartupPage({
   const automaticInstallLabel = dockerWithCompose
     ? "Docker CLI와 Compose 자동 설치"
     : `${prerequisite.label} 자동 설치`;
+  const installCommands =
+    prerequisite.id === "homebrew"
+      ? [
+          {
+            accessibleLabel: "Homebrew CLI 설치 명령",
+            command: displayedInstallCommand,
+            id: "homebrew-cli",
+            label: "CLI 설치",
+          },
+          {
+            accessibleLabel: "Homebrew zshrc 등록 명령",
+            command: HOMEBREW_ZSHRC_COMMAND,
+            id: "homebrew-zshrc",
+            label: "zshrc 등록",
+          },
+        ]
+      : [
+          {
+            accessibleLabel: `${dockerWithCompose ? "Docker CLI와 Compose" : prerequisite.label} 설치 명령`,
+            command: displayedInstallCommand,
+            id: "install",
+            label: "Terminal에서 실행",
+          },
+        ];
   const active = operation?.status === "queued" || operation?.status === "running";
   const failed = operation?.status === "failed";
-  const copyCommand = async () => {
+  const copyCommand = async (command: string, id: string) => {
     try {
       if (!navigator.clipboard) return;
-      await navigator.clipboard.writeText(displayedInstallCommand);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1_500);
+      await navigator.clipboard.writeText(command);
+      setCopiedCommand(id);
+      window.setTimeout(
+        () => setCopiedCommand((current) => (current === id ? undefined : current)),
+        1_500,
+      );
     } catch {
-      setCopied(false);
+      setCopiedCommand(undefined);
     }
   };
 
@@ -202,7 +232,7 @@ export function StartupPage({
                         disabled={active}
                         onCheckedChange={(checked) => {
                           setIncludeCompose(checked === true);
-                          setCopied(false);
+                          setCopiedCommand(undefined);
                         }}
                       />
                       <div id="overseer-compose-option-label">
@@ -216,25 +246,32 @@ export function StartupPage({
             ) : null}
 
             <div className="overseer-startup-install-group">
-              <div className="overseer-startup-command">
-                <div>
-                  <span>Terminal에서 실행</span>
-                  <Button onClick={() => void copyCommand()} size="sm" variant="ghost">
-                    {copied ? (
-                      <Check aria-hidden="true" size={14} />
-                    ) : (
-                      <Copy aria-hidden="true" size={14} />
-                    )}
-                    {copied ? "복사됨" : "복사"}
-                  </Button>
-                </div>
-                <pre
-                  aria-label={`${dockerWithCompose ? "Docker CLI와 Compose" : prerequisite.label} 설치 명령`}
-                  tabIndex={0}
-                >
-                  <code>{displayedInstallCommand}</code>
-                </pre>
-              </div>
+              {installCommands.map(({ accessibleLabel, command, id, label }) => {
+                const copied = copiedCommand === id;
+                return (
+                  <div className="overseer-startup-command" key={id}>
+                    <div>
+                      <span>{label}</span>
+                      <Button
+                        aria-label={`${label} 명령 복사`}
+                        onClick={() => void copyCommand(command, id)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {copied ? (
+                          <Check aria-hidden="true" size={14} />
+                        ) : (
+                          <Copy aria-hidden="true" size={14} />
+                        )}
+                        {copied ? "복사됨" : "복사"}
+                      </Button>
+                    </div>
+                    <pre aria-label={accessibleLabel} tabIndex={0}>
+                      <code>{command}</code>
+                    </pre>
+                  </div>
+                );
+              })}
 
               {prerequisite.automaticInstall ? (
                 <div aria-hidden="true" className="overseer-startup-divider">
