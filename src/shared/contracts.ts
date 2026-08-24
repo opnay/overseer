@@ -27,9 +27,20 @@ export interface DockerEngineConfigurationOption<T extends string> {
 
 export interface DockerEngineConfigurationSnapshot {
   configuration: DockerEngineConfiguration;
+  dockerCli: DockerCliIntegrationSnapshot;
   providers: DockerEngineConfigurationOption<DockerEngineProvider>[];
   source: "default" | "instance";
   vmTypes: DockerEngineConfigurationOption<LimaVmType>[];
+}
+
+export interface DockerCliIntegrationSnapshot {
+  activeContext?: string;
+  contextEndpoint?: string;
+  contextName: string;
+  expectedEndpoint?: string;
+  homeMountWritable: boolean;
+  message: string;
+  ready: boolean;
 }
 
 export interface RecreateDockerEngineInput {
@@ -392,6 +403,7 @@ export type OperationKind =
   | "network.create"
   | "network.remove"
   | "runtime.start"
+  | "runtime.connect"
   | "runtime.recreate"
   | "runtime.stop"
   | "startup.install"

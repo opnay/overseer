@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { posix as posixPath } from "node:path";
+import { homedir } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import type {
   ComposeProjectAction,
@@ -19,6 +19,7 @@ import type {
   DashboardSnapshot,
   DockerEngineConfiguration,
   DockerEngineConfigurationSnapshot,
+  DockerCliIntegrationSnapshot,
   ImageDetail,
   ImageHistoryEntry,
   ImageRepositoryTags,
@@ -42,6 +43,7 @@ import { RemoteComposeService, type RemoteComposeRegistry } from "./remote-compo
 export interface RuntimeController {
   applyRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void>;
   checkRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void>;
+  connectDockerCli(progress?: OperationProgress): Promise<void>;
   composeProjectAction(
     name: string,
     action: ComposeProjectAction,
@@ -112,6 +114,13 @@ interface LimaInstance {
 
 interface LimaInstanceDetails {
   cpus: number;
+  config?: {
+    mounts?: Array<{
+      location?: string;
+      mountPoint?: string;
+      writable?: boolean;
+    }>;
+  };
   dir: string;
   disk: number;
   memory: number;
@@ -252,6 +261,8 @@ interface DockerInspectContainer {
 }
 
 const LIMA_INSTANCE = process.env.OVERSEER_LIMA_INSTANCE ?? "overseer";
+const DOCKER_CONTEXT = "overseer";
+const DOCKER_CONTEXT_DESCRIPTION = "Overseer Lima Docker Engine";
 const LIMA_ROW_FORMAT = "{{.Name}}\t{{.Status}}\t{{.Dir}}";
 const DEFAULT_DOCKER_ENGINE_CONFIGURATION: DockerEngineConfiguration = {
   cpus: 4,
@@ -380,7 +391,6 @@ export class LimaDockerRuntime implements RuntimeController {
   private readonly command: CommandRunner;
   private readonly fetcher: typeof fetch;
   private readonly remoteCompose: RemoteComposeRegistry;
-  private remoteComposeGuestHome?: string;
   private transition?: Promise<RuntimeSnapshot>;
 
   constructor(
@@ -444,6 +454,7 @@ export class LimaDockerRuntime implements RuntimeController {
       configuration: instance
         ? this.configurationFromInstance(instance)
         : { ...DEFAULT_DOCKER_ENGINE_CONFIGURATION },
+      dockerCli: await this.getDockerCliIntegration(instance),
       providers: [{ available: true, label: "Lima VM", value: "lima" }],
       source: instance ? "instance" : "default",
       vmTypes: [
@@ -458,6 +469,46 @@ export class LimaDockerRuntime implements RuntimeController {
         },
       ],
     };
+  }
+
+  async connectDockerCli(progress?: OperationProgress): Promise<void> {
+    let instance = await this.getInstanceDetails();
+    if (!instance) {
+      throw new ExpectedError(
+        "runtime_missing",
+        "Docker CLI를 연결하려면 Docker Engine을 먼저 만드십시오.",
+        409,
+      );
+    }
+    if (!this.homeMountWritable(instance)) {
+      if (instance.status.toLowerCase() === "running") {
+        progress?.step("Lima 런타임 중지 중");
+        await this.command("limactl", ["stop", LIMA_INSTANCE], {
+          onOutput: progress?.output,
+          timeoutMs: 120_000,
+        });
+      }
+      progress?.step("macOS 홈 공유를 쓰기 가능하게 설정 중");
+      await this.command("limactl", ["edit", LIMA_INSTANCE, "--mount-writable", "--tty=false"], {
+        onOutput: progress?.output,
+        timeoutMs: 120_000,
+      });
+      progress?.step("Lima 런타임 시작 중");
+      await this.command("limactl", ["start", LIMA_INSTANCE, "--tty=false", "--progress"], {
+        onOutput: progress?.output,
+        timeoutMs: 10 * 60_000,
+      });
+      await this.waitForDockerReady(progress);
+      instance = await this.getInstanceDetails();
+      if (!instance || !this.homeMountWritable(instance)) {
+        throw new ExpectedError(
+          "host_mount_not_writable",
+          "Lima의 macOS 홈 공유를 쓰기 가능하게 설정하지 못했습니다.",
+          503,
+        );
+      }
+    }
+    await this.configureDockerContext(instance, progress);
   }
 
   startRuntime(
@@ -1350,7 +1401,9 @@ export class LimaDockerRuntime implements RuntimeController {
         timeoutMs: 10 * 60_000,
       });
     }
-    return this.waitForDockerReady(progress);
+    await this.waitForDockerReady(progress);
+    await this.connectDockerCli(progress);
+    return this.getRuntimeSnapshot();
   }
 
   private async recreateRuntimeOnce(
@@ -1373,7 +1426,6 @@ export class LimaDockerRuntime implements RuntimeController {
         timeoutMs: 120_000,
       });
     }
-    this.remoteComposeGuestHome = undefined;
     progress?.step("Lima 환경 삭제 중");
     await this.command("limactl", ["delete", "--force", LIMA_INSTANCE], {
       onOutput: progress?.output,
@@ -1397,6 +1449,7 @@ export class LimaDockerRuntime implements RuntimeController {
         `--cpus=${configuration.cpus}`,
         `--memory=${configuration.memoryGiB}`,
         `--disk=${configuration.diskGiB}`,
+        "--mount-writable",
         "template:docker",
         "--tty=false",
         "--progress",
@@ -1406,7 +1459,9 @@ export class LimaDockerRuntime implements RuntimeController {
         timeoutMs: 20 * 60_000,
       },
     );
-    return this.waitForDockerReady(progress);
+    await this.waitForDockerReady(progress);
+    await this.connectDockerCli(progress);
+    return this.getRuntimeSnapshot();
   }
 
   private async waitForDockerReady(progress?: OperationProgress): Promise<RuntimeSnapshot> {
@@ -1564,6 +1619,129 @@ export class LimaDockerRuntime implements RuntimeController {
     };
   }
 
+  private homeMountWritable(instance: LimaInstanceDetails): boolean {
+    const home = homedir();
+    return Boolean(
+      instance.config?.mounts?.some(
+        (mount) =>
+          mount.writable === true && (mount.location === home || mount.mountPoint === home),
+      ),
+    );
+  }
+
+  private async getDockerCliIntegration(
+    instance?: LimaInstanceDetails,
+  ): Promise<DockerCliIntegrationSnapshot> {
+    if (!instance) {
+      return {
+        contextName: DOCKER_CONTEXT,
+        homeMountWritable: false,
+        message: "Docker Engine을 만들면 macOS Docker CLI가 자동으로 연결됩니다.",
+        ready: false,
+      };
+    }
+    const expectedEndpoint = `unix://${instance.dir}/sock/docker.sock`;
+    const [activeContext, contextEndpoint] = await Promise.all([
+      this.activeDockerContext(),
+      this.dockerContextEndpoint(),
+    ]);
+    const homeMountWritable = this.homeMountWritable(instance);
+    const ready =
+      homeMountWritable && activeContext === DOCKER_CONTEXT && contextEndpoint === expectedEndpoint;
+    const message = !homeMountWritable
+      ? "로컬 Compose bind mount를 위해 macOS 홈 공유를 쓰기 가능하게 설정해야 합니다."
+      : !contextEndpoint
+        ? "overseer Docker context를 만들어야 합니다."
+        : contextEndpoint !== expectedEndpoint
+          ? "overseer Docker context가 다른 Docker Engine을 가리키고 있습니다."
+          : activeContext !== DOCKER_CONTEXT
+            ? `현재 Docker context는 ${activeContext || "확인되지 않음"}입니다.`
+            : "터미널에서 별도 환경 변수 없이 docker 명령을 사용할 수 있습니다.";
+    return {
+      ...(activeContext ? { activeContext } : {}),
+      ...(contextEndpoint ? { contextEndpoint } : {}),
+      contextName: DOCKER_CONTEXT,
+      expectedEndpoint,
+      homeMountWritable,
+      message,
+      ready,
+    };
+  }
+
+  private async activeDockerContext(): Promise<string | undefined> {
+    try {
+      const result = await this.command("docker", ["context", "show"], { timeoutMs: 5_000 });
+      return result.stdout.trim() || undefined;
+    } catch (error) {
+      if (error instanceof CommandError) {
+        throw new ExpectedError(
+          "docker_context_unavailable",
+          "현재 Docker context를 확인하지 못했습니다.",
+          503,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async dockerContextEndpoint(): Promise<string | undefined> {
+    try {
+      const result = await this.command(
+        "docker",
+        ["context", "inspect", DOCKER_CONTEXT, "--format", "{{.Endpoints.docker.Host}}"],
+        { timeoutMs: 5_000 },
+      );
+      return result.stdout.trim() || undefined;
+    } catch (error) {
+      if (
+        error instanceof CommandError &&
+        (error.stderr.includes("context not found") || error.stderr.includes("no such file"))
+      ) {
+        return undefined;
+      }
+      if (error instanceof CommandError) {
+        throw new ExpectedError(
+          "docker_context_unavailable",
+          "overseer Docker context를 확인하지 못했습니다.",
+          503,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async configureDockerContext(
+    instance: LimaInstanceDetails,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    const endpoint = `unix://${instance.dir}/sock/docker.sock`;
+    const currentEndpoint = await this.dockerContextEndpoint();
+    progress?.step(currentEndpoint ? "Docker context 갱신 중" : "Docker context 만드는 중");
+    await this.command(
+      "docker",
+      [
+        "context",
+        currentEndpoint ? "update" : "create",
+        DOCKER_CONTEXT,
+        "--description",
+        DOCKER_CONTEXT_DESCRIPTION,
+        "--docker",
+        `host=${endpoint}`,
+      ],
+      { onOutput: progress?.output, timeoutMs: 30_000 },
+    );
+    progress?.step("overseer Docker context 선택 중");
+    await this.command("docker", ["context", "use", DOCKER_CONTEXT], {
+      onOutput: progress?.output,
+      timeoutMs: 30_000,
+    });
+    progress?.step("Docker CLI 연결 확인 중");
+    await this.command("docker", ["info", "--format", "{{.ServerVersion}}"], {
+      onOutput: progress?.output,
+      timeoutMs: 30_000,
+    });
+  }
+
   private integerGibibytes(value: number, label: string): number {
     const gibibytes = value / GIBIBYTE;
     if (!Number.isSafeInteger(gibibytes) || gibibytes < 1) {
@@ -1593,8 +1771,6 @@ export class LimaDockerRuntime implements RuntimeController {
     timeoutMs?: number,
     progress?: OperationProgress,
   ) {
-    if (project.remote || project.builder)
-      return this.composeRemote(project, args, timeoutMs, progress);
     return this.docker(
       [
         "compose",
@@ -1606,85 +1782,6 @@ export class LimaDockerRuntime implements RuntimeController {
       timeoutMs,
       progress,
     );
-  }
-
-  private async composeRemote(
-    project: ComposeProjectSummary,
-    args: readonly string[],
-    timeoutMs?: number,
-    progress?: OperationProgress,
-  ) {
-    const source = project.configFiles[0];
-    if (!source) {
-      throw new ExpectedError(
-        "managed_compose_config_missing",
-        "저장된 Compose 구성 파일을 찾을 수 없습니다.",
-        503,
-      );
-    }
-    try {
-      const guestHome = await this.getRemoteComposeGuestHome();
-      const directory = posixPath.join(
-        guestHome,
-        ".local",
-        "share",
-        "overseer",
-        "compose",
-        project.name,
-      );
-      const configFile = posixPath.join(directory, "compose.yaml");
-      progress?.step("Compose 파일을 Lima로 준비하는 중");
-      await this.command("limactl", ["shell", LIMA_INSTANCE, "mkdir", "-p", directory], {
-        timeoutMs: 30_000,
-      });
-      await this.command(
-        "limactl",
-        ["copy", "--backend=scp", source, `${LIMA_INSTANCE}:${configFile}`],
-        {
-          timeoutMs: 30_000,
-        },
-      );
-      return await this.command(
-        "limactl",
-        [
-          "shell",
-          "--workdir",
-          directory,
-          LIMA_INSTANCE,
-          "docker",
-          "compose",
-          "--project-name",
-          project.name,
-          "--file",
-          configFile,
-          ...args,
-        ],
-        { onOutput: progress?.output, timeoutMs },
-      );
-    } catch (error) {
-      if (error instanceof ExpectedError) throw error;
-      if (error instanceof CommandError) {
-        throw new ExpectedError("remote_compose_command_failed", this.dockerMessage(error), 503);
-      }
-      throw error;
-    }
-  }
-
-  private async getRemoteComposeGuestHome(): Promise<string> {
-    if (this.remoteComposeGuestHome) return this.remoteComposeGuestHome;
-    const result = await this.command("limactl", ["shell", LIMA_INSTANCE, "printenv", "HOME"], {
-      timeoutMs: 30_000,
-    });
-    const guestHome = result.stdout.trim();
-    if (!guestHome.startsWith("/") || guestHome.includes("\0") || guestHome.includes("\n")) {
-      throw new ExpectedError(
-        "remote_compose_home_invalid",
-        "Lima 사용자 홈 경로를 확인하지 못했습니다.",
-        503,
-      );
-    }
-    this.remoteComposeGuestHome = guestHome;
-    return guestHome;
   }
 
   private async docker(args: readonly string[], timeoutMs?: number, progress?: OperationProgress) {

@@ -1425,6 +1425,15 @@ function AppContent() {
         }),
     });
 
+  const connectDockerCli = () =>
+    mutate({
+      key: "runtime-connect",
+      request: () =>
+        apiRequest<OperationAccepted>("/runtime/cli/connect", {
+          method: "POST",
+        }),
+    });
+
   const startRuntime = () =>
     mutate({
       key: "runtime-start",
@@ -1985,6 +1994,7 @@ function AppContent() {
                 busy={runtimeBusy || Boolean(submitting)}
                 dashboard={dashboard}
                 onCheckToolUpdates={checkToolUpdates}
+                onConnectDockerCli={connectDockerCli}
                 onCreate={createDockerEngine}
                 onRecreate={recreateDockerEngine}
                 onStart={startRuntime}
@@ -1992,7 +2002,10 @@ function AppContent() {
                 onUpdateTool={updateTool}
                 refreshToken={settingsRefreshToken}
                 runtimeBusy={
-                  runtimeBusy || submitting === "runtime-start" || submitting === "runtime-stop"
+                  runtimeBusy ||
+                  submitting === "runtime-connect" ||
+                  submitting === "runtime-start" ||
+                  submitting === "runtime-stop"
                 }
                 toolOperation={latestToolUpdateOperation}
                 toolRequestPending={Boolean(submitting?.startsWith("startup-update"))}

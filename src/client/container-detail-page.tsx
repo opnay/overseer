@@ -87,7 +87,7 @@ function Definition({
 
 function mountPresentation(mount: ContainerMount) {
   if (mount.type === "bind") {
-    return { label: "Bind mount", sourceLabel: "Lima 호스트 경로", source: mount.hostPath };
+    return { label: "Bind mount", sourceLabel: "호스트 경로", source: mount.hostPath };
   }
   if (mount.type === "volume") {
     return { label: "Named volume", sourceLabel: "Volume", source: mount.volume };

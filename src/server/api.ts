@@ -248,6 +248,19 @@ export function createApi(
     return context.json({ operation }, 202);
   });
 
+  app.post("/runtime/cli/connect", (context) => {
+    const operation = enqueue(context, {
+      exclusive: true,
+      kind: "runtime.connect",
+      locks: [],
+      run: (progress) => controller.connectDockerCli(progress),
+      successMessage: "Docker CLI를 overseer context에 연결했습니다.",
+      target: { name: "overseer", resource: "runtime" },
+      title: "Docker CLI 연결",
+    });
+    return context.json({ operation }, 202);
+  });
+
   app.post("/runtime/recreate", async (context) => {
     const input = parseRecreateDockerEngineInput(await readObject(context));
     const operation = enqueue(

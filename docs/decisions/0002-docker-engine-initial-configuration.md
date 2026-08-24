@@ -2,7 +2,7 @@
 
 ## 상태
 
-채택. 0001의 단일 Lima 런타임과 전역 Docker context 비변경 결정을 유지하면서 초기 구성 흐름을 확장합니다.
+채택. 0001의 단일 Lima 런타임과 macOS Docker CLI 연결 결정을 유지하면서 초기 구성 흐름을 확장합니다.
 
 ## 결정
 
@@ -13,6 +13,8 @@
 - QEMU 실행 파일이 없으면 QEMU 선택을 비활성화하고 사용자가 직접 설치하도록 안내합니다. 브라우저 요청으로 패키지를 설치하지 않습니다.
 - 설정 원본은 `limactl list overseer --json`입니다. 인스턴스가 없을 때만 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB 기본값을 사용합니다.
 - 기존 VM 설정 변경은 `overseer` 확인 문자열을 요구하는 명시적 재생성으로만 적용합니다.
+- 새 VM은 macOS 홈 공유를 writable로 생성하고 `overseer` Docker context를 기본 context로 연결합니다.
+- 기존 VM의 CLI 연결 복구는 VM 데이터를 삭제하지 않고 중지, writable mount 편집, 시작, context 갱신 순서로 처리합니다.
 
 ## 재생성 경계
 
@@ -24,7 +26,6 @@
 
 ## 제외
 
-- Docker context 전역 변경
 - QEMU 자동 설치
 - VM 백업·복원
 - VM별 엔진, 다중 VM, 다중 Docker Engine

@@ -15,6 +15,7 @@ function createController(): RuntimeController {
   return {
     applyRemoteComposeUpdate: vi.fn(async () => undefined),
     checkRemoteComposeUpdate: vi.fn(async () => undefined),
+    connectDockerCli: vi.fn(async () => undefined),
     composeProjectAction: vi.fn(async () => undefined),
     containerAction: vi.fn(async () => undefined),
     createNetwork: vi.fn(async () => undefined),
@@ -62,6 +63,12 @@ function createController(): RuntimeController {
         memoryGiB: 4,
         provider: "lima" as const,
         vmType: "vz" as const,
+      },
+      dockerCli: {
+        contextName: "overseer",
+        homeMountWritable: false,
+        message: "Docker Engine을 먼저 만드십시오.",
+        ready: false,
       },
       providers: [{ available: true, label: "Lima VM", value: "lima" as const }],
       source: "default" as const,
@@ -291,6 +298,21 @@ describe("API boundary", () => {
       source: "default",
       vmTypes: [{ value: "vz" }, { available: false, value: "qemu" }],
     });
+  });
+
+  it("connects the macOS Docker CLI through an exclusive async operation", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+
+    const response = await app.request("/runtime/cli/connect", {
+      headers: localHeaders,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.connectDockerCli).toHaveBeenCalledWith(expect.any(Object)),
+    );
   });
 
   it("validates and forwards Docker Engine creation settings", async () => {

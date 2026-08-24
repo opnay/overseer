@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { homedir } from "node:os";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
 import { LimaDockerRuntime, type CommandRunner } from "../src/server/lima-docker-runtime.ts";
 import { CommandError } from "../src/server/process.ts";
@@ -7,8 +8,69 @@ import type { RemoteComposeRegistry } from "../src/server/remote-compose.ts";
 
 const limaRow = "overseer\tRunning\t/tmp/overseer\n";
 
+function limaDetails(
+  overrides: Partial<{
+    cpus: number;
+    dir: string;
+    disk: number;
+    memory: number;
+    status: string;
+    vmType: string;
+    writable: boolean;
+  }> = {},
+) {
+  const values = {
+    cpus: 4,
+    dir: "/tmp/overseer",
+    disk: 100 * 1024 ** 3,
+    memory: 4 * 1024 ** 3,
+    status: "Running",
+    vmType: "vz",
+    writable: true,
+    ...overrides,
+  };
+  return JSON.stringify({
+    ...values,
+    config: {
+      mounts: [
+        {
+          location: homedir(),
+          mountPoint: homedir(),
+          writable: values.writable,
+        },
+      ],
+    },
+    name: "overseer",
+  });
+}
+
 function commandFailure(command: string, stderr: string) {
   return new CommandError(command, Object.assign(new Error("command failed"), { code: 1 }), stderr);
+}
+
+function dockerContextResponder(initialEndpoint?: string) {
+  let activeContext = initialEndpoint ? "overseer" : "default";
+  let contextEndpoint = initialEndpoint;
+  return async (args: readonly string[]) => {
+    if (args[0] === "context" && args[1] === "show") {
+      return { stderr: "", stdout: `${activeContext}\n` };
+    }
+    if (args[0] === "context" && args[1] === "inspect") {
+      if (!contextEndpoint) {
+        throw commandFailure("docker context inspect", 'context "overseer": context not found');
+      }
+      return { stderr: "", stdout: `${contextEndpoint}\n` };
+    }
+    if (args[0] === "context" && (args[1] === "create" || args[1] === "update")) {
+      contextEndpoint = args.find((value) => value.startsWith("host="))?.slice("host=".length);
+      return { stderr: "", stdout: "" };
+    }
+    if (args[0] === "context" && args[1] === "use") {
+      activeContext = args[2] ?? activeContext;
+      return { stderr: "", stdout: `${activeContext}\n` };
+    }
+    return { stderr: "", stdout: "29.7.2\n" };
+  };
 }
 
 const dockerEngineConfiguration = {
@@ -492,7 +554,7 @@ describe("LimaDockerRuntime remote Compose", () => {
     expect(dockerCommands.some((args) => args.includes("up"))).toBe(false);
   });
 
-  it("runs a remote project from a writable Lima guest directory", async () => {
+  it("runs a remote project with the macOS Docker CLI and materialized host file", async () => {
     const commands: Array<{ args: readonly string[]; executable: string }> = [];
     const command: CommandRunner = vi.fn(async (executable, args) => {
       commands.push({ args, executable });
@@ -500,9 +562,6 @@ describe("LimaDockerRuntime remote Compose", () => {
         return { stderr: "", stdout: limaRow };
       }
       if (executable === "docker") return { stderr: "", stdout: "[]" };
-      if (executable === "limactl" && args.includes("printenv")) {
-        return { stderr: "", stdout: "/home/test.guest\n" };
-      }
       return { stderr: "", stdout: "" };
     });
     const registry: RemoteComposeRegistry = {
@@ -551,32 +610,23 @@ describe("LimaDockerRuntime remote Compose", () => {
 
     expect(commands).toContainEqual({
       args: [
-        "copy",
-        "--backend=scp",
-        "/host/compose/remote-stack/compose.yaml",
-        "overseer:/home/test.guest/.local/share/overseer/compose/remote-stack/compose.yaml",
-      ],
-      executable: "limactl",
-    });
-    expect(commands).toContainEqual({
-      args: [
-        "shell",
-        "--workdir",
-        "/home/test.guest/.local/share/overseer/compose/remote-stack",
-        "overseer",
-        "docker",
+        "--host",
+        "unix:///tmp/overseer/sock/docker.sock",
         "compose",
         "--project-name",
         "remote-stack",
         "--file",
-        "/home/test.guest/.local/share/overseer/compose/remote-stack/compose.yaml",
+        "/host/compose/remote-stack/compose.yaml",
         "up",
         "--detach",
       ],
-      executable: "limactl",
+      executable: "docker",
     });
     expect(
-      commands.some(({ args, executable }) => executable === "docker" && args.includes("--detach")),
+      commands.some(
+        ({ args, executable }) =>
+          executable === "limactl" && (args.includes("copy") || args.includes("shell")),
+      ),
     ).toBe(false);
   });
 
@@ -621,14 +671,12 @@ describe("LimaDockerRuntime remote Compose", () => {
 });
 
 describe("LimaDockerRuntime form Compose", () => {
-  it("lists a persisted form project and runs it from the Lima guest directory", async () => {
+  it("lists a persisted form project and runs its host materialized file", async () => {
     const commands: Array<{ args: readonly string[]; executable: string }> = [];
     const command: CommandRunner = vi.fn(async (executable, args) => {
       commands.push({ args, executable });
       if (executable === "limactl" && args[0] === "list") return { stderr: "", stdout: limaRow };
       if (executable === "docker") return { stderr: "", stdout: "[]" };
-      if (executable === "limactl" && args.includes("printenv"))
-        return { stderr: "", stdout: "/home/test.guest\n" };
       return { stderr: "", stdout: "" };
     });
     const remote: RemoteComposeRegistry = {
@@ -681,12 +729,17 @@ describe("LimaDockerRuntime form Compose", () => {
     await runtime.composeProjectAction("form-stack", "up");
     expect(commands).toContainEqual({
       args: [
-        "copy",
-        "--backend=scp",
+        "--host",
+        "unix:///tmp/overseer/sock/docker.sock",
+        "compose",
+        "--project-name",
+        "form-stack",
+        "--file",
         "/host/compose/form-stack/compose.yaml",
-        "overseer:/home/test.guest/.local/share/overseer/compose/form-stack/compose.yaml",
+        "up",
+        "--detach",
       ],
-      executable: "limactl",
+      executable: "docker",
     });
   });
 });
@@ -712,20 +765,19 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
   });
 
   it("maps the current Lima JSON configuration", async () => {
+    const docker = dockerContextResponder("unix:///tmp/overseer/sock/docker.sock");
     const command: CommandRunner = vi.fn(async (executable, args) => {
       if (executable.startsWith("qemu-system-")) {
         return { stderr: "", stdout: "QEMU emulator version 10.1.0\n" };
       }
+      if (executable === "docker") return docker(args);
       expect(args).toEqual(["list", "overseer", "--json"]);
       return {
         stderr: "",
-        stdout: JSON.stringify({
+        stdout: limaDetails({
           cpus: 6,
-          dir: "/tmp/overseer",
           disk: 120 * 1024 ** 3,
           memory: 8 * 1024 ** 3,
-          name: "overseer",
-          status: "Running",
           vmType: "qemu",
         }),
       };
@@ -740,15 +792,64 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         provider: "lima",
         vmType: "qemu",
       },
+      dockerCli: { homeMountWritable: true, ready: true },
       source: "instance",
       vmTypes: [{ value: "vz" }, { available: true, value: "qemu" }],
     });
+  });
+
+  it("makes the macOS home mount writable and selects the overseer Docker context", async () => {
+    let status = "Running";
+    let writable = false;
+    const docker = dockerContextResponder();
+    const commands: Array<{ args: readonly string[]; executable: string }> = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      commands.push({ args, executable });
+      if (executable === "docker") return docker(args);
+      if (args[0] === "list" && args.includes("--json")) {
+        return { stderr: "", stdout: limaDetails({ status, writable }) };
+      }
+      if (args[0] === "list") {
+        return { stderr: "", stdout: `overseer\t${status}\t/tmp/overseer\n` };
+      }
+      if (args[0] === "stop") status = "Stopped";
+      if (args[0] === "edit") writable = true;
+      if (args[0] === "start") status = "Running";
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await runtime.connectDockerCli();
+
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        { args: ["stop", "overseer"], executable: "limactl" },
+        {
+          args: ["edit", "overseer", "--mount-writable", "--tty=false"],
+          executable: "limactl",
+        },
+        {
+          args: [
+            "context",
+            "create",
+            "overseer",
+            "--description",
+            "Overseer Lima Docker Engine",
+            "--docker",
+            "host=unix:///tmp/overseer/sock/docker.sock",
+          ],
+          executable: "docker",
+        },
+        { args: ["context", "use", "overseer"], executable: "docker" },
+      ]),
+    );
   });
 
   it.each(["vz", "qemu"] as const)(
     "creates a missing %s engine with explicit resource settings",
     async (vmType) => {
       let exists = false;
+      const docker = dockerContextResponder();
       const commands: Array<{ args: readonly string[]; executable: string }> = [];
       const command: CommandRunner = vi.fn(async (executable, args) => {
         commands.push({ args, executable });
@@ -757,13 +858,17 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         }
         if (executable === "limactl" && args[0] === "list") {
           if (!exists) throw commandFailure("limactl list", "No instance matching overseer found.");
-          return { stderr: "", stdout: limaRow };
+          return {
+            stderr: "",
+            stdout: args.includes("--json") ? limaDetails({ vmType }) : limaRow,
+          };
         }
         if (executable === "limactl" && args[0] === "start") {
           exists = true;
           return { stderr: "", stdout: "" };
         }
-        return { stderr: "", stdout: "29.7.2\n" };
+        if (executable === "docker") return docker(args);
+        return { stderr: "", stdout: "" };
       });
       const runtime = new LimaDockerRuntime(command);
 
@@ -778,6 +883,7 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
           "--cpus=4",
           "--memory=4",
           "--disk=100",
+          "--mount-writable",
           "template:docker",
           "--tty=false",
           "--progress",
@@ -789,11 +895,12 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
 
   it("recreates the single VM in stop, delete, create order", async () => {
     let exists = true;
+    const docker = dockerContextResponder();
     const lifecycle: string[] = [];
     const command: CommandRunner = vi.fn(async (executable, args) => {
       if (executable === "limactl" && args[0] === "list") {
         if (!exists) throw commandFailure("limactl list", "No instance matching overseer found.");
-        return { stderr: "", stdout: limaRow };
+        return { stderr: "", stdout: args.includes("--json") ? limaDetails() : limaRow };
       }
       if (executable === "limactl" && args[0] === "stop") lifecycle.push("stop");
       if (executable === "limactl" && args[0] === "delete") {
@@ -804,7 +911,8 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         lifecycle.push("start");
         exists = true;
       }
-      return { stderr: "", stdout: executable === "docker" ? "29.7.2\n" : "" };
+      if (executable === "docker") return docker(args);
+      return { stderr: "", stdout: "" };
     });
     const runtime = new LimaDockerRuntime(command);
 

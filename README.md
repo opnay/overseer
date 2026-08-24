@@ -1,6 +1,6 @@
 # Overseer
 
-Lima의 공식 Docker 템플릿으로 만든 전용 VM을 브라우저에서 관리하는 로컬 컨트롤 패널입니다. 첫 실행에서 Homebrew·Docker CLI와 Compose·Lima·Docker Engine을 준비하고, 전역 Docker context를 변경하지 않습니다.
+Lima의 공식 Docker 템플릿으로 만든 전용 VM을 Docker Desktop처럼 macOS Docker CLI와 브라우저에서 함께 관리하는 로컬 컨트롤 패널입니다. 첫 실행에서 Homebrew·Docker CLI와 Compose·Lima·Docker Engine을 준비하고 기본 Docker context를 `overseer`로 연결합니다.
 
 ## 요구 사항
 
@@ -46,14 +46,17 @@ pnpm dev
 - `/networks`: 생성·삭제, 기본 네트워크 보호
 - `/operations`: Overseer에서 요청한 전체 작업 기록·상세 출력·실패 작업 재시도
 
-**Docker Engine 만들기**를 실행하면 선택한 설정과 공식 `template:docker`로 `overseer` 인스턴스를 생성합니다. 기존 인스턴스 설정을 바꾸려면 화면에서 `overseer`를 입력하고 재생성해야 합니다. 재생성하면 VM의 컨테이너·이미지·볼륨·사용자 네트워크와 VM 내부 데이터가 삭제되며, 호스트 SQLite의 Compose 등록 정보와 작업 기록은 유지됩니다.
+**Docker Engine 만들기**를 실행하면 선택한 설정과 공식 `template:docker`로 `overseer` 인스턴스를 생성합니다. macOS 홈 디렉터리는 컨테이너 bind mount를 위해 Lima에 쓰기 가능하게 공유하고, Lima socket을 가리키는 `overseer` Docker context를 생성·선택합니다. 기존 인스턴스 설정을 바꾸려면 화면에서 `overseer`를 입력하고 재생성해야 합니다. 재생성하면 VM의 컨테이너·이미지·볼륨·사용자 네트워크와 VM 내부 데이터가 삭제되며, 호스트 SQLite의 Compose 등록 정보와 작업 기록은 유지됩니다.
 
-Docker CLI에서 같은 런타임을 사용하려면 다음 환경 변수를 설정하십시오.
+별도 환경 변수 없이 일반 Docker CLI가 같은 런타임을 사용합니다.
 
 ```bash
-export DOCKER_HOST="$(limactl list overseer --format 'unix://{{.Dir}}/sock/docker.sock')"
+docker context show
 docker ps
+docker compose version
 ```
+
+다른 context를 선택했거나 기존 Lima 홈 공유가 읽기 전용이면 **설정 > Docker Engine > 엔진 설정**에서 **Docker CLI 연결**을 실행하십시오. 쓰기 가능 공유로 바꾸는 경우 Docker Engine을 한 번 다시 시작합니다.
 
 ## 검증
 
@@ -79,6 +82,7 @@ pnpm check
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
 - `GET /api/runtime/configuration`: 실제 VM 설정 또는 기본 설정과 드라이버 가용성
 - `POST /api/runtime/start`: 중지된 VM 시작 또는 선택 설정으로 첫 VM 생성
+- `POST /api/runtime/cli/connect`: writable 홈 공유와 `overseer` Docker context 연결 작업 접수
 - `POST /api/runtime/recreate`: 확인 문자열과 선택 설정으로 단일 VM 재생성
 - `GET /api/startup`: Homebrew·Docker CLI와 Compose·Lima 설치 상태
 - `POST /api/startup/prerequisites/:id/install`: Docker·Compose·Lima Homebrew 설치 작업 접수
@@ -92,7 +96,7 @@ Compose 페이지에서 GitHub Raw처럼 인증 없이 파일 내용이 열리�
 
 - URL 등록은 비동기 작업이며 Docker Compose JSON config로 검증합니다.
 - **업데이트 확인**은 조건부 HTTP 요청과 content hash를 사용하고, 변경된 파일은 사용자가 **업데이트 적용**을 실행할 때 현재 파일이 됩니다.
-- URL Compose는 Lima 내부의 전용 작업 디렉터리에서 실행하므로 `./data` 같은 상대 bind mount는 VM 디스크에 유지됩니다.
+- URL Compose는 macOS Docker CLI에서 materialized 파일을 직접 실행합니다. `./data` 같은 상대 bind mount는 `~/Library/Application Support/Overseer/compose/<project>/data`처럼 Compose 파일 옆의 macOS 경로를 사용합니다.
 - `build.context`가 포함된 파일도 등록·업데이트할 수 있지만 로컬 소스가 없으므로 **Compose 적용**은 명시적으로 실패합니다.
 - 인증 정보가 없는 HTTPS만 허용하며 리다이렉트마다 DNS를 확인해 loopback·사설·link-local 주소를 거부합니다.
 - 응답 시간은 15초, 리다이렉트는 3회, 파일 크기는 1MiB로 제한합니다.
@@ -112,11 +116,12 @@ Compose 페이지의 **폼으로 추가**에서 복수 서비스와 image·tag, 
 
 - 서버는 `127.0.0.1`에만 바인딩합니다.
 - 컨테이너 포트는 기본적으로 `127.0.0.1`의 빈 포트에 게시합니다.
-- 컨테이너 생성·편집은 named volume만 연결합니다. 상세 화면은 bind mount를 읽기 전용으로 구분하고 Lima 호스트의 전체 소스 경로를 표시합니다.
+- 컨테이너 생성·편집은 named volume만 연결합니다. 상세 화면은 bind mount를 읽기 전용으로 구분하고 전체 호스트 소스 경로를 표시합니다.
 - bind mount, privileged, device와 host network 설정은 생성·편집에 노출하지 않습니다.
 - 브라우저 요청은 고정된 Homebrew formula 설치·확인·업데이트만 실행하며 임의 셸 명령을 실행할 수 없습니다.
 - URL Compose fetch는 공개 HTTPS와 1MiB 이하 raw 문서로 제한합니다.
 - Compose 작업은 Docker가 보고한 프로젝트명과 구성 파일만 사용합니다.
 - Compose 프로젝트 내리기는 named volume과 구성 파일을 삭제하지 않습니다.
-- 전역 Docker context와 `/var/run/docker.sock`을 변경하지 않습니다.
+- `overseer` Docker context를 생성·갱신하고 기본 context로 선택합니다. `/var/run/docker.sock`은 변경하지 않습니다.
+- Docker Desktop과 같은 로컬 bind mount 동작을 위해 macOS 홈 디렉터리를 Lima에 쓰기 가능하게 공유합니다. 컨테이너에 bind mount한 경로는 컨테이너 프로세스에서도 쓸 수 있으므로 신뢰하는 Compose 파일만 실행하십시오.
 - 컨테이너·이미지 삭제에는 명시적인 확인이 필요합니다.

@@ -7,7 +7,15 @@ import { Fieldset } from "@opnay/city-ds-react/fieldset";
 import { Input } from "@opnay/city-ds-react/input";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
-import { ArrowRight, CircleStop, PackageCheck, Play, RotateCcw, ServerCog } from "lucide-react";
+import {
+  ArrowRight,
+  CircleStop,
+  PackageCheck,
+  Play,
+  RotateCcw,
+  ServerCog,
+  Terminal,
+} from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type {
   DashboardSnapshot,
@@ -33,6 +41,7 @@ interface SettingsPageProps {
   busy: boolean;
   dashboard: DashboardSnapshot;
   onCheckToolUpdates(): Promise<void>;
+  onConnectDockerCli(): Promise<void>;
   onCreate(configuration: DockerEngineConfiguration): Promise<void>;
   onRecreate(input: RecreateDockerEngineInput): Promise<void>;
   onStart(): Promise<void>;
@@ -92,6 +101,7 @@ export function SettingsPage({
   busy,
   dashboard,
   onCheckToolUpdates,
+  onConnectDockerCli,
   onCreate,
   onRecreate,
   onStart,
@@ -312,6 +322,77 @@ export function SettingsPage({
                         <strong>{dashboard.runtime.dockerVersion ?? "-"}</strong>
                       </div>
                     </section>
+
+                    {snapshot.source === "instance" ? (
+                      <section
+                        aria-labelledby="overseer-settings-docker-cli"
+                        className="overseer-settings-runtime-section"
+                      >
+                        <div className="overseer-settings-general-copy">
+                          <span aria-hidden="true">
+                            <Terminal size={18} strokeWidth={1.8} />
+                          </span>
+                          <div>
+                            <h3 id="overseer-settings-docker-cli">Docker CLI</h3>
+                            <p>{snapshot.dockerCli.message}</p>
+                            <code className="overseer-settings-cli-context">
+                              context: {snapshot.dockerCli.contextName}
+                            </code>
+                          </div>
+                        </div>
+                        {snapshot.dockerCli.ready ? (
+                          <strong className="overseer-settings-status-value">
+                            <Badge dot size="sm" tone="success" />
+                            연결됨
+                          </strong>
+                        ) : !snapshot.dockerCli.homeMountWritable ? (
+                          <AlertDialog.Root>
+                            <AlertDialog.Trigger
+                              disabled={runtimeBusy}
+                              render={<Button type="button" />}
+                            >
+                              Docker CLI 연결
+                            </AlertDialog.Trigger>
+                            <AlertDialog.Portal>
+                              <AlertDialog.Backdrop />
+                              <AlertDialog.Viewport>
+                                <AlertDialog.Popup>
+                                  <AlertDialog.Title>
+                                    Docker CLI 연결을 준비하시겠습니까?
+                                  </AlertDialog.Title>
+                                  <AlertDialog.Description>
+                                    macOS 홈 디렉터리를 Lima에 쓰기 가능하게 공유하기 위해 Docker
+                                    Engine을 잠시 다시 시작합니다. 컨테이너와 VM 데이터는
+                                    유지됩니다.
+                                  </AlertDialog.Description>
+                                  <div className="overseer-dialog-actions">
+                                    <AlertDialog.Cancel render={<Button variant="outline" />}>
+                                      취소
+                                    </AlertDialog.Cancel>
+                                    <AlertDialog.Action
+                                      onClick={() =>
+                                        void onConnectDockerCli().catch(() => undefined)
+                                      }
+                                      render={<Button />}
+                                    >
+                                      Docker CLI 연결
+                                    </AlertDialog.Action>
+                                  </div>
+                                </AlertDialog.Popup>
+                              </AlertDialog.Viewport>
+                            </AlertDialog.Portal>
+                          </AlertDialog.Root>
+                        ) : (
+                          <Button
+                            disabled={runtimeBusy}
+                            onClick={() => void onConnectDockerCli().catch(() => undefined)}
+                            type="button"
+                          >
+                            Docker CLI 연결
+                          </Button>
+                        )}
+                      </section>
+                    ) : null}
 
                     <section
                       aria-labelledby="overseer-settings-runtime-control"

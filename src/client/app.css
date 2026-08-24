@@ -602,6 +602,12 @@
     font-size: var(--city-font-size-sm);
   }
 
+  .overseer-settings-cli-context {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+    overflow-wrap: anywhere;
+  }
+
   .overseer-settings-general-section > .city-button,
   .overseer-settings-runtime-section > .city-button {
     flex: none;

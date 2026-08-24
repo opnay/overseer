@@ -44,6 +44,7 @@ function operation(
 function dockerEngineSnapshot(
   source: DockerEngineConfigurationSnapshot["source"] = "default",
   qemuAvailable = false,
+  dockerCliReady = source === "instance",
 ): DockerEngineConfigurationSnapshot {
   return {
     configuration: {
@@ -53,6 +54,33 @@ function dockerEngineSnapshot(
       provider: "lima",
       vmType: "vz",
     },
+    dockerCli:
+      source === "instance" && dockerCliReady
+        ? {
+            activeContext: "overseer",
+            contextEndpoint: "unix:///tmp/overseer/sock/docker.sock",
+            contextName: "overseer",
+            expectedEndpoint: "unix:///tmp/overseer/sock/docker.sock",
+            homeMountWritable: true,
+            message: "터미널에서 별도 환경 변수 없이 docker 명령을 사용할 수 있습니다.",
+            ready: true,
+          }
+        : source === "instance"
+          ? {
+              activeContext: "default",
+              contextName: "overseer",
+              expectedEndpoint: "unix:///tmp/overseer/sock/docker.sock",
+              homeMountWritable: false,
+              message:
+                "로컬 Compose bind mount를 위해 macOS 홈 공유를 쓰기 가능하게 설정해야 합니다.",
+              ready: false,
+            }
+          : {
+              contextName: "overseer",
+              homeMountWritable: false,
+              message: "Docker Engine을 만들면 macOS Docker CLI가 자동으로 연결됩니다.",
+              ready: false,
+            },
     providers: [{ available: true, label: "Lima VM", value: "lima" }],
     source,
     vmTypes: [
@@ -1038,6 +1066,69 @@ describe("App", () => {
     expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
       configuration: dockerEngineSnapshot().configuration,
     });
+  });
+
+  it("connects the Docker CLI from Engine settings after confirming the runtime restart", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "runtime.connect",
+      successMessage: "Docker CLI를 overseer context에 연결했습니다.",
+      target: { name: "overseer", resource: "runtime" },
+      title: "Docker CLI 연결",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+      if (url.endsWith("/api/runtime/configuration")) {
+        return jsonResponse(dockerEngineSnapshot("instance", true, false));
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/runtime/cli/connect") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/settings");
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Docker CLI", level: 3 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("context: overseer")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Docker CLI 연결" }));
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Docker CLI 연결을 준비하시겠습니까?",
+    });
+    expect(dialog).toHaveTextContent("Docker Engine을 잠시 다시 시작합니다");
+    await user.click(within(dialog).getByRole("button", { name: "Docker CLI 연결" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/runtime/cli/connect") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
   });
 
   it("keeps runtime stop out of resource pages and owns it in Docker Engine settings", async () => {
