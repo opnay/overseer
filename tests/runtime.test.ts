@@ -136,14 +136,48 @@ describe("LimaDockerRuntime image inspection", () => {
           ]),
         };
       }
+      if (dockerArgs[0] === "image" && dockerArgs[1] === "history") {
+        return {
+          stderr: "",
+          stdout: `${JSON.stringify({
+            Comment: "buildkit.dockerfile.v0",
+            CreatedAt: "2026-08-22T18:22:08+09:00",
+            CreatedBy: 'CMD ["node" "server/server.js"]',
+            CreatedSince: "2 days ago",
+            ID: "sha256:3e24e96c89ef",
+            Size: "0B",
+          })}\n`,
+        };
+      }
       throw new Error(`unexpected Docker command: ${dockerArgs.join(" ")}`);
     });
-    const runtime = new LimaDockerRuntime(command);
+    const fetcher: typeof fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            count: 1,
+            results: [
+              {
+                full_size: 601_000_000,
+                images: [
+                  { architecture: "amd64", os: "linux", variant: null },
+                  { architecture: "arm64", os: "linux", variant: null },
+                ],
+                last_updated: "2026-08-24T02:32:04.000Z",
+                name: "latest",
+              },
+            ],
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, fetcher);
 
     await expect(runtime.getImages()).resolves.toEqual([
       {
         createdSince: "2 days ago",
         id: "3e24e96c89ef",
+        platform: "linux/arm64",
         repository: "louislam/uptime-kuma",
         size: "2.51GB",
         tag: "2",
@@ -167,6 +201,62 @@ describe("LimaDockerRuntime image inspection", () => {
       repositoryTags: ["louislam/uptime-kuma:2"],
       workingDirectory: "/app",
     });
+    await expect(runtime.getImageHistory("3e24e96c89ef")).resolves.toEqual([
+      {
+        comment: "buildkit.dockerfile.v0",
+        createdAt: "2026-08-22T18:22:08+09:00",
+        createdBy: 'CMD ["node" "server/server.js"]',
+        createdSince: "2 days ago",
+        id: "sha256:3e24e96c89ef",
+        size: "0B",
+      },
+    ]);
+    await expect(runtime.getImageRepositoryTags("3e24e96c89ef", 2)).resolves.toEqual({
+      count: 1,
+      page: 2,
+      pageSize: 25,
+      repository: "louislam/uptime-kuma",
+      tags: [
+        {
+          lastUpdated: "2026-08-24T02:32:04.000Z",
+          name: "latest",
+          platforms: ["linux/amd64", "linux/arm64"],
+          sizeBytes: 601_000_000,
+        },
+      ],
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      new URL(
+        "https://hub.docker.com/v2/namespaces/louislam/repositories/uptime-kuma/tags?ordering=last_updated&page=2&page_size=25",
+      ),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("does not fetch tag lists from non-Docker Hub registries", async () => {
+    const command: CommandRunner = vi.fn(async (executable) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      return {
+        stderr: "",
+        stdout: JSON.stringify([
+          {
+            Architecture: "arm64",
+            Created: "2026-08-22T09:22:08.000Z",
+            Id: "sha256:3e24e96c89ef",
+            Os: "linux",
+            RepoTags: ["registry.internal/team/app:latest"],
+            Size: 1_000,
+          },
+        ]),
+      };
+    });
+    const fetcher: typeof fetch = vi.fn();
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, fetcher);
+
+    await expect(runtime.getImageRepositoryTags("3e24e96c89ef", 1)).rejects.toThrow(
+      "공개 Docker Hub 저장소",
+    );
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
 

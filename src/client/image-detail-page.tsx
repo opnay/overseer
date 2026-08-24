@@ -1,7 +1,19 @@
 import { Alert } from "@opnay/city-ds-react/alert";
+import { Button } from "@opnay/city-ds-react/button";
+import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
+import { EmptyState } from "@opnay/city-ds-react/empty-state";
+import { Pagination } from "@opnay/city-ds-react/pagination";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
+import { Table } from "@opnay/city-ds-react/table";
+import { ExternalLink } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import type { ContainerKeyValue, ImageDetail, ImageSummary } from "../shared/contracts.ts";
+import type {
+  ContainerKeyValue,
+  ImageDetail,
+  ImageHistoryEntry,
+  ImageRepositoryTags,
+  ImageSummary,
+} from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
 
 interface ImageDetailPageProps {
@@ -10,7 +22,13 @@ interface ImageDetailPageProps {
   summary?: ImageSummary;
 }
 
-type ImageDetailSection = "configuration" | "environment" | "labels" | "layers" | "overview";
+type ImageDetailSection =
+  | "configuration"
+  | "environment"
+  | "labels"
+  | "layers"
+  | "overview"
+  | "tags";
 
 const sectionPresentation: Record<ImageDetailSection, { description: string; label: string }> = {
   configuration: {
@@ -33,10 +51,15 @@ const sectionPresentation: Record<ImageDetailSection, { description: string; lab
     description: "이미지의 참조 URL과 식별자, 플랫폼 정보를 확인합니다.",
     label: "개요",
   },
+  tags: {
+    description: "공개 Docker Hub 저장소에서 최근 태그와 지원 플랫폼을 확인합니다.",
+    label: "저장소 태그",
+  },
 };
 
 const sectionOrder: ImageDetailSection[] = [
   "overview",
+  "tags",
   "configuration",
   "environment",
   "labels",
@@ -47,6 +70,17 @@ const createdAtFormatter = new Intl.DateTimeFormat("ko-KR", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
+const tagPaginationLabels = {
+  first: "첫 페이지",
+  last: "마지막 페이지",
+  navigation: "저장소 태그 페이지",
+  next: "다음 페이지",
+  nextGroup: (count: number) => `다음 ${count}개 페이지`,
+  page: (page: number) => `${page}페이지`,
+  previous: "이전 페이지",
+  previousGroup: (count: number) => `이전 ${count}개 페이지`,
+};
 
 function formatCreatedAt(value: string): string {
   const date = new Date(value);
@@ -98,12 +132,69 @@ function CodeValues({ empty, values }: { empty: string; values: string[] }) {
     : empty;
 }
 
+function safeExternalUrl(value: string): URL | undefined {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function dockerHubUrl(summary?: ImageSummary): string | undefined {
+  if (!summary?.url.startsWith("docker.io/")) return undefined;
+  const reference = summary.url.slice("docker.io/".length).split("@", 1)[0] ?? "";
+  const lastSlash = reference.lastIndexOf("/");
+  const lastColon = reference.lastIndexOf(":");
+  const repository = lastColon > lastSlash ? reference.slice(0, lastColon) : reference;
+  if (!repository) return undefined;
+  return repository.startsWith("library/")
+    ? `https://hub.docker.com/_/${repository.slice("library/".length)}`
+    : `https://hub.docker.com/r/${repository}`;
+}
+
+function externalLinks(summary: ImageSummary | undefined, labels: ContainerKeyValue[]) {
+  const links: Array<{ href: string; label: string }> = [];
+  const dockerHub = dockerHubUrl(summary);
+  if (dockerHub) links.push({ href: dockerHub, label: "Docker Hub" });
+
+  const labelPresentation = new Map([
+    ["org.opencontainers.image.source", "소스 저장소"],
+    ["org.opencontainers.image.url", "프로젝트 페이지"],
+    ["org.opencontainers.image.documentation", "문서"],
+  ]);
+  for (const { key, value } of labels) {
+    const fallbackLabel = labelPresentation.get(key);
+    if (!fallbackLabel) continue;
+    const url = safeExternalUrl(value);
+    if (!url || links.some(({ href }) => href === url.href)) continue;
+    links.push({
+      href: url.href,
+      label:
+        key === "org.opencontainers.image.source" && url.hostname === "github.com"
+          ? "GitHub 저장소"
+          : fallbackLabel,
+    });
+  }
+  return links;
+}
+
 export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPageProps) {
   const [detail, setDetail] = useState<ImageDetail>();
   const [error, setError] = useState<string>();
+  const [history, setHistory] = useState<ImageHistoryEntry[]>();
+  const [historyError, setHistoryError] = useState<string>();
+  const [repositoryTags, setRepositoryTags] = useState<ImageRepositoryTags>();
   const [section, setSection] = useState<ImageDetailSection>("overview");
+  const [tagError, setTagError] = useState<string>();
+  const [tagPage, setTagPage] = useState(1);
 
-  useEffect(() => setSection("overview"), [id]);
+  useEffect(() => {
+    setHistory(undefined);
+    setRepositoryTags(undefined);
+    setSection("overview");
+    setTagPage(1);
+  }, [id]);
 
   useEffect(() => {
     let active = true;
@@ -122,6 +213,50 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
       active = false;
     };
   }, [id, refreshToken]);
+
+  useEffect(() => {
+    if (section !== "layers") return;
+    let active = true;
+    setHistory(undefined);
+    setHistoryError(undefined);
+    void apiRequest<{ history: ImageHistoryEntry[] }>(`/images/${encodeURIComponent(id)}/history`)
+      .then(({ history: nextHistory }) => active && setHistory(nextHistory))
+      .catch(
+        (loadError: unknown) =>
+          active &&
+          setHistoryError(
+            loadError instanceof Error
+              ? loadError.message
+              : "이미지 레이어 기록을 불러오지 못했습니다.",
+          ),
+      );
+    return () => {
+      active = false;
+    };
+  }, [id, refreshToken, section]);
+
+  useEffect(() => {
+    if (section !== "tags") return;
+    let active = true;
+    setRepositoryTags(undefined);
+    setTagError(undefined);
+    void apiRequest<{ tags: ImageRepositoryTags }>(
+      `/images/${encodeURIComponent(id)}/tags?page=${tagPage}`,
+    )
+      .then(({ tags }) => active && setRepositoryTags(tags))
+      .catch(
+        (loadError: unknown) =>
+          active &&
+          setTagError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Docker Hub 태그 목록을 불러오지 못했습니다.",
+          ),
+      );
+    return () => {
+      active = false;
+    };
+  }, [id, refreshToken, section, tagPage]);
 
   if (error) {
     return (
@@ -144,6 +279,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
 
   const presentation = sectionPresentation[section];
   const referenceUrl = summary?.url ?? detail.repositoryTags[0] ?? "—";
+  const links = externalLinks(summary, detail.labels);
 
   return (
     <article className="overseer-detail-page">
@@ -202,6 +338,30 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                 </div>
               </section>
 
+              {links.length > 0 ? (
+                <section className="overseer-detail-section">
+                  <header>
+                    <div>
+                      <h3 className="city-text-subsection-title">관련 링크</h3>
+                    </div>
+                  </header>
+                  <nav aria-label="이미지 관련 링크" className="overseer-detail-external-links">
+                    {links.map(({ href, label }) => (
+                      <Button
+                        key={href}
+                        nativeButton={false}
+                        render={<a href={href} rel="noreferrer" target="_blank" />}
+                        size="sm"
+                        variant="outline"
+                      >
+                        <ExternalLink aria-hidden="true" size={14} />
+                        {label}
+                      </Button>
+                    ))}
+                  </nav>
+                </section>
+              ) : null}
+
               <section className="overseer-detail-section">
                 <header>
                   <div>
@@ -222,6 +382,89 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                 </dl>
               </section>
             </>
+          ) : null}
+
+          {section === "tags" ? (
+            tagError ? (
+              <Alert.Root appearance="subtle" tone="destructive">
+                <Alert.Title level={3}>저장소 태그를 불러오지 못했습니다.</Alert.Title>
+                <Alert.Description>{tagError}</Alert.Description>
+              </Alert.Root>
+            ) : !repositoryTags ? (
+              <section aria-label="저장소 태그 불러오는 중" className="overseer-detail-loading">
+                <Skeleton />
+                <Skeleton className="overseer-loading-table" />
+              </section>
+            ) : (
+              <section className="overseer-detail-section">
+                <header>
+                  <div>
+                    <h3 className="city-text-subsection-title">{repositoryTags.repository}</h3>
+                    <p className="city-text-supporting">총 {repositoryTags.count}개 태그</p>
+                  </div>
+                </header>
+                <DataTableRegion
+                  hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+                  label={`${repositoryTags.repository} 태그 표`}
+                >
+                  <Table.Root
+                    aria-label={`${repositoryTags.repository} 태그 목록`}
+                    className="overseer-table overseer-table--image-tags"
+                    size="sm"
+                  >
+                    <Table.Caption className="overseer-table-caption">
+                      Docker Hub 공개 저장소의 최근 업데이트 태그
+                    </Table.Caption>
+                    <Table.Header>
+                      <Table.Row>
+                        <Table.Head>태그</Table.Head>
+                        <Table.Head>플랫폼</Table.Head>
+                        <Table.Head>크기</Table.Head>
+                        <Table.Head>업데이트</Table.Head>
+                      </Table.Row>
+                    </Table.Header>
+                    <Table.Body>
+                      {repositoryTags.tags.length > 0 ? (
+                        repositoryTags.tags.map((tag) => (
+                          <Table.Row key={tag.name}>
+                            <Table.Cell>
+                              <strong>{tag.name}</strong>
+                            </Table.Cell>
+                            <Table.Cell>
+                              <code>{tag.platforms.join(" · ") || "—"}</code>
+                            </Table.Cell>
+                            <Table.Cell>{formatBytes(tag.sizeBytes)}</Table.Cell>
+                            <Table.Cell>
+                              <time dateTime={tag.lastUpdated}>
+                                {formatCreatedAt(tag.lastUpdated)}
+                              </time>
+                            </Table.Cell>
+                          </Table.Row>
+                        ))
+                      ) : (
+                        <Table.StateRow colSpan={4}>
+                          <EmptyState.Root density="compact">
+                            <EmptyState.Title level={3}>표시할 태그가 없습니다.</EmptyState.Title>
+                            <EmptyState.Description>
+                              이 페이지에는 공개 태그가 없습니다.
+                            </EmptyState.Description>
+                          </EmptyState.Root>
+                        </Table.StateRow>
+                      )}
+                    </Table.Body>
+                  </Table.Root>
+                </DataTableRegion>
+                {repositoryTags.count > repositoryTags.pageSize ? (
+                  <Pagination.Root
+                    density="compact"
+                    labels={tagPaginationLabels}
+                    onPageChange={setTagPage}
+                    page={repositoryTags.page}
+                    totalPages={Math.ceil(repositoryTags.count / repositoryTags.pageSize)}
+                  />
+                ) : null}
+              </section>
+            )
           ) : null}
 
           {section === "configuration" ? (
@@ -256,16 +499,62 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
           ) : null}
 
           {section === "layers" ? (
-            detail.layers.length > 0 ? (
-              <ol className="overseer-detail-layer-list">
-                {detail.layers.map((layer) => (
-                  <li key={layer}>
-                    <code>{layer}</code>
-                  </li>
-                ))}
-              </ol>
+            historyError ? (
+              <Alert.Root appearance="subtle" tone="destructive">
+                <Alert.Title level={3}>레이어 기록을 불러오지 못했습니다.</Alert.Title>
+                <Alert.Description>{historyError}</Alert.Description>
+              </Alert.Root>
+            ) : !history ? (
+              <section
+                aria-label="이미지 레이어 기록 불러오는 중"
+                className="overseer-detail-loading"
+              >
+                <Skeleton />
+                <Skeleton className="overseer-loading-table" />
+              </section>
+            ) : history.length > 0 ? (
+              <DataTableRegion
+                hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+                label="이미지 레이어 기록 표"
+              >
+                <Table.Root
+                  aria-label="이미지 레이어 기록"
+                  className="overseer-table overseer-table--image-history"
+                  size="sm"
+                >
+                  <Table.Caption className="overseer-table-caption">
+                    Docker 이미지 빌드 레이어와 메타데이터 기록
+                  </Table.Caption>
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.Head>명령</Table.Head>
+                      <Table.Head>크기</Table.Head>
+                      <Table.Head>생성</Table.Head>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {history.map((entry, index) => (
+                      <Table.Row key={`${index}-${entry.id ?? entry.createdBy}`}>
+                        <Table.Cell>
+                          <div className="overseer-image-history-command">
+                            <code>{entry.createdBy || "—"}</code>
+                            <div className="overseer-primary-meta">
+                              {entry.id ? <code>{entry.id}</code> : <span>메타데이터 레이어</span>}
+                              {entry.comment ? <span>{entry.comment}</span> : null}
+                            </div>
+                          </div>
+                        </Table.Cell>
+                        <Table.Cell>{entry.size}</Table.Cell>
+                        <Table.Cell>
+                          <time dateTime={entry.createdAt}>{entry.createdSince}</time>
+                        </Table.Cell>
+                      </Table.Row>
+                    ))}
+                  </Table.Body>
+                </Table.Root>
+              </DataTableRegion>
             ) : (
-              <p className="overseer-detail-empty-copy">레이어 정보가 없습니다.</p>
+              <p className="overseer-detail-empty-copy">레이어 기록이 없습니다.</p>
             )
           ) : null}
         </div>

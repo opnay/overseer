@@ -19,6 +19,8 @@ import type {
   DockerEngineConfiguration,
   DockerEngineConfigurationSnapshot,
   ImageDetail,
+  ImageHistoryEntry,
+  ImageRepositoryTags,
   ImageSummary,
   NetworkSummary,
   PullImageInput,
@@ -61,6 +63,8 @@ export interface RuntimeController {
   getDashboard(): Promise<DashboardSnapshot>;
   getDockerEngineConfiguration(): Promise<DockerEngineConfigurationSnapshot>;
   getImage(id: string): Promise<ImageDetail>;
+  getImageHistory(id: string): Promise<ImageHistoryEntry[]>;
+  getImageRepositoryTags(id: string, page: number): Promise<ImageRepositoryTags>;
   getImages(): Promise<ImageSummary[]>;
   getNetworks(): Promise<NetworkSummary[]>;
   getVolumes(): Promise<VolumeSummary[]>;
@@ -168,6 +172,22 @@ interface DockerInspectImage {
   RepoTags?: string[] | null;
   RootFS?: { Layers?: string[] | null } | null;
   Size: number;
+}
+
+interface DockerImageHistoryRow {
+  Comment: string;
+  CreatedAt: string;
+  CreatedBy: string;
+  CreatedSince: string;
+  ID: string;
+  Size: string;
+}
+
+interface DockerHubTagResult {
+  full_size?: number;
+  images?: Array<{ architecture?: string; os?: string; variant?: string | null }>;
+  last_updated?: string;
+  name?: string;
 }
 
 interface DockerVolumeRow {
@@ -304,6 +324,40 @@ function imageLabels(value: Record<string, string> | null | undefined): Containe
     .map(([key, item]) => ({ key, value: item }));
 }
 
+function parseImageInspectOutput(stdout: string): DockerInspectImage[] {
+  try {
+    const value = JSON.parse(stdout) as unknown;
+    if (!Array.isArray(value) || value.length === 0) throw new Error("empty inspect output");
+    return value as DockerInspectImage[];
+  } catch {
+    throw new ExpectedError(
+      "invalid_image_output",
+      "Docker 이미지 설정을 해석하지 못했습니다.",
+      503,
+    );
+  }
+}
+
+function dockerHubRepository(repositoryTags: string[]): string | undefined {
+  for (const repositoryTag of repositoryTags) {
+    const reference = repositoryTag.split("@", 1)[0] ?? "";
+    const lastSlash = reference.lastIndexOf("/");
+    const lastColon = reference.lastIndexOf(":");
+    const repository = lastColon > lastSlash ? reference.slice(0, lastColon) : reference;
+    const segments = repository.split("/").filter(Boolean);
+    const first = segments[0];
+    if (!first) continue;
+    const hasRegistry = first === "localhost" || first.includes(".") || first.includes(":");
+    if (hasRegistry) {
+      if (first !== "docker.io" && first !== "index.docker.io") continue;
+      segments.shift();
+    }
+    if (segments.length === 1) return `library/${segments[0]}`;
+    if (segments.length === 2) return segments.join("/");
+  }
+  return undefined;
+}
+
 function restartMode(value: string): ContainerSpecInput["restartPolicy"]["mode"] {
   return value === "always" || value === "on-failure" || value === "unless-stopped" ? value : "no";
 }
@@ -321,6 +375,7 @@ function restartArgument(policy: ContainerSpecInput["restartPolicy"]): string {
 export class LimaDockerRuntime implements RuntimeController {
   private readonly builderCompose: BuilderComposeRegistry;
   private readonly command: CommandRunner;
+  private readonly fetcher: typeof fetch;
   private readonly remoteCompose: RemoteComposeRegistry;
   private remoteComposeGuestHome?: string;
   private transition?: Promise<RuntimeSnapshot>;
@@ -329,8 +384,10 @@ export class LimaDockerRuntime implements RuntimeController {
     command: CommandRunner = runCommand,
     remoteCompose?: RemoteComposeRegistry,
     builderCompose?: BuilderComposeRegistry,
+    fetcher: typeof fetch = fetch,
   ) {
     this.command = command;
+    this.fetcher = fetcher;
     this.remoteCompose = remoteCompose ?? new RemoteComposeService(command);
     this.builderCompose = builderCompose ?? new BuilderComposeService(command);
   }
@@ -874,19 +931,7 @@ export class LimaDockerRuntime implements RuntimeController {
 
   async getImage(id: string): Promise<ImageDetail> {
     const result = await this.docker(["image", "inspect", id]);
-    let inspected: DockerInspectImage;
-    try {
-      const value = JSON.parse(result.stdout) as DockerInspectImage[];
-      const first = value[0];
-      if (!first) throw new Error("empty inspect output");
-      inspected = first;
-    } catch {
-      throw new ExpectedError(
-        "invalid_image_output",
-        "Docker 이미지 설정을 해석하지 못했습니다.",
-        503,
-      );
-    }
+    const inspected = parseImageInspectOutput(result.stdout)[0]!;
 
     const config = inspected.Config ?? {};
     return {
@@ -908,11 +953,147 @@ export class LimaDockerRuntime implements RuntimeController {
     };
   }
 
+  async getImageHistory(id: string): Promise<ImageHistoryEntry[]> {
+    const result = await this.docker([
+      "image",
+      "history",
+      "--no-trunc",
+      "--format",
+      IMAGE_ROW_FORMAT,
+      id,
+    ]);
+    return parseJsonLines<DockerImageHistoryRow>(result.stdout)
+      .slice(0, 500)
+      .map((row) => ({
+        ...(row.Comment ? { comment: row.Comment.slice(0, 500) } : {}),
+        createdAt: row.CreatedAt,
+        createdBy: row.CreatedBy.slice(0, 4_000),
+        createdSince: row.CreatedSince,
+        ...(row.ID && row.ID !== "<missing>" ? { id: row.ID } : {}),
+        size: row.Size,
+      }));
+  }
+
+  async getImageRepositoryTags(id: string, page: number): Promise<ImageRepositoryTags> {
+    const detail = await this.getImage(id);
+    const repository = dockerHubRepository(detail.repositoryTags);
+    if (!repository) {
+      throw new ExpectedError(
+        "image_tags_unsupported",
+        "공개 Docker Hub 저장소의 태그만 조회할 수 있습니다.",
+        409,
+      );
+    }
+
+    const [namespace, name] = repository.split("/");
+    if (!namespace || !name) {
+      throw new ExpectedError(
+        "image_tags_unsupported",
+        "Docker Hub 저장소를 확인할 수 없습니다.",
+        409,
+      );
+    }
+    const pageSize = 25;
+    const url = new URL(
+      `https://hub.docker.com/v2/namespaces/${encodeURIComponent(namespace)}/repositories/${encodeURIComponent(name)}/tags`,
+    );
+    url.searchParams.set("ordering", "last_updated");
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("page_size", String(pageSize));
+
+    let value: unknown;
+    try {
+      const response = await this.fetcher(url, { signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) {
+        throw new ExpectedError(
+          "image_tags_unavailable",
+          "Docker Hub 태그 목록을 불러오지 못했습니다.",
+          503,
+        );
+      }
+      value = await response.json();
+    } catch (error) {
+      if (error instanceof ExpectedError) throw error;
+      throw new ExpectedError(
+        "image_tags_unavailable",
+        "Docker Hub 태그 목록을 불러오지 못했습니다.",
+        503,
+      );
+    }
+
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new ExpectedError(
+        "invalid_image_tags",
+        "Docker Hub 태그 응답을 해석하지 못했습니다.",
+        503,
+      );
+    }
+    const source = value as { count?: unknown; results?: unknown };
+    if (
+      typeof source.count !== "number" ||
+      !Number.isSafeInteger(source.count) ||
+      source.count < 0 ||
+      !Array.isArray(source.results)
+    ) {
+      throw new ExpectedError(
+        "invalid_image_tags",
+        "Docker Hub 태그 응답을 해석하지 못했습니다.",
+        503,
+      );
+    }
+    const results = (source.results as DockerHubTagResult[]).slice(0, pageSize);
+    return {
+      count: source.count,
+      page,
+      pageSize,
+      repository,
+      tags: results.flatMap((tag) => {
+        if (
+          typeof tag.name !== "string" ||
+          typeof tag.last_updated !== "string" ||
+          typeof tag.full_size !== "number" ||
+          !Number.isFinite(tag.full_size) ||
+          tag.full_size < 0
+        ) {
+          return [];
+        }
+        const platforms = (tag.images ?? [])
+          .flatMap(({ architecture, os, variant }) =>
+            architecture && architecture !== "unknown" && os && os !== "unknown"
+              ? [`${os}/${architecture}${variant ? `/${variant}` : ""}`]
+              : [],
+          )
+          .filter((platform, index, values) => values.indexOf(platform) === index)
+          .sort();
+        return [
+          {
+            lastUpdated: tag.last_updated,
+            name: tag.name,
+            platforms,
+            sizeBytes: tag.full_size,
+          },
+        ];
+      }),
+    };
+  }
+
   async getImages(): Promise<ImageSummary[]> {
     const result = await this.docker(["image", "ls", "--format", IMAGE_ROW_FORMAT]);
-    return parseJsonLines<DockerImageRow>(result.stdout).map((row) => ({
+    const rows = parseJsonLines<DockerImageRow>(result.stdout);
+    if (rows.length === 0) return [];
+    const ids = [...new Set(rows.map(({ ID }) => ID))];
+    const inspectResult = await this.docker(["image", "inspect", ...ids]);
+    const platforms = new Map<string, string>();
+    for (const image of parseImageInspectOutput(inspectResult.stdout)) {
+      const id = image.Id.replace(/^sha256:/, "");
+      const platform = `${image.Os}/${image.Architecture}`;
+      platforms.set(id, platform);
+      platforms.set(id.slice(0, 12), platform);
+    }
+    return rows.map((row) => ({
       createdSince: row.CreatedSince,
       id: row.ID,
+      platform: platforms.get(row.ID) ?? "—",
       repository: row.Repository,
       size: row.Size,
       tag: row.Tag,

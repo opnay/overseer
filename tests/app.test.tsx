@@ -1144,6 +1144,7 @@ describe("App", () => {
         {
           createdSince: "today",
           id: "image-id",
+          platform: "linux/arm64",
           repository: "nginx",
           size: "20MB",
           tag: "alpine",
@@ -1270,6 +1271,7 @@ describe("App", () => {
         {
           createdSince: "today",
           id: "image-id",
+          platform: "linux/arm64",
           repository: "nginx",
           size: "20MB",
           tag: "alpine",
@@ -1838,6 +1840,7 @@ describe("App", () => {
         {
           createdSince: "2 days ago",
           id: "3e24e96c89ef",
+          platform: "linux/arm64",
           repository: "louislam/uptime-kuma",
           size: "2.51GB",
           tag: "2",
@@ -1858,6 +1861,38 @@ describe("App", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith("/api/images/3e24e96c89ef/history")) {
+          return jsonResponse({
+            history: [
+              {
+                comment: "buildkit.dockerfile.v0",
+                createdAt: "2026-08-22T18:22:08+09:00",
+                createdBy: "COPY --chown=node:node /app /app # buildkit",
+                createdSince: "2 days ago",
+                size: "284MB",
+              },
+            ],
+          });
+        }
+        if (url.includes("/api/images/3e24e96c89ef/tags")) {
+          const page = url.includes("page=2") ? 2 : 1;
+          return jsonResponse({
+            tags: {
+              count: 26,
+              page,
+              pageSize: 25,
+              repository: "louislam/uptime-kuma",
+              tags: [
+                {
+                  lastUpdated: "2026-08-24T02:32:04.000Z",
+                  name: page === 1 ? "latest" : "nightly",
+                  platforms: ["linux/amd64", "linux/arm64"],
+                  sizeBytes: 601_000_000,
+                },
+              ],
+            },
+          });
+        }
         if (url.endsWith("/api/images/3e24e96c89ef")) {
           return jsonResponse({
             image: {
@@ -1895,6 +1930,8 @@ describe("App", () => {
     });
     expect(imageUrl.closest(".overseer-primary-meta")).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "태그" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "플랫폼" })).toBeInTheDocument();
+    expect(screen.getByText("linux/arm64", { selector: "code" })).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "louislam/uptime-kuma:2" }));
 
     expect(
@@ -1909,6 +1946,20 @@ describe("App", () => {
     );
     expect(screen.getByText("linux/arm64")).toBeInTheDocument();
     expect(screen.getByText("sha256:3e24e96c89ef")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Docker Hub" })).toHaveAttribute(
+      "href",
+      "https://hub.docker.com/r/louislam/uptime-kuma",
+    );
+    expect(screen.getByRole("button", { name: "GitHub 저장소" })).toHaveAttribute(
+      "href",
+      "https://github.com/louislam/uptime-kuma",
+    );
+
+    await user.click(within(imageGroup).getByRole("button", { name: "저장소 태그" }));
+    expect(await screen.findByText("latest")).toBeInTheDocument();
+    expect(screen.getByText("linux/amd64 · linux/arm64")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "2페이지" }));
+    expect(await screen.findByText("nightly")).toBeInTheDocument();
 
     await user.click(within(imageGroup).getByRole("button", { name: "실행 설정" }));
     expect(screen.getByText("/app")).toBeInTheDocument();
@@ -1922,7 +1973,10 @@ describe("App", () => {
     expect(screen.getByText("org.opencontainers.image.source")).toBeInTheDocument();
 
     await user.click(within(imageGroup).getByRole("button", { name: "레이어" }));
-    expect(screen.getByText("sha256:layer-one")).toBeInTheDocument();
+    expect(
+      await screen.findByText("COPY --chown=node:node /app /app # buildkit"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("284MB")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "이미지 목록" }));
     expect(window.location.pathname).toBe("/images");
@@ -2640,6 +2694,7 @@ describe("App", () => {
         {
           createdSince: "today",
           id: "image-id",
+          platform: "linux/arm64",
           repository: "nginx",
           size: "20MB",
           tag: "alpine",

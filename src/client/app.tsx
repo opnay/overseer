@@ -2818,6 +2818,7 @@ function ImageTable({
         <Table.Header>
           <Table.Row>
             <Table.Head>이미지</Table.Head>
+            <Table.Head>플랫폼</Table.Head>
             <Table.Head>이미지 ID</Table.Head>
             <Table.Head>생성</Table.Head>
             <Table.Head>크기</Table.Head>
@@ -2826,7 +2827,7 @@ function ImageTable({
         </Table.Header>
         <Table.Body>
           {images.length === 0 ? (
-            <Table.StateRow colSpan={5}>
+            <Table.StateRow colSpan={6}>
               <EmptyState.Root className="overseer-table-empty-state" density="compact">
                 <EmptyState.Icon>
                   <HardDrive aria-hidden="true" />
@@ -2853,6 +2854,9 @@ function ImageTable({
                       <code>{image.url}</code>
                     </div>
                   </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <code>{image.platform}</code>
                 </Table.Cell>
                 <Table.Cell>
                   <code>{image.id}</code>

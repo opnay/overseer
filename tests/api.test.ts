@@ -85,6 +85,29 @@ function createController(): RuntimeController {
       sizeBytes: 1_000,
       workingDirectory: "/app",
     })),
+    getImageHistory: vi.fn(async () => [
+      {
+        createdAt: "2026-08-22T09:22:08.000Z",
+        createdBy: 'CMD ["node" "server.js"]',
+        createdSince: "2 days ago",
+        id: "sha256:layer",
+        size: "0B",
+      },
+    ]),
+    getImageRepositoryTags: vi.fn(async (_id, page) => ({
+      count: 1,
+      page,
+      pageSize: 25,
+      repository: "example/image",
+      tags: [
+        {
+          lastUpdated: "2026-08-24T02:32:04.000Z",
+          name: "latest",
+          platforms: ["linux/amd64", "linux/arm64"],
+          sizeBytes: 601_000_000,
+        },
+      ],
+    })),
     getImages: vi.fn(async () => []),
     getNetworks: vi.fn(async () => []),
     getVolumes: vi.fn(async () => []),
@@ -435,9 +458,29 @@ describe("API boundary", () => {
     });
     expect(controller.getImage).toHaveBeenCalledWith("3e24e96c89ef");
 
+    const history = await app.request("/images/3e24e96c89ef/history", {
+      headers: localHeaders,
+    });
+    expect(history.status).toBe(200);
+    await expect(history.json()).resolves.toMatchObject({
+      history: [{ createdBy: 'CMD ["node" "server.js"]' }],
+    });
+    expect(controller.getImageHistory).toHaveBeenCalledWith("3e24e96c89ef");
+
+    const tags = await app.request("/images/3e24e96c89ef/tags?page=2", {
+      headers: localHeaders,
+    });
+    expect(tags.status).toBe(200);
+    await expect(tags.json()).resolves.toMatchObject({ tags: { page: 2 } });
+    expect(controller.getImageRepositoryTags).toHaveBeenCalledWith("3e24e96c89ef", 2);
+
     const invalid = await app.request("/images/not-an-image", { headers: localHeaders });
     expect(invalid.status).toBe(400);
     expect(controller.getImage).toHaveBeenCalledTimes(1);
+    const invalidPage = await app.request("/images/3e24e96c89ef/tags?page=0", {
+      headers: localHeaders,
+    });
+    expect(invalidPage.status).toBe(400);
   });
 
   it("lists Compose projects and forwards project actions", async () => {

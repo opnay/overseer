@@ -61,6 +61,18 @@ async function readOptionalObject(context: Context): Promise<Record<string, unkn
   }
 }
 
+function requirePageNumber(value: string | undefined): number {
+  if (value === undefined) return 1;
+  if (!/^\d+$/.test(value)) {
+    throw new ExpectedError("invalid_page", "페이지 번호를 확인하십시오.", 400);
+  }
+  const page = Number(value);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 10_000) {
+    throw new ExpectedError("invalid_page", "페이지 번호를 확인하십시오.", 400);
+  }
+  return page;
+}
+
 function retryRequest(context: Context, body?: unknown): OperationRetryRequest {
   const method = context.req.method;
   if (method !== "DELETE" && method !== "PATCH" && method !== "POST") {
@@ -497,6 +509,19 @@ export function createApi(
   });
 
   app.get("/images", async (context) => context.json({ images: await controller.getImages() }));
+  app.get("/images/:id/history", async (context) => {
+    const history = await controller.getImageHistory(
+      requireImageIdentifier(context.req.param("id")),
+    );
+    return context.json({ history });
+  });
+  app.get("/images/:id/tags", async (context) => {
+    const tags = await controller.getImageRepositoryTags(
+      requireImageIdentifier(context.req.param("id")),
+      requirePageNumber(context.req.query("page")),
+    );
+    return context.json({ tags });
+  });
   app.get("/images/:id", async (context) => {
     const image = await controller.getImage(requireImageIdentifier(context.req.param("id")));
     return context.json({ image });

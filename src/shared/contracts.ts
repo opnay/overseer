@@ -246,6 +246,7 @@ export type ComposeProjectAction = "down" | "restart" | "stop" | "up";
 export interface ImageSummary {
   createdSince: string;
   id: string;
+  platform: string;
   repository: string;
   size: string;
   tag: string;
@@ -268,6 +269,30 @@ export interface ImageDetail {
   repositoryTags: string[];
   sizeBytes: number;
   workingDirectory?: string;
+}
+
+export interface ImageHistoryEntry {
+  comment?: string;
+  createdAt: string;
+  createdBy: string;
+  createdSince: string;
+  id?: string;
+  size: string;
+}
+
+export interface ImageRepositoryTag {
+  lastUpdated: string;
+  name: string;
+  platforms: string[];
+  sizeBytes: number;
+}
+
+export interface ImageRepositoryTags {
+  count: number;
+  page: number;
+  pageSize: number;
+  repository: string;
+  tags: ImageRepositoryTag[];
 }
 
 export interface VolumeSummary {
