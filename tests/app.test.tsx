@@ -978,11 +978,18 @@ describe("App", () => {
     const dockerEngine = within(settingsNavigation).getByRole("group", {
       name: "Docker Engine",
     });
+    expect(within(dockerEngine).getByRole("button", { name: "엔진 설정" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("heading", { name: "엔진 설정", level: 2 })).toBeInTheDocument();
+    expect(await screen.findByLabelText("CPU")).toHaveValue("4");
+
+    await user.click(within(overseer).getByRole("button", { name: "일반" }));
     expect(within(overseer).getByRole("button", { name: "일반" })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    expect(screen.getByRole("heading", { name: "일반", level: 2 })).toBeInTheDocument();
     expect(
       screen.getByText("필수 도구와 Docker Engine 준비 과정을 다시 확인합니다."),
     ).toBeInTheDocument();
@@ -996,7 +1003,7 @@ describe("App", () => {
       "aria-current",
       "page",
     );
-    expect(await screen.findByLabelText("CPU")).toHaveValue("4");
+    expect(screen.getByLabelText("CPU")).toHaveValue("4");
     expect(screen.getByLabelText("메모리")).toHaveValue("4");
     expect(screen.getByLabelText("디스크")).toHaveValue("100");
 
@@ -1031,6 +1038,121 @@ describe("App", () => {
     expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
       configuration: dockerEngineSnapshot().configuration,
     });
+  });
+
+  it("keeps runtime stop out of resource pages and owns it in Docker Engine settings", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "runtime.stop",
+      successMessage: "런타임을 중지했습니다.",
+      target: { name: "overseer", resource: "runtime" },
+      title: "런타임 중지",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+      if (url.endsWith("/api/runtime/configuration")) {
+        return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/runtime/stop") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/containers");
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "컨테이너", level: 1 });
+    expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
+    for (const page of ["Compose", "이미지", "볼륨", "네트워크", "작업 기록"] as const) {
+      await user.click(screen.getByRole("link", { name: page }));
+      expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
+    }
+
+    await user.click(screen.getByRole("link", { name: "설정" }));
+    const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
+    await user.click(within(settingsNavigation).getByRole("button", { name: "엔진 설정" }));
+    await user.click(await screen.findByRole("button", { name: "런타임 중지" }));
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Docker Engine을 중지하시겠습니까?",
+    });
+    expect(dialog).toHaveTextContent("컨테이너, 이미지, Volume 데이터는 유지됩니다.");
+    await user.click(within(dialog).getByRole("button", { name: "런타임 중지" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) => String(input).endsWith("/api/runtime/stop") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("starts a stopped runtime only from Docker Engine settings", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer",
+        message: "중지됨",
+        phase: "stopped",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "runtime.start",
+      successMessage: "런타임을 시작했습니다.",
+      target: { name: "overseer", resource: "runtime" },
+      title: "런타임 시작",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+      if (url.endsWith("/api/runtime/configuration")) {
+        return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/runtime/start") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/settings");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "엔진 설정", level: 2 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "런타임 시작" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/runtime/start") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
   });
 
   it("checks and updates Homebrew-managed tools from general settings", async () => {

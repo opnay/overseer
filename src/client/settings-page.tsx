@@ -7,7 +7,7 @@ import { Fieldset } from "@opnay/city-ds-react/fieldset";
 import { Input } from "@opnay/city-ds-react/input";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
-import { ArrowRight, PackageCheck, RotateCcw, ServerCog } from "lucide-react";
+import { ArrowRight, CircleStop, PackageCheck, Play, RotateCcw, ServerCog } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type {
   DashboardSnapshot,
@@ -35,8 +35,11 @@ interface SettingsPageProps {
   onCheckToolUpdates(): Promise<void>;
   onCreate(configuration: DockerEngineConfiguration): Promise<void>;
   onRecreate(input: RecreateDockerEngineInput): Promise<void>;
+  onStart(): Promise<void>;
+  onStop(): Promise<void>;
   onUpdateTool(id: ToolUpdateId): Promise<void>;
   refreshToken: string;
+  runtimeBusy: boolean;
   toolOperation?: OperationSnapshot;
   toolRequestPending: boolean;
 }
@@ -76,14 +79,26 @@ const runtimeStatus: Record<
   stopping: { label: "중지 중", tone: "info" },
 };
 
+const runtimeControlDescription: Record<RuntimePhase, string> = {
+  error: "런타임 오류를 해결한 뒤 다시 제어할 수 있습니다.",
+  missing: "아래 설정으로 Docker Engine을 먼저 만드십시오.",
+  running: "중지하면 컨테이너에 접근할 수 없지만 VM 데이터는 유지됩니다.",
+  starting: "Docker Engine이 시작되는 동안 잠시 기다리십시오.",
+  stopped: "보존된 VM 데이터로 Docker Engine을 다시 시작합니다.",
+  stopping: "Docker Engine이 안전하게 중지되는 동안 잠시 기다리십시오.",
+};
+
 export function SettingsPage({
   busy,
   dashboard,
   onCheckToolUpdates,
   onCreate,
   onRecreate,
+  onStart,
+  onStop,
   onUpdateTool,
   refreshToken,
+  runtimeBusy,
   toolOperation,
   toolRequestPending,
 }: SettingsPageProps) {
@@ -94,7 +109,9 @@ export function SettingsPage({
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [confirmationError, setConfirmationError] = useState<string>();
-  const [section, setSection] = useState<SettingsSection>("general");
+  const [section, setSection] = useState<SettingsSection>(() =>
+    dashboard.runtime.phase === "running" ? "general" : "engine",
+  );
 
   const load = useCallback(async () => {
     setLoadError(undefined);
@@ -294,6 +311,71 @@ export function SettingsPage({
                         <span>Docker</span>
                         <strong>{dashboard.runtime.dockerVersion ?? "-"}</strong>
                       </div>
+                    </section>
+
+                    <section
+                      aria-labelledby="overseer-settings-runtime-control"
+                      className="overseer-settings-runtime-section"
+                    >
+                      <div className="overseer-settings-general-copy">
+                        <span aria-hidden="true">
+                          {dashboard.runtime.phase === "stopped" ? (
+                            <Play size={18} strokeWidth={1.8} />
+                          ) : (
+                            <CircleStop size={18} strokeWidth={1.8} />
+                          )}
+                        </span>
+                        <div>
+                          <h3 id="overseer-settings-runtime-control">런타임 제어</h3>
+                          <p>{runtimeControlDescription[dashboard.runtime.phase]}</p>
+                        </div>
+                      </div>
+                      {dashboard.runtime.phase === "stopped" ? (
+                        <Button
+                          disabled={runtimeBusy}
+                          onClick={() => void onStart().catch(() => undefined)}
+                          type="button"
+                        >
+                          <Play aria-hidden="true" size={14} />
+                          {runtimeBusy ? "준비 중…" : "런타임 시작"}
+                        </Button>
+                      ) : dashboard.runtime.phase === "running" ? (
+                        <AlertDialog.Root>
+                          <AlertDialog.Trigger
+                            disabled={runtimeBusy}
+                            render={<Button type="button" variant="outline" />}
+                          >
+                            <CircleStop aria-hidden="true" size={14} />
+                            {runtimeBusy ? "중지 중…" : "런타임 중지"}
+                          </AlertDialog.Trigger>
+                          <AlertDialog.Portal>
+                            <AlertDialog.Backdrop />
+                            <AlertDialog.Viewport>
+                              <AlertDialog.Popup>
+                                <AlertDialog.Title>
+                                  Docker Engine을 중지하시겠습니까?
+                                </AlertDialog.Title>
+                                <AlertDialog.Description>
+                                  실행 중인 컨테이너에 접근할 수 없게 됩니다. 컨테이너, 이미지,
+                                  Volume 데이터는 유지됩니다.
+                                </AlertDialog.Description>
+                                <div className="overseer-dialog-actions">
+                                  <AlertDialog.Cancel render={<Button variant="outline" />}>
+                                    취소
+                                  </AlertDialog.Cancel>
+                                  <AlertDialog.Action
+                                    destructive
+                                    onClick={() => void onStop().catch(() => undefined)}
+                                    render={<Button variant="destructive" />}
+                                  >
+                                    런타임 중지
+                                  </AlertDialog.Action>
+                                </div>
+                              </AlertDialog.Popup>
+                            </AlertDialog.Viewport>
+                          </AlertDialog.Portal>
+                        </AlertDialog.Root>
+                      ) : null}
                     </section>
 
                     <Fieldset.Root appearance="plain">

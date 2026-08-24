@@ -19,7 +19,6 @@ import {
   Box,
   Boxes,
   Check,
-  CircleStop,
   Container,
   Copy,
   Database,
@@ -1426,6 +1425,18 @@ function AppContent() {
         }),
     });
 
+  const startRuntime = () =>
+    mutate({
+      key: "runtime-start",
+      request: () => apiRequest<OperationAccepted>("/runtime/start", { method: "POST" }),
+    });
+
+  const stopRuntime = () =>
+    mutate({
+      key: "runtime-stop",
+      request: () => apiRequest<OperationAccepted>("/runtime/stop", { method: "POST" }),
+    });
+
   if ((!dashboard && !loadError) || startupCheckPending) return <LoadingScreen />;
 
   if (dashboard && displayedStartup && currentStartupStep) {
@@ -1891,39 +1902,6 @@ function AppContent() {
                   <RefreshCw aria-hidden="true" size={14} />
                   새로고침
                 </Button>
-                {runtime?.phase === "stopped" ? (
-                  <Button
-                    disabled={runtimeBusy || submitting === "runtime-start"}
-                    onClick={() =>
-                      void mutate({
-                        key: "runtime-start",
-                        request: () =>
-                          apiRequest<OperationAccepted>("/runtime/start", { method: "POST" }),
-                      }).catch(() => undefined)
-                    }
-                    size="sm"
-                  >
-                    <Play aria-hidden="true" size={14} />
-                    {submitting === "runtime-start" || runtimeBusy ? "준비 중…" : "런타임 시작"}
-                  </Button>
-                ) : runtimeRunning ? (
-                  <ConfirmAction
-                    actionLabel="런타임 중지"
-                    disabled={runtimeBusy || Boolean(submitting)}
-                    description="실행 중인 컨테이너에 접근할 수 없게 됩니다. 컨테이너 데이터는 유지됩니다."
-                    onConfirm={() =>
-                      void mutate({
-                        key: "runtime-stop",
-                        request: () =>
-                          apiRequest<OperationAccepted>("/runtime/stop", { method: "POST" }),
-                      }).catch(() => undefined)
-                    }
-                    title="Lima 런타임을 중지하시겠습니까?"
-                  >
-                    <CircleStop aria-hidden="true" size={14} />
-                    런타임 중지
-                  </ConfirmAction>
-                ) : null}
               </div>
               {pagePrimaryAction ? (
                 <div className="overseer-primary-action">{pagePrimaryAction}</div>
@@ -1989,16 +1967,14 @@ function AppContent() {
                 <EmptyState.Description>
                   {runtime?.phase === "missing"
                     ? "설정에서 VM 드라이버와 자원을 선택해 overseer 전용 인스턴스를 만드십시오."
-                    : "상단의 런타임 액션으로 다시 시작할 수 있습니다."}
+                    : "설정의 엔진 설정에서 런타임을 다시 시작할 수 있습니다."}
                 </EmptyState.Description>
-                {runtime?.phase === "missing" ? (
-                  <EmptyState.Actions>
-                    <Button onClick={() => selectResourcePath("/settings")} size="sm">
-                      <Settings2 aria-hidden="true" size={14} />
-                      Docker Engine 설정
-                    </Button>
-                  </EmptyState.Actions>
-                ) : null}
+                <EmptyState.Actions>
+                  <Button onClick={() => selectResourcePath("/settings")} size="sm">
+                    <Settings2 aria-hidden="true" size={14} />
+                    Docker Engine 설정
+                  </Button>
+                </EmptyState.Actions>
               </EmptyState.Root>
             </section>
           ) : null}
@@ -2011,8 +1987,13 @@ function AppContent() {
                 onCheckToolUpdates={checkToolUpdates}
                 onCreate={createDockerEngine}
                 onRecreate={recreateDockerEngine}
+                onStart={startRuntime}
+                onStop={stopRuntime}
                 onUpdateTool={updateTool}
                 refreshToken={settingsRefreshToken}
+                runtimeBusy={
+                  runtimeBusy || submitting === "runtime-start" || submitting === "runtime-stop"
+                }
                 toolOperation={latestToolUpdateOperation}
                 toolRequestPending={Boolean(submitting?.startsWith("startup-update"))}
               />
