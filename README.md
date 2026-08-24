@@ -19,6 +19,7 @@ brew install qemu
 ```
 
 City DS는 `opnay/city-ds`의 `1dd3d58772831fb70562d88c752805a3b9d1ee59`에서 빌드한 패키지를 `vendor/opnay-city-ds-react-0.1.0-1dd3d58.tgz`로 고정합니다.
+운영 화면의 Table·상태·액션·로그 적용 규칙은 [`docs/decisions/0003-operation-interface-patterns.md`](docs/decisions/0003-operation-interface-patterns.md)를 따릅니다.
 
 ## 시작
 
@@ -43,7 +44,7 @@ pnpm dev
 - `/images`: pull·삭제
 - `/volumes`: 생성·삭제
 - `/networks`: 생성·삭제, 기본 네트워크 보호
-- `/operations`: Overseer에서 요청한 전체 작업 히스토리·상세 출력·실패 작업 재시도
+- `/operations`: Overseer에서 요청한 전체 작업 기록·상세 출력·실패 작업 재시도
 
 **Docker Engine 만들기**를 실행하면 선택한 설정과 공식 `template:docker`로 `overseer` 인스턴스를 생성합니다. 기존 인스턴스 설정을 바꾸려면 화면에서 `overseer`를 입력하고 재생성해야 합니다. 재생성하면 VM의 컨테이너·이미지·볼륨·사용자 네트워크와 VM 내부 데이터가 삭제되며, 호스트 SQLite의 Compose 등록 정보와 작업 기록은 유지됩니다.
 
@@ -70,7 +71,7 @@ pnpm check
 
 모든 생성·수정·동작·삭제 요청은 `202 Accepted`와 작업 ID를 즉시 반환합니다. 상단의 **작업** Drawer에는 대기·진행·실패 작업만 표시하고, `/operations` 페이지에는 Overseer에서 요청한 모든 작업과 최근 Docker 출력을 SQLite에 계속 저장합니다. 서버 재시작 당시 대기·실행 중이던 작업은 중단 실패로 기록하며, 실패 작업은 저장된 원래 요청을 다시 검증해 새 작업으로 재시도할 수 있습니다. Docker CLI에서 직접 실행한 작업은 기록하지 않습니다.
 
-- `GET /api/operations`: 전체 작업 히스토리
+- `GET /api/operations`: 전체 작업 기록
 - `GET /api/operations/:id`: 단일 작업 상태
 - `DELETE /api/operations/:id`: 대기 작업 취소
 - `POST /api/operations/:id/retry`: 실패 작업을 새 작업으로 재접수

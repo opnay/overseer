@@ -1479,6 +1479,14 @@ describe("App", () => {
     expect(within(drawer).getByText("실패 작업")).toBeInTheDocument();
     expect(within(drawer).queryByText("완료 작업")).not.toBeInTheDocument();
     expect(within(drawer).queryByText("취소 작업")).not.toBeInTheDocument();
+    expect(within(drawer).getByText("대기 중", { selector: "[data-city-badge]" })).toHaveAttribute(
+      "data-tone",
+      "neutral",
+    );
+    expect(within(drawer).getByText("진행 중", { selector: "[data-city-badge]" })).toHaveAttribute(
+      "data-tone",
+      "info",
+    );
     const drawerOutput = within(drawer).getByRole("region", { name: "실패 작업 최근 출력" });
     await user.click(within(drawerOutput).getByRole("button", { name: "로그 옵션" }));
     const drawerLogOptions = await screen.findByRole("menu");
@@ -1490,18 +1498,34 @@ describe("App", () => {
     ).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
-    await user.click(within(drawer).getByRole("button", { name: "전체 작업 보기" }));
+    const viewAllOperations = within(drawer).getByRole("button", { name: "전체 작업 보기" });
+    expect(viewAllOperations).toHaveClass("bg-city-primary");
+    await user.click(viewAllOperations);
     expect(await screen.findByRole("heading", { name: "작업 기록", level: 1 })).toBeInTheDocument();
-    expect(await screen.findByRole("table", { name: "전체 작업 히스토리" })).toBeInTheDocument();
+    const historyTable = await screen.findByRole("table", { name: "전체 작업 기록" });
+    expect(
+      within(historyTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["요청 시각", "작업", "상태", "소요", "상세"]);
     expect(screen.getByText("완료 작업")).toBeInTheDocument();
     expect(screen.getByText("취소 작업")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/operations");
 
     const failedRow = screen.getByRole("row", { name: /실패 작업/ });
+    expect(failedRow).toHaveTextContent("볼륨 · app-data");
+    const failedStatus = within(failedRow).getByText("실패", { selector: "[data-city-badge]" });
+    expect(failedStatus).toHaveAttribute("data-appearance", "subtle");
+    expect(failedStatus).toHaveAttribute("data-city-size", "lg");
+    expect(within(failedRow).queryByRole("button", { name: "재시도" })).not.toBeInTheDocument();
     await user.click(within(failedRow).getByRole("button", { name: "상세" }));
     const detail = await screen.findByRole("dialog", { name: "실패 작업" });
     expect(detail).toHaveTextContent("포트 충돌");
     expect(detail).toHaveTextContent("docker output");
+    expect(within(detail).getByText("실패", { selector: "[data-city-badge]" })).toHaveAttribute(
+      "data-appearance",
+      "subtle",
+    );
     const operationOutput = detail.querySelector(".overseer-log-viewer-code");
     expect(operationOutput?.tagName).toBe("PRE");
     expect(operationOutput?.querySelector("code")?.textContent).toBe("docker output");
@@ -1534,9 +1558,7 @@ describe("App", () => {
     await user.click(within(operationOptions).getByRole("menuitemradio", { name: "크게" }));
     expect(operationOutput).toHaveAttribute("data-font-size", "large");
     await user.keyboard("{Escape}");
-    await user.click(within(detail).getByRole("button", { name: "닫기" }));
-
-    await user.click(within(failedRow).getByRole("button", { name: "재시도" }));
+    await user.click(within(detail).getByRole("button", { name: "작업 재시도" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(

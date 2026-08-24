@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "PORTLESS_PORT=1355 PORTLESS_HTTPS=0 PORTLESS_SYNC_HOSTS=0 portless run --name overseer vite",
-    "dev:direct": "vite",
+    "dev": "PORTLESS_PORT=1355 PORTLESS_HTTPS=0 PORTLESS_SYNC_HOSTS=0 portless run --name overseer vite --force",
+    "dev:direct": "vite --force",
     "build": "vite build",
     "start": "node src/server/start.ts",
     "format": "oxfmt .",

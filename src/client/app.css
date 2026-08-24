@@ -1031,7 +1031,8 @@
   }
 
   .overseer-table--operations {
-    min-width: 64rem;
+    min-width: 45rem;
+    table-layout: fixed;
   }
 
   .overseer-table-caption {
@@ -1100,18 +1101,49 @@
   }
 
   .overseer-table--operations .overseer-actions-column {
-    width: 11rem;
+    width: 4.5rem;
+  }
+
+  .overseer-operation-time-column {
+    width: 10rem;
+  }
+
+  .overseer-operation-status-column {
+    width: 5.5rem;
+  }
+
+  .overseer-operation-duration-column {
+    width: 4.5rem;
   }
 
   .overseer-operation-summary {
     display: grid;
-    max-width: 26rem;
+    min-width: 0;
     gap: var(--city-space-0-5);
+  }
+
+  .overseer-operation-summary strong {
+    font-size: var(--city-font-size-sm);
+    overflow-wrap: anywhere;
   }
 
   .overseer-operation-summary span {
     color: var(--city-color-muted-foreground);
     font-size: var(--city-font-size-xs);
+    line-height: var(--city-line-height-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .overseer-operation-time,
+  .overseer-operation-duration {
+    font-family: var(--city-font-family-mono);
+    font-size: var(--city-font-size-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .overseer-operation-time {
+    color: var(--city-color-muted-foreground);
   }
 
   .overseer-operation-summary .overseer-operation-summary-error {

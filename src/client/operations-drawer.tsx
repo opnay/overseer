@@ -106,7 +106,7 @@ export function OperationsDrawer({
                             <strong>{operation.title}</strong>
                             <span>{operation.target.name}</span>
                           </div>
-                          <Badge size="sm" tone={presentation.tone}>
+                          <Badge appearance="subtle" size="lg" tone={presentation.tone}>
                             {presentation.label}
                           </Badge>
                         </div>
@@ -162,10 +162,7 @@ export function OperationsDrawer({
               )}
             </Drawer.Body>
             <Drawer.Footer>
-              <Drawer.Close
-                onClick={onViewAll}
-                render={<Button variant={compact ? "primary" : "outline"} />}
-              >
+              <Drawer.Close onClick={onViewAll} render={<Button variant="primary" />}>
                 전체 작업 보기
               </Drawer.Close>
               {compact ? (
