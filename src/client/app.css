@@ -1410,6 +1410,7 @@
     display: grid;
     min-width: 0;
     padding: var(--city-space-6);
+    align-content: start;
     gap: var(--city-space-5);
   }
 
