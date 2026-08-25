@@ -1,21 +1,26 @@
 use std::{
     env, fs,
-    io::{BufRead, BufReader, Write},
-    path::PathBuf,
-    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+    io::{BufRead, BufReader, Read, Write},
+    os::unix::{
+        fs::PermissionsExt,
+        net::{UnixListener, UnixStream},
     },
+    path::{Path, PathBuf},
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    sync::{Arc, Mutex},
+    thread,
 };
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Manager,
+    Manager, WebviewUrl, WebviewWindowBuilder,
 };
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 
+const LAUNCHER_SOCKET: &str = "launcher.sock";
 const MAIN_WINDOW_LABEL: &str = "main";
-const MENU_HIDE_ID: &str = "menu-hide";
+const MENUBAR_ARGUMENT: &str = "--menubar";
+const MENUBAR_SOCKET: &str = "menubar.sock";
 const TRAY_OPEN_ID: &str = "tray-open";
 const TRAY_QUIT_ID: &str = "tray-quit";
 
@@ -128,11 +133,6 @@ impl Drop for DesktopApiProcess {
 
 struct DesktopApiState(Arc<Mutex<DesktopApiProcess>>);
 
-#[derive(Default)]
-struct AppLifecycleState {
-    allow_exit: AtomicBool,
-}
-
 fn show_main_window(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         eprintln!("main window를 찾지 못했습니다.");
@@ -145,38 +145,6 @@ fn show_main_window(app: &tauri::AppHandle) {
     {
         eprintln!("main window를 열지 못했습니다: {error}");
     }
-}
-
-fn hide_main_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        if let Err(error) = window.hide() {
-            eprintln!("main window를 숨기지 못했습니다: {error}");
-        }
-    }
-}
-
-fn setup_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let menu = Menu::default(app)?;
-    let items = menu.items()?;
-    let app_submenu = items
-        .first()
-        .and_then(|item| item.as_submenu())
-        .expect("Tauri default macOS app menu is missing");
-    let quit_position = app_submenu
-        .items()?
-        .len()
-        .checked_sub(1)
-        .expect("Tauri default macOS quit item is missing");
-    app_submenu.remove_at(quit_position)?;
-    let hide = MenuItem::with_id(
-        app,
-        MENU_HIDE_ID,
-        "Overseer 윈도우 닫기",
-        true,
-        Some("Cmd+Q"),
-    )?;
-    app_submenu.insert(&hide, quit_position)?;
-    Ok(menu)
 }
 
 fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
@@ -192,16 +160,154 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(|app, event| {
             if event.id() == TRAY_OPEN_ID {
-                show_main_window(app);
+                if let Err(error) = open_launcher() {
+                    eprintln!("launcher를 열지 못했습니다: {error}");
+                }
             } else if event.id() == TRAY_QUIT_ID {
-                app.state::<AppLifecycleState>()
-                    .allow_exit
-                    .store(true, Ordering::SeqCst);
                 app.exit(0);
             }
         })
         .tooltip("Overseer")
         .build(app)?;
+    Ok(())
+}
+
+fn process_data_directory() -> Result<PathBuf, String> {
+    if let Some(directory) = env::var_os("OVERSEER_DATA_DIR") {
+        return Ok(PathBuf::from(directory));
+    }
+    let home = env::var_os("HOME").ok_or("사용자 홈 디렉터리를 확인하지 못했습니다.")?;
+    Ok(PathBuf::from(home).join("Library/Application Support/Overseer"))
+}
+
+fn process_socket_path(name: &str) -> Result<PathBuf, String> {
+    let directory = process_data_directory()?.join("processes");
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("프로세스 디렉터리를 만들지 못했습니다: {error}"))?;
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
+        .map_err(|error| format!("프로세스 디렉터리 권한을 설정하지 못했습니다: {error}"))?;
+    Ok(directory.join(name))
+}
+
+fn send_process_command(path: &Path, command: &str) -> bool {
+    UnixStream::connect(path)
+        .and_then(|mut stream| stream.write_all(command.as_bytes()))
+        .is_ok()
+}
+
+fn claim_process_socket(path: &Path) -> Result<Option<UnixListener>, String> {
+    if send_process_command(path, "ping\n") {
+        return Ok(None);
+    }
+
+    let listener = match UnixListener::bind(path) {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+            if send_process_command(path, "ping\n") {
+                return Ok(None);
+            }
+            fs::remove_file(path)
+                .map_err(|error| format!("오래된 프로세스 소켓을 지우지 못했습니다: {error}"))?;
+            match UnixListener::bind(path) {
+                Ok(listener) => listener,
+                Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                    if send_process_command(path, "ping\n") {
+                        return Ok(None);
+                    }
+                    return Err(format!("프로세스 소켓을 선점하지 못했습니다: {error}"));
+                }
+                Err(error) => return Err(format!("프로세스 소켓을 만들지 못했습니다: {error}")),
+            }
+        }
+        Err(error) => return Err(format!("프로세스 소켓을 만들지 못했습니다: {error}")),
+    };
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+        .map_err(|error| format!("프로세스 소켓 권한을 설정하지 못했습니다: {error}"))?;
+    Ok(Some(listener))
+}
+
+fn start_menubar_listener(listener: UnixListener) {
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut command = [0; 16];
+            let _ = stream.read(&mut command);
+        }
+    });
+}
+
+fn start_launcher_listener(listener: UnixListener, app: tauri::AppHandle) {
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut command = [0; 16];
+            let Ok(length) = stream.read(&mut command) else {
+                continue;
+            };
+            if command[..length].starts_with(b"show") {
+                show_main_window(&app);
+            }
+        }
+    });
+}
+
+fn spawn_current_process(arguments: &[&str]) -> Result<(), String> {
+    let executable = env::current_exe()
+        .map_err(|error| format!("애플리케이션 경로를 확인하지 못했습니다: {error}"))?;
+    Command::new(executable)
+        .args(arguments)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Overseer 프로세스를 실행하지 못했습니다: {error}"))?;
+    Ok(())
+}
+
+fn spawn_launcher_process() -> Result<(), String> {
+    let executable = env::current_exe()
+        .map_err(|error| format!("애플리케이션 경로를 확인하지 못했습니다: {error}"))?;
+    let bundle = executable
+        .ancestors()
+        .find(|path| path.extension().is_some_and(|extension| extension == "app"));
+    let Some(bundle) = bundle else {
+        return spawn_current_process(&[]);
+    };
+    Command::new("open")
+        .arg("-n")
+        .arg(bundle)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Overseer launcher를 실행하지 못했습니다: {error}"))?;
+    Ok(())
+}
+
+fn ensure_menubar_process() -> Result<(), String> {
+    let path = process_socket_path(MENUBAR_SOCKET)?;
+    if send_process_command(&path, "ping\n") {
+        return Ok(());
+    }
+    spawn_current_process(&[MENUBAR_ARGUMENT])
+}
+
+fn open_launcher() -> Result<(), String> {
+    let path = process_socket_path(LAUNCHER_SOCKET)?;
+    if send_process_command(&path, "show\n") {
+        return Ok(());
+    }
+    spawn_launcher_process()
+}
+
+fn create_main_window(app: &mut tauri::App) -> tauri::Result<()> {
+    WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+        .center()
+        .inner_size(1_200.0, 800.0)
+        .min_inner_size(760.0, 560.0)
+        .resizable(true)
+        .title("Overseer")
+        .build()?;
     Ok(())
 }
 
@@ -257,45 +363,96 @@ async fn api_request(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    let result = if env::args().any(|argument| argument == MENUBAR_ARGUMENT) {
+        run_menubar(context)
+    } else {
+        run_launcher(context)
+    };
+    if let Err(error) = result {
+        panic!("Overseer를 실행하지 못했습니다: {error}");
+    }
+}
+
+fn run_menubar(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
+    let socket_path = process_socket_path(MENUBAR_SOCKET)?;
+    let Some(listener) = claim_process_socket(&socket_path)? else {
+        return Ok(());
+    };
+    let cleanup_path = socket_path.clone();
     let app = tauri::Builder::default()
-        .menu(setup_app_menu)
-        .on_menu_event(|app, event| {
-            if event.id() == MENU_HIDE_ID {
-                hide_main_window(app);
-            }
+        .setup(move |app| {
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            setup_tray(app)?;
+            start_menubar_listener(listener);
+            Ok(())
         })
-        .setup(|app| {
+        .build(context)
+        .map_err(|error| format!("menubar 앱을 만들지 못했습니다: {error}"))?;
+
+    app.run(move |_app, event| match event {
+        tauri::RunEvent::Reopen { .. } => {
+            if let Err(error) = open_launcher() {
+                eprintln!("launcher를 열지 못했습니다: {error}");
+            }
+        }
+        tauri::RunEvent::Exit => {
+            let _ = fs::remove_file(&cleanup_path);
+        }
+        _ => {}
+    });
+    Ok(())
+}
+
+fn run_launcher(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
+    let socket_path = process_socket_path(LAUNCHER_SOCKET)?;
+    if send_process_command(&socket_path, "show\n") {
+        return Ok(());
+    }
+    let Some(listener) = claim_process_socket(&socket_path)? else {
+        let _ = send_process_command(&socket_path, "show\n");
+        return Ok(());
+    };
+    ensure_menubar_process()?;
+
+    let cleanup_path = socket_path.clone();
+    let app = tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![MENUBAR_ARGUMENT]),
+        ))
+        .setup(move |app| {
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
+            let autostart = app.autolaunch();
+            autostart.enable()?;
+            if !autostart.is_enabled()? {
+                return Err(
+                    std::io::Error::other("로그인 자동 시작을 등록하지 못했습니다.").into(),
+                );
+            }
             app.manage(DesktopApiState(Arc::new(Mutex::new(
                 DesktopApiProcess::start()?,
             ))));
-            app.manage(AppLifecycleState::default());
-            setup_tray(app)?;
+            create_main_window(app)?;
+            show_main_window(app.handle());
+            start_launcher_listener(listener, app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
             if window.label() == MAIN_WINDOW_LABEL {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    if let Err(error) = window.hide() {
-                        eprintln!("main window를 숨기지 못했습니다: {error}");
-                    }
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    window.app_handle().exit(0);
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![api_request])
-        .build(tauri::generate_context!())
-        .expect("error while building Overseer");
+        .build(context)
+        .map_err(|error| format!("launcher 앱을 만들지 못했습니다: {error}"))?;
 
-    app.run(|app, event| {
-        if let tauri::RunEvent::ExitRequested { api, .. } = event {
-            if !app
-                .state::<AppLifecycleState>()
-                .allow_exit
-                .load(Ordering::SeqCst)
-            {
-                api.prevent_exit();
-                hide_main_window(app);
-            }
+    app.run(move |_app, event| {
+        if let tauri::RunEvent::Exit = event {
+            let _ = fs::remove_file(&cleanup_path);
         }
     });
+    Ok(())
 }
