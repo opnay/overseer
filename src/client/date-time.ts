@@ -16,5 +16,5 @@ function pad(value: number): string {
 export function formatDateTime(value: string | number | Date): string {
   const date = parseDateTime(value);
   if (!date) return typeof value === "string" ? value : "—";
-  return `${date.getFullYear()}. ${pad(date.getMonth() + 1)}. ${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }

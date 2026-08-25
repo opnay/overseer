@@ -21,7 +21,7 @@
 
 ## 날짜와 시각
 
-- 사용자가 보는 날짜와 시각은 로컬 시간대의 `YYYY. MM. DD HH:mm:ss` 형식으로 통일합니다.
+- 사용자가 보는 날짜와 시각은 로컬 시간대의 `YYYY-MM-DD HH:mm:ss` 형식으로 통일합니다.
 - ISO timestamp와 Docker CLI timestamp는 공통 formatter를 사용하며 상대 시각이나 locale별 오전·오후 표현을 섞지 않습니다.
 
 ## 상태와 색상

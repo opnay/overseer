@@ -1555,7 +1555,7 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "도구 업데이트", level: 3 }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText(/^마지막 확인 \d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/),
+      await screen.findByText(/^마지막 확인 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
     ).toBeInTheDocument();
     const docker = await screen.findByRole("listitem", { name: "Docker CLI" });
     expect(docker).toHaveTextContent("현재29.7.2");
@@ -1983,7 +1983,7 @@ describe("App", () => {
     ).toEqual(["요청 시각", "작업", "상태", "소요", "상세"]);
     expect(historyTable.querySelectorAll("thead .overseer-table-column-wide")).toHaveLength(1);
     expect(historyTable.querySelector("time")).toHaveTextContent(
-      /^\d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/,
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
     );
     expect(screen.getByText("완료 작업")).toBeInTheDocument();
     expect(screen.getByText("취소 작업")).toBeInTheDocument();
@@ -2576,10 +2576,10 @@ describe("App", () => {
     await user.click(within(containerGroup).getByRole("button", { name: "Health Check" }));
     expect(await screen.findByText("비정상")).toBeInTheDocument();
     expect(screen.getByText("1회")).toBeInTheDocument();
-    expect(screen.getAllByText("2026. 08. 25 01:01:00")).toHaveLength(2);
+    expect(screen.getAllByText("2026-08-25 01:01:00")).toHaveLength(2);
     expect(
       await screen.findByRole("region", {
-        name: "2026. 08. 25 01:01:00 Health Check 출력",
+        name: "2026-08-25 01:01:00 Health Check 출력",
       }),
     ).toHaveTextContent("service unavailable");
     expect(screen.getByRole("button", { name: "Health Check 출력 옵션" })).toBeInTheDocument();
@@ -2854,7 +2854,7 @@ describe("App", () => {
     await user.click(within(group).getByRole("button", { name: "업데이트" }));
 
     expect(screen.getByText("적용 대기 YAML")).toBeInTheDocument();
-    expect(screen.getByText(/^\d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/)).toBeInTheDocument();
+    expect(screen.getByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)).toBeInTheDocument();
     expect(screen.getByText(/nginx:1\.29/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "업데이트 적용" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
@@ -3337,7 +3337,7 @@ describe("App", () => {
     const imageTable = screen.getByRole("table", { name: "이미지 목록" });
     expect(imageTable.querySelectorAll("thead .overseer-table-column-wide")).toHaveLength(1);
     expect(
-      within(imageTable).getByText(/^\d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/),
+      within(imageTable).getByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "네트워크" }));
