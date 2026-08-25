@@ -10,8 +10,6 @@ import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import {
   ArrowRight,
-  Check,
-  Copy,
   Download,
   ExternalLink,
   PackageCheck,
@@ -33,6 +31,7 @@ import type {
   StartupStepId,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
+import { CommandBlock } from "./command-block.tsx";
 import {
   configurationToForm,
   validateDockerEngineConfiguration,
@@ -97,17 +96,12 @@ export function StartupPage({
   snapshot,
   step,
 }: StartupPageProps) {
-  const [copiedCommand, setCopiedCommand] = useState<string>();
   const [includeCompose, setIncludeCompose] = useState(!composeSkipped);
   const [engineConfiguration, setEngineConfiguration] =
     useState<DockerEngineConfigurationSnapshot>();
   const [engineConfigurationError, setEngineConfigurationError] = useState<string>();
   const [engineForm, setEngineForm] = useState<DockerEngineConfigurationForm>();
   const [engineFormErrors, setEngineFormErrors] = useState<DockerEngineConfigurationErrors>({});
-
-  useEffect(() => {
-    setCopiedCommand(undefined);
-  }, [step]);
 
   const loadEngineConfiguration = useCallback(async () => {
     setEngineConfigurationError(undefined);
@@ -220,20 +214,6 @@ export function StartupPage({
     setEngineFormErrors(result.errors);
     if (!result.configuration) return;
     await onStartEngine(result.configuration).catch(() => undefined);
-  };
-
-  const copyCommand = async (command: string, id: string) => {
-    try {
-      if (!navigator.clipboard) return;
-      await navigator.clipboard.writeText(command);
-      setCopiedCommand(id);
-      window.setTimeout(
-        () => setCopiedCommand((current) => (current === id ? undefined : current)),
-        1_500,
-      );
-    } catch {
-      setCopiedCommand(undefined);
-    }
   };
 
   return (
@@ -378,7 +358,6 @@ export function StartupPage({
                         disabled={active}
                         onCheckedChange={(checked) => {
                           setIncludeCompose(checked === true);
-                          setCopiedCommand(undefined);
                         }}
                       />
                       <div id="overseer-compose-option-label">
@@ -651,29 +630,14 @@ export function StartupPage({
             {!engineSetup ? (
               <div className="overseer-startup-install-group">
                 {installCommands.map(({ accessibleLabel, command, id, label }) => {
-                  const copied = copiedCommand === id;
                   return (
-                    <div className="overseer-startup-command" key={id}>
-                      <div>
-                        <span>{label}</span>
-                        <Button
-                          aria-label={`${label} 명령 복사`}
-                          onClick={() => void copyCommand(command, id)}
-                          size="sm"
-                          variant="ghost"
-                        >
-                          {copied ? (
-                            <Check aria-hidden="true" size={14} />
-                          ) : (
-                            <Copy aria-hidden="true" size={14} />
-                          )}
-                          {copied ? "복사됨" : "복사"}
-                        </Button>
-                      </div>
-                      <pre aria-label={accessibleLabel} tabIndex={0}>
-                        <code>{command}</code>
-                      </pre>
-                    </div>
+                    <CommandBlock
+                      ariaLabel={accessibleLabel}
+                      command={command}
+                      copyLabel={`${label} 명령 복사`}
+                      key={id}
+                      label={label}
+                    />
                   );
                 })}
 

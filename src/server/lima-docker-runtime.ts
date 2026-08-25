@@ -17,6 +17,8 @@ import type {
   ContainerPortMapping,
   ContainerSpecInput,
   ContainerSummary,
+  ContainerTerminalAccess,
+  ContainerShell,
   ContainerVolumeMount,
   CreateRuntimeInstanceInput,
   CreateNamedResourceInput,
@@ -88,6 +90,7 @@ export interface RuntimeController {
   getContainer(id: string): Promise<ContainerDetail>;
   getContainerInspection(id: string): Promise<ContainerInspection>;
   getContainerLogs(id: string): Promise<string>;
+  getContainerTerminalAccess(id: string): Promise<ContainerTerminalAccess>;
   getContainers(): Promise<ContainerSummary[]>;
   getComposeProject(name: string): Promise<ComposeProjectDetail>;
   getBuilderComposeProject(name: string): Promise<ComposeBuilderProjectDetail>;
@@ -357,6 +360,8 @@ interface DockerInspectContainer {
       }>;
       Status?: string;
     };
+    Paused?: boolean;
+    Restarting?: boolean;
     Running: boolean;
   };
 }
@@ -401,6 +406,7 @@ const BUILT_IN_NETWORKS = new Set(["bridge", "host", "none"]);
 const MANAGED_LABEL = "com.opnay.overseer.managed";
 const SPEC_VERSION_LABEL = "com.opnay.overseer.spec-version";
 const RESERVED_LABEL_PREFIXES = ["com.opnay.overseer.", "com.docker.compose."];
+const CONTAINER_SHELLS: readonly ContainerShell[] = ["sh", "bash", "ash", "zsh"];
 const READ_DOCKER_DAEMON_CONFIGURATION =
   'target="$HOME/.config/docker/daemon.json"; if [ -f "$target" ]; then printf "file\\n"; cat "$target"; else printf "default\\n{}\\n"; fi';
 const WRITE_DOCKER_DAEMON_CONFIGURATION =
@@ -1149,6 +1155,39 @@ export class LimaDockerRuntime implements RuntimeController {
       ...(health ? { health } : {}),
       json: JSON.stringify(inspected, null, 2),
     };
+  }
+
+  async getContainerTerminalAccess(id: string): Promise<ContainerTerminalAccess> {
+    let inspected = await this.inspectContainer(id);
+    const unavailable = this.containerTerminalUnavailable(inspected);
+    if (unavailable) return unavailable;
+
+    for (const shell of CONTAINER_SHELLS) {
+      try {
+        await this.rawDockerForInstance(
+          this.instanceName,
+          ["container", "exec", id, shell, "-c", "exit 0"],
+          2_000,
+        );
+        return {
+          command: `docker --context ${DOCKER_CONTEXT} exec -it ${inspected.Id.slice(0, 12)} ${shell}`,
+          shell,
+          status: "ready",
+        };
+      } catch (error) {
+        if (error instanceof CommandError && this.isMissingContainerExecutable(error)) continue;
+        inspected = await this.inspectContainer(id);
+        const changedState = this.containerTerminalUnavailable(inspected);
+        if (changedState) return changedState;
+        if (error instanceof CommandError) {
+          throw new ExpectedError("docker_command_failed", this.dockerMessage(error), 503);
+        }
+        throw error;
+      }
+    }
+
+    inspected = await this.inspectContainer(id);
+    return this.containerTerminalUnavailable(inspected) ?? { status: "shell-not-found" };
   }
 
   async containerAction(
@@ -2581,21 +2620,46 @@ export class LimaDockerRuntime implements RuntimeController {
     timeoutMs?: number,
     progress?: OperationProgress,
   ) {
-    const instance = await this.getInstance(instanceName);
-    if (!instance || instance.status.toLowerCase() !== "running") {
-      throw new ExpectedError("runtime_unavailable", "Lima 런타임이 실행 중이 아닙니다.", 503);
-    }
-    const host = `unix://${instance.directory}/sock/docker.sock`;
     try {
-      return await this.command("docker", ["--host", host, ...args], {
-        onOutput: progress?.output,
-        timeoutMs,
-      });
+      return await this.rawDockerForInstance(instanceName, args, timeoutMs, progress);
     } catch (error) {
       if (error instanceof CommandError)
         throw new ExpectedError("docker_command_failed", this.dockerMessage(error), 503);
       throw error;
     }
+  }
+
+  private async rawDockerForInstance(
+    instanceName: string,
+    args: readonly string[],
+    timeoutMs?: number,
+    progress?: OperationProgress,
+  ) {
+    const instance = await this.getInstance(instanceName);
+    if (!instance || instance.status.toLowerCase() !== "running") {
+      throw new ExpectedError("runtime_unavailable", "Lima 런타임이 실행 중이 아닙니다.", 503);
+    }
+    const host = `unix://${instance.directory}/sock/docker.sock`;
+    return this.command("docker", ["--host", host, ...args], {
+      onOutput: progress?.output,
+      timeoutMs,
+    });
+  }
+
+  private containerTerminalUnavailable(
+    inspected: DockerInspectContainer,
+  ): ContainerTerminalAccess | undefined {
+    if (inspected.State.Paused) return { status: "paused" };
+    if (!inspected.State.Running || inspected.State.Restarting) return { status: "not-running" };
+    return undefined;
+  }
+
+  private isMissingContainerExecutable(error: CommandError): boolean {
+    const detail = stripVTControlCharacters(error.stderr).toLowerCase();
+    return (
+      detail.includes("executable file not found") ||
+      (detail.includes("exec:") && detail.includes("no such file or directory"))
+    );
   }
 
   private dockerMessage(error: CommandError): string {

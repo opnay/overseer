@@ -55,6 +55,11 @@ function createController(): RuntimeController {
     getComposeProjectLogs: vi.fn(async () => "compose logs"),
     getComposeProjects: vi.fn(async () => []),
     getContainerLogs: vi.fn(async () => "hello"),
+    getContainerTerminalAccess: vi.fn(async () => ({
+      command: "docker --context overseer exec -it container-id sh",
+      shell: "sh" as const,
+      status: "ready" as const,
+    })),
     getDashboard: vi.fn(async () => ({
       composeProjects: [],
       containers: [],
@@ -965,6 +970,18 @@ describe("API boundary", () => {
     expect(inspectResponse.status).toBe(200);
     await expect(inspectResponse.json()).resolves.toMatchObject({
       inspection: { health: { status: "healthy" }, json: expect.stringContaining("container-id") },
+    });
+
+    const terminalResponse = await app.request("/containers/container-id/terminal", {
+      headers: localHeaders,
+    });
+    expect(terminalResponse.status).toBe(200);
+    await expect(terminalResponse.json()).resolves.toEqual({
+      terminal: {
+        command: "docker --context overseer exec -it container-id sh",
+        shell: "sh",
+        status: "ready",
+      },
     });
 
     const spec = { ...emptyContainerSpec(), image: "nginx:alpine", name: "renamed" };

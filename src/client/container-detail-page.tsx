@@ -4,7 +4,7 @@ import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
-import { Activity } from "lucide-react";
+import { Activity, Terminal } from "lucide-react";
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import type {
   ContainerDetail,
@@ -14,8 +14,10 @@ import type {
   ContainerKeyValue,
   ContainerMount,
   ContainerSummary,
+  ContainerTerminalAccess,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
+import { CommandBlock } from "./command-block.tsx";
 import { composeProjectDetailPath } from "./routes.ts";
 import { formatDateTime } from "./date-time.ts";
 import { LogViewer } from "./log-display-options.tsx";
@@ -32,9 +34,9 @@ type ContainerDetailSection =
   | "health"
   | "inspect"
   | "labels"
-  | "network"
   | "overview"
-  | "runtime";
+  | "runtime"
+  | "terminal";
 
 const sectionPresentation: Record<ContainerDetailSection, { description: string; label: string }> =
   {
@@ -54,24 +56,24 @@ const sectionPresentation: Record<ContainerDetailSection, { description: string;
       description: "Overseer 예약 항목을 제외한 사용자 Label을 확인합니다.",
       label: "Label",
     },
-    network: {
-      description: "포트, Docker 네트워크와 Volume 연결을 확인합니다.",
-      label: "연결",
-    },
     overview: {
       description: "컨테이너 상태와 식별 정보, Compose 소속을 확인합니다.",
       label: "개요",
     },
     runtime: {
-      description: "이미지, 명령, 실행 정책과 리소스 제한을 확인합니다.",
+      description: "이미지, 명령, 실행 정책, 리소스와 연결 구성을 확인합니다.",
       label: "실행 설정",
+    },
+    terminal: {
+      description: "로컬 터미널에서 컨테이너 셸에 연결할 명령을 확인합니다.",
+      label: "터미널",
     },
   };
 const sectionOrder: ContainerDetailSection[] = [
   "overview",
   "runtime",
+  "terminal",
   "health",
-  "network",
   "environment",
   "labels",
   "inspect",
@@ -101,6 +103,51 @@ function restartPolicy(detail: ContainerDetail): string {
   return policy.mode === "on-failure" && policy.maximumRetryCount !== undefined
     ? `${policy.mode}:${policy.maximumRetryCount}`
     : policy.mode;
+}
+
+function TerminalAccess({ access }: { access: ContainerTerminalAccess }) {
+  if (access.status === "ready" && access.command && access.shell) {
+    return (
+      <section className="overseer-detail-section">
+        <p className="city-text-supporting">
+          로컬 터미널에서 아래 명령을 실행하면 현재 컨테이너 셸에 연결됩니다.
+        </p>
+        <dl className="overseer-detail-definitions">
+          <Definition label="실행 셸" value={<code>{access.shell}</code>} />
+        </dl>
+        <CommandBlock
+          ariaLabel="컨테이너 터미널 명령"
+          command={access.command}
+          copyLabel="터미널 명령 복사"
+          label="로컬 터미널에서 실행"
+        />
+      </section>
+    );
+  }
+
+  const paused = access.status === "paused";
+  const shellNotFound = access.status === "shell-not-found";
+  return (
+    <EmptyState.Root>
+      <EmptyState.Icon>
+        <Terminal aria-hidden="true" />
+      </EmptyState.Icon>
+      <EmptyState.Title level={3}>
+        {shellNotFound
+          ? "실행할 셸을 찾을 수 없습니다."
+          : paused
+            ? "컨테이너가 일시 중지되어 있습니다."
+            : "컨테이너가 실행 중이 아닙니다."}
+      </EmptyState.Title>
+      <EmptyState.Description>
+        {shellNotFound
+          ? "이미지에 sh, bash, ash 또는 zsh를 포함하거나 실행 파일을 직접 지정하십시오."
+          : paused
+            ? "일시 중지를 해제한 뒤 다시 확인하십시오."
+            : "컨테이너를 시작한 뒤 다시 확인하십시오."}
+      </EmptyState.Description>
+    </EmptyState.Root>
+  );
 }
 
 function Definition({
@@ -287,12 +334,19 @@ export function ContainerDetailPage({
   const [inspectionError, setInspectionError] = useState<string>();
   const [inspectionLoading, setInspectionLoading] = useState(false);
   const [section, setSection] = useState<ContainerDetailSection>("overview");
+  const [terminal, setTerminal] = useState<ContainerTerminalAccess>();
+  const [terminalAttempt, setTerminalAttempt] = useState(0);
+  const [terminalError, setTerminalError] = useState<string>();
+  const [terminalLoading, setTerminalLoading] = useState(false);
 
   useEffect(() => {
     setInspection(undefined);
     setInspectionAttempt(0);
     setInspectionError(undefined);
     setSection("overview");
+    setTerminal(undefined);
+    setTerminalAttempt(0);
+    setTerminalError(undefined);
   }, [id]);
 
   useEffect(() => {
@@ -336,6 +390,30 @@ export function ContainerDetailPage({
       active = false;
     };
   }, [id, inspectionAttempt, inspectionVisible, refreshToken]);
+
+  const terminalVisible = section === "terminal";
+  useEffect(() => {
+    if (!terminalVisible) return;
+    let active = true;
+    setTerminal(undefined);
+    setTerminalError(undefined);
+    setTerminalLoading(true);
+    void apiRequest<{ terminal: ContainerTerminalAccess }>(
+      `/containers/${encodeURIComponent(id)}/terminal`,
+    )
+      .then(({ terminal: value }) => active && setTerminal(value))
+      .catch(
+        (loadError: unknown) =>
+          active &&
+          setTerminalError(
+            loadError instanceof Error ? loadError.message : "터미널 명령을 확인하지 못했습니다.",
+          ),
+      )
+      .finally(() => active && setTerminalLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [id, refreshToken, terminalAttempt, terminalVisible]);
 
   if (error) {
     return (
@@ -483,11 +561,6 @@ export function ContainerDetailPage({
                   spec.command.length > 0 ? <code>{spec.command.join(" ")}</code> : "지정되지 않음"
                 }
               />
-            </dl>
-          ) : null}
-
-          {section === "network" ? (
-            <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
               <Definition
                 label="포트"
                 value={
@@ -504,6 +577,33 @@ export function ContainerDetailPage({
               />
               <Definition label="마운트" value={<Mounts mounts={detail.mounts} />} wide />
             </dl>
+          ) : null}
+
+          {terminalVisible && terminalLoading ? (
+            <section aria-label="터미널 명령 확인 중" className="overseer-detail-loading">
+              <Skeleton />
+              <Skeleton className="overseer-loading-table" />
+            </section>
+          ) : null}
+
+          {terminalVisible && terminalError ? (
+            <Alert.Root tone="destructive">
+              <Alert.Title level={3}>터미널 명령을 확인하지 못했습니다.</Alert.Title>
+              <Alert.Description>{terminalError}</Alert.Description>
+              <Alert.Action>
+                <Button
+                  onClick={() => setTerminalAttempt((value) => value + 1)}
+                  size="sm"
+                  variant="outline"
+                >
+                  다시 시도
+                </Button>
+              </Alert.Action>
+            </Alert.Root>
+          ) : null}
+
+          {terminalVisible && terminal && !terminalError ? (
+            <TerminalAccess access={terminal} />
           ) : null}
 
           {inspectionVisible && inspectionError ? (

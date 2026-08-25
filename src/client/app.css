@@ -2101,14 +2101,14 @@
     flex: none;
   }
 
-  .overseer-startup-command {
+  .overseer-command-block {
     overflow: hidden;
     border: 1px solid var(--city-color-border);
     border-radius: var(--city-radius-md);
     align-self: start;
   }
 
-  .overseer-startup-command > div {
+  .overseer-command-block > div {
     display: flex;
     min-height: var(--city-control-lg);
     padding: var(--city-space-1) var(--city-space-2) var(--city-space-1) var(--city-space-4);
@@ -2119,12 +2119,12 @@
     gap: var(--city-space-3);
   }
 
-  .overseer-startup-command > div > span {
+  .overseer-command-block > div > span {
     color: var(--city-color-muted-foreground);
     font-size: var(--city-font-size-xs);
   }
 
-  .overseer-startup-command pre {
+  .overseer-command-block pre {
     margin: 0;
     overflow: auto;
     font-family: var(--city-font-family-mono);
@@ -2134,7 +2134,7 @@
     overflow-wrap: anywhere;
   }
 
-  .overseer-startup-command pre {
+  .overseer-command-block pre {
     max-height: 14rem;
     padding: var(--city-space-4);
     background: var(--city-palette-neutral-950);
@@ -2143,7 +2143,7 @@
     white-space: pre;
   }
 
-  .overseer-startup-command pre:focus-visible {
+  .overseer-command-block pre:focus-visible {
     outline: 2px solid var(--city-color-ring);
     outline-offset: -2px;
   }

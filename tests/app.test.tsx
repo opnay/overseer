@@ -2468,6 +2468,7 @@ describe("App", () => {
   it("navigates from the container list to the container detail page", async () => {
     const user = userEvent.setup();
     let includeHealth = true;
+    let terminalStatus: "not-running" | "paused" | "ready" | "shell-not-found" = "ready";
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
       containers: [
@@ -2515,6 +2516,18 @@ describe("App", () => {
                 : {}),
               json: '{\n  "Id": "container-id",\n  "State": { "Status": "running" }\n}',
             },
+          });
+        }
+        if (url.endsWith("/api/containers/container-id/terminal")) {
+          return jsonResponse({
+            terminal:
+              terminalStatus === "ready"
+                ? {
+                    command: "docker --context overseer exec -it container-id sh",
+                    shell: "sh",
+                    status: "ready",
+                  }
+                : { status: terminalStatus },
           });
         }
         if (url.endsWith("/api/containers/container-id")) {
@@ -2572,6 +2585,52 @@ describe("App", () => {
     await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
     expect(screen.getByRole("heading", { name: "실행 설정", level: 2 })).toBeInTheDocument();
     expect(screen.getByText("sleep 600")).toBeInTheDocument();
+    expect(screen.getByText("bridge")).toBeInTheDocument();
+    expect(screen.getByText("Bind mount")).toBeInTheDocument();
+    expect(
+      screen.getByText("/home/test.guest/.local/share/overseer/compose/demo/data"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("/app/data")).toBeInTheDocument();
+    expect(screen.getByText("Named volume")).toBeInTheDocument();
+    expect(screen.getByText("audit-data")).toBeInTheDocument();
+    expect(within(containerGroup).queryByRole("button", { name: "연결" })).not.toBeInTheDocument();
+
+    await user.click(within(containerGroup).getByRole("button", { name: "터미널" }));
+    expect(await screen.findByText("sh", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getByLabelText("컨테이너 터미널 명령")).toHaveTextContent(
+      "docker --context overseer exec -it container-id sh",
+    );
+    expect(screen.getByRole("button", { name: "터미널 명령 복사" })).toBeEnabled();
+
+    terminalStatus = "shell-not-found";
+    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("button", { name: "터미널" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "실행할 셸을 찾을 수 없습니다.",
+        level: 3,
+      }),
+    ).toBeInTheDocument();
+
+    terminalStatus = "not-running";
+    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("button", { name: "터미널" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "컨테이너가 실행 중이 아닙니다.",
+        level: 3,
+      }),
+    ).toBeInTheDocument();
+
+    terminalStatus = "paused";
+    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("button", { name: "터미널" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "컨테이너가 일시 중지되어 있습니다.",
+        level: 3,
+      }),
+    ).toBeInTheDocument();
 
     await user.click(within(containerGroup).getByRole("button", { name: "Health Check" }));
     expect(await screen.findByText("비정상")).toBeInTheDocument();
@@ -2599,16 +2658,6 @@ describe("App", () => {
         level: 3,
       }),
     ).toBeInTheDocument();
-
-    await user.click(within(containerGroup).getByRole("button", { name: "연결" }));
-    expect(screen.getByText("bridge")).toBeInTheDocument();
-    expect(screen.getByText("Bind mount")).toBeInTheDocument();
-    expect(
-      screen.getByText("/home/test.guest/.local/share/overseer/compose/demo/data"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("/app/data")).toBeInTheDocument();
-    expect(screen.getByText("Named volume")).toBeInTheDocument();
-    expect(screen.getByText("audit-data")).toBeInTheDocument();
 
     await user.click(within(containerGroup).getByRole("button", { name: "환경 변수" }));
     expect(screen.getByText("MODE")).toBeInTheDocument();

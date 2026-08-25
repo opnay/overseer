@@ -454,6 +454,77 @@ describe("LimaDockerRuntime volume and network inspection", () => {
 });
 
 describe("LimaDockerRuntime container configuration", () => {
+  it("finds sh first and returns an explicit local Docker context command", async () => {
+    const dockerCommands: string[][] = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      const dockerArgs = args.slice(2);
+      dockerCommands.push([...dockerArgs]);
+      if (dockerArgs[0] === "container" && dockerArgs[1] === "inspect") {
+        return { stderr: "", stdout: JSON.stringify([inspectFixture()]) };
+      }
+      if (dockerArgs[0] === "container" && dockerArgs[1] === "exec") {
+        return { stderr: "", stdout: "" };
+      }
+      throw new Error(`unexpected command: ${dockerArgs.join(" ")}`);
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getContainerTerminalAccess(inspectFixture().Id)).resolves.toEqual({
+      command: "docker --context overseer exec -it old-id-12345 sh",
+      shell: "sh",
+      status: "ready",
+    });
+    expect(dockerCommands.filter((args) => args[1] === "exec")).toEqual([
+      ["container", "exec", inspectFixture().Id, "sh", "-c", "exit 0"],
+    ]);
+  });
+
+  it("falls back through the shell allowlist and reports shell-less images", async () => {
+    const probedShells: string[] = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      const dockerArgs = args.slice(2);
+      if (dockerArgs[0] === "container" && dockerArgs[1] === "inspect") {
+        return { stderr: "", stdout: JSON.stringify([inspectFixture()]) };
+      }
+      if (dockerArgs[0] === "container" && dockerArgs[1] === "exec") {
+        probedShells.push(dockerArgs[3]!);
+        throw commandFailure(
+          `docker exec ${dockerArgs[3]}`,
+          `exec: "${dockerArgs[3]}": executable file not found in $PATH`,
+        );
+      }
+      throw new Error(`unexpected command: ${dockerArgs.join(" ")}`);
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getContainerTerminalAccess(inspectFixture().Id)).resolves.toEqual({
+      status: "shell-not-found",
+    });
+    expect(probedShells).toEqual(["sh", "bash", "ash", "zsh"]);
+  });
+
+  it("does not probe shells while a container cannot execute commands", async () => {
+    const dockerCommands: string[][] = [];
+    const inspected = {
+      ...inspectFixture(),
+      State: { Paused: true, Running: true },
+    };
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      const dockerArgs = args.slice(2);
+      dockerCommands.push([...dockerArgs]);
+      return { stderr: "", stdout: JSON.stringify([inspected]) };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getContainerTerminalAccess(inspected.Id)).resolves.toEqual({
+      status: "paused",
+    });
+    expect(dockerCommands.filter((args) => args[1] === "exec")).toHaveLength(0);
+  });
+
   it("returns full inspect JSON and newest-first sanitized Health Check history", async () => {
     const inspected = {
       ...inspectFixture(),

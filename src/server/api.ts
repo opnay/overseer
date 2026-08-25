@@ -612,6 +612,13 @@ export function createApi(
       ),
     }),
   );
+  app.get("/containers/:id/terminal", async (context) =>
+    context.json({
+      terminal: await controller.getContainerTerminalAccess(
+        requireContainerReference(context.req.param("id")),
+      ),
+    }),
+  );
   app.patch("/containers/:id", async (context) => {
     const id = requireContainerReference(context.req.param("id"));
     const input = parseUpdateContainerInput(await readObject(context));

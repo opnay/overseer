@@ -305,6 +305,15 @@ export interface ContainerInspection {
   json: string;
 }
 
+export type ContainerShell = "ash" | "bash" | "sh" | "zsh";
+export type ContainerTerminalStatus = "not-running" | "paused" | "ready" | "shell-not-found";
+
+export interface ContainerTerminalAccess {
+  command?: string;
+  shell?: ContainerShell;
+  status: ContainerTerminalStatus;
+}
+
 export interface UpdateContainerInput {
   expectedConfigHash: string;
   spec: ContainerSpecInput;
