@@ -40,7 +40,7 @@ const sectionLabels: Record<DockerDaemonConfigurationSection, string> = {
   network: "네트워크",
   proxy: "프록시",
   registry: "Registry",
-  stability: "안정성",
+  stability: "daemon 동작 및 진단",
   transfer: "전송",
 };
 
@@ -69,9 +69,7 @@ function SettingSwitch({
         checked={checked}
         onCheckedChange={onCheckedChange}
         size="sm"
-      >
-        <Switch.Thumb />
-      </Switch>
+      />
     </div>
   );
 }
@@ -249,7 +247,9 @@ export function DockerDaemonSettings({
           {!networkMode ? (
             <>
               <Fieldset.Root appearance="plain" className="overseer-daemon-section">
-                <Fieldset.Legend className="overseer-daemon-section-title">안정성</Fieldset.Legend>
+                <Fieldset.Legend className="overseer-daemon-section-title">
+                  daemon 동작 및 진단
+                </Fieldset.Legend>
                 <Fieldset.Description className="overseer-daemon-section-description">
                   daemon 재시작 동작과 문제 진단 출력을 제어합니다.
                 </Fieldset.Description>

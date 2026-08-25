@@ -63,7 +63,7 @@ const dockerDaemonSectionLabels: Record<DockerDaemonConfigurationSection, string
   network: "네트워크",
   proxy: "프록시",
   registry: "Registry",
-  stability: "안정성",
+  stability: "daemon 동작 및 진단",
   transfer: "전송",
 };
 

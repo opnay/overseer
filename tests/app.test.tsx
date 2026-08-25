@@ -1182,15 +1182,20 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
-    expect(await screen.findByRole("switch", { name: "Live restore" })).not.toBeChecked();
+    const liveRestore = await screen.findByRole("switch", { name: "Live restore" });
+    expect(liveRestore).not.toBeChecked();
+    expect(liveRestore.children).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: "Debug mode" }).children).toHaveLength(1);
     expect(screen.queryByLabelText("DNS 서버")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "안정성 설정 저장" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "daemon 동작 및 진단 설정 저장" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "컨테이너 로그 설정 저장" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "전송 설정 저장" })).toBeInTheDocument();
     await user.click(screen.getByRole("switch", { name: "Live restore" }));
     await user.click(screen.getByRole("combobox", { name: "로그 드라이버" }));
     await user.click(await screen.findByRole("option", { name: "Local" }));
-    await user.click(screen.getByRole("button", { name: "안정성 설정 저장" }));
+    await user.click(screen.getByRole("button", { name: "daemon 동작 및 진단 설정 저장" }));
 
     await waitFor(() =>
       expect(
@@ -1550,7 +1555,7 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "도구 업데이트", level: 3 }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/^마지막 확인 \d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/),
+      await screen.findByText(/^마지막 확인 \d{4}\. \d{2}\. \d{2} \d{2}:\d{2}:\d{2}$/),
     ).toBeInTheDocument();
     const docker = await screen.findByRole("listitem", { name: "Docker CLI" });
     expect(docker).toHaveTextContent("현재29.7.2");

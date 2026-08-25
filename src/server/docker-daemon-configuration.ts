@@ -298,7 +298,7 @@ function parseRegistryConfiguration(
 function parseStabilityConfiguration(
   value: unknown,
 ): Pick<DockerDaemonConfiguration, "debug" | "liveRestore"> {
-  const input = record(value, "안정성 설정을 확인하십시오.");
+  const input = record(value, "daemon 동작 및 진단 설정을 확인하십시오.");
   return {
     debug: boolean(input.debug, "Debug mode"),
     liveRestore: boolean(input.liveRestore, "Live restore"),
@@ -404,11 +404,11 @@ export function parseUpdateDockerDaemonConfigurationSectionInput(
       return { configuration: parseRegistryConfiguration(configuration), section };
     }
     case "stability": {
-      onlyKeys(input, ["configuration"], "안정성 설정 요청");
+      onlyKeys(input, ["configuration"], "daemon 동작 및 진단 설정 요청");
       const configuration = onlyKeys(
-        record(input.configuration, "안정성 설정을 확인하십시오."),
+        record(input.configuration, "daemon 동작 및 진단 설정을 확인하십시오."),
         ["debug", "liveRestore"],
-        "안정성 설정",
+        "daemon 동작 및 진단 설정",
       );
       return { configuration: parseStabilityConfiguration(configuration), section };
     }
