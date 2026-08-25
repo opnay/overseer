@@ -719,6 +719,11 @@ export function createApi(
   });
 
   app.get("/volumes", async (context) => context.json({ volumes: await controller.getVolumes() }));
+  app.get("/volumes/:name", async (context) =>
+    context.json({
+      volume: await controller.getVolume(requireResourceName(context.req.param("name"))),
+    }),
+  );
   app.post("/volumes", async (context) => {
     const body = await readObject(context);
     const name = requireResourceName(body.name);
@@ -751,6 +756,11 @@ export function createApi(
 
   app.get("/networks", async (context) =>
     context.json({ networks: await controller.getNetworks() }),
+  );
+  app.get("/networks/:name", async (context) =>
+    context.json({
+      network: await controller.getNetwork(requireResourceName(context.req.param("name"))),
+    }),
   );
   app.post("/networks", async (context) => {
     const body = await readObject(context);

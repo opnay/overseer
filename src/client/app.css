@@ -1022,7 +1022,7 @@
     min-width: 82px;
   }
 
-  .overseer-table-column-instance {
+  .overseer-table-column-medium {
     width: 240px;
     min-width: 240px;
     max-width: 240px;
@@ -1055,6 +1055,7 @@
 
   .overseer-detail-page,
   .overseer-detail-loading,
+  .overseer-detail-section-list,
   .overseer-detail-section,
   .overseer-detail-section > header,
   .overseer-detail-section > header > div {
@@ -1064,6 +1065,10 @@
 
   .overseer-detail-page,
   .overseer-detail-loading {
+    gap: var(--city-space-6);
+  }
+
+  .overseer-detail-section-list {
     gap: var(--city-space-6);
   }
 

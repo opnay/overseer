@@ -65,7 +65,9 @@ export type AppLocationPath =
   | AppPath
   | `/compose/${string}`
   | `/containers/${string}`
-  | `/images/${string}`;
+  | `/images/${string}`
+  | `/networks/${string}`
+  | `/volumes/${string}`;
 
 export type AppDetailLocation =
   | { identifier: string; parentPath: "/compose"; path: `/compose/${string}`; type: "compose" }
@@ -80,6 +82,18 @@ export type AppDetailLocation =
       parentPath: "/images";
       path: `/images/${string}`;
       type: "image";
+    }
+  | {
+      identifier: string;
+      parentPath: "/networks";
+      path: `/networks/${string}`;
+      type: "network";
+    }
+  | {
+      identifier: string;
+      parentPath: "/volumes";
+      path: `/volumes/${string}`;
+      type: "volume";
     };
 
 export function composeProjectDetailPath(name: string): `/compose/${string}` {
@@ -92,6 +106,14 @@ export function containerDetailPath(id: string): `/containers/${string}` {
 
 export function imageDetailPath(id: string): `/images/${string}` {
   return `/images/${encodeURIComponent(id)}`;
+}
+
+export function networkDetailPath(name: string): `/networks/${string}` {
+  return `/networks/${encodeURIComponent(name)}`;
+}
+
+export function volumeDetailPath(name: string): `/volumes/${string}` {
+  return `/volumes/${encodeURIComponent(name)}`;
 }
 
 export function getAppDetailLocation(pathname: string): AppDetailLocation | undefined {
@@ -127,6 +149,22 @@ export function getAppDetailLocation(pathname: string): AppDetailLocation | unde
       type: "image",
     };
   }
+  if (resource === "networks" && isResourceName(identifier)) {
+    return {
+      identifier,
+      parentPath: "/networks",
+      path: networkDetailPath(identifier),
+      type: "network",
+    };
+  }
+  if (resource === "volumes" && isResourceName(identifier)) {
+    return {
+      identifier,
+      parentPath: "/volumes",
+      path: volumeDetailPath(identifier),
+      type: "volume",
+    };
+  }
   return undefined;
 }
 
@@ -150,4 +188,5 @@ import {
   isComposeProjectName,
   isContainerReference,
   isImageIdentifier,
+  isResourceName,
 } from "../shared/validation.ts";

@@ -326,7 +326,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/startup");
+    await waitFor(() => expect(window.location.pathname).toBe("/startup"));
     expect(window.location.search).toBe("?startup-preview=homebrew");
   });
 
@@ -2374,6 +2374,7 @@ describe("App", () => {
               environment: [{ key: "NODE_ENV", value: "production" }],
               exposedPorts: ["3001/tcp"],
               id: "sha256:3e24e96c89ef",
+              inspectJson: '{\n  "Id": "sha256:3e24e96c89ef"\n}',
               labels: [
                 {
                   key: "org.opencontainers.image.source",
@@ -2452,6 +2453,13 @@ describe("App", () => {
     );
     expect(within(layerCode).getByRole("button", { name: "코드 보기 옵션" })).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "이미지 레이어 기록" })).not.toBeInTheDocument();
+
+    await user.click(within(imageGroup).getByRole("button", { name: "Inspect" }));
+    const imageInspect = screen.getByRole("region", { name: "이미지 Inspect JSON" });
+    expect(imageInspect.querySelector("pre")).toHaveTextContent('"Id": "sha256:3e24e96c89ef"');
+    expect(
+      within(imageInspect).getByRole("button", { name: "Inspect JSON 보기 옵션" }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "이미지 목록" }));
     expect(window.location.pathname).toBe("/images");
@@ -3341,7 +3349,7 @@ describe("App", () => {
     ).toHaveLength(1);
   });
 
-  it("renders volumes and networks as direct pages", async () => {
+  it("opens volume and network detail pages with Inspect information", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -3367,18 +3375,87 @@ describe("App", () => {
         message: "Lima와 Docker가 정상적으로 실행 중입니다.",
         phase: "running",
       },
-      volumes: [],
+      volumes: [{ driver: "local", labels: "team=platform", name: "app-data", scope: "local" }],
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse(dashboard)),
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith("/api/volumes/app-data")) {
+          return jsonResponse({
+            volume: {
+              createdAt: "2026-08-24T10:00:00.000Z",
+              driver: "local",
+              inspectJson: '{\n  "Name": "app-data"\n}',
+              labels: [{ key: "team", value: "platform" }],
+              mountpoint: "/var/lib/docker/volumes/app-data/_data",
+              name: "app-data",
+              options: [{ key: "type", value: "none" }],
+              scope: "local",
+            },
+          });
+        }
+        if (url.endsWith("/api/networks/bridge")) {
+          return jsonResponse({
+            network: {
+              attachable: false,
+              builtIn: true,
+              configOnly: false,
+              containers: [
+                {
+                  id: "container-id",
+                  ipv4Address: "172.17.0.2/16",
+                  macAddress: "02:42:ac:11:00:02",
+                  name: "web",
+                },
+              ],
+              createdAt: "2026-08-24T10:00:00.000Z",
+              driver: "bridge",
+              enableIpv4: true,
+              enableIpv6: false,
+              id: "network-id",
+              ingress: false,
+              inspectJson: '{\n  "Name": "bridge"\n}',
+              internal: false,
+              ipamConfigurations: [
+                {
+                  auxiliaryAddresses: [],
+                  gateway: "172.17.0.1",
+                  subnet: "172.17.0.0/16",
+                },
+              ],
+              ipamDriver: "default",
+              ipamOptions: [],
+              labels: [],
+              name: "bridge",
+              options: [{ key: "com.docker.network.bridge.name", value: "docker0" }],
+              scope: "local",
+            },
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
     );
 
     window.history.replaceState(null, "", "/volumes");
     render(<App />);
 
-    expect(await screen.findByText("볼륨이 없습니다.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "볼륨", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "볼륨", level: 1 })).toBeInTheDocument();
+    await user.click(await screen.findByRole("link", { name: "app-data" }));
+
+    expect(await screen.findByRole("heading", { name: "app-data", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByText("/var/lib/docker/volumes/app-data/_data")).toBeInTheDocument();
+    const volumeNavigation = screen.getByRole("navigation", { name: "볼륨 상세 메뉴" });
+    await user.click(within(volumeNavigation).getByRole("button", { name: "드라이버 설정" }));
+    expect(screen.getByText("type")).toBeInTheDocument();
+    await user.click(within(volumeNavigation).getByRole("button", { name: "Label" }));
+    expect(screen.getByText("team")).toBeInTheDocument();
+    await user.click(within(volumeNavigation).getByRole("button", { name: "Inspect" }));
+    expect(screen.getByRole("region", { name: "볼륨 Inspect JSON" })).toHaveTextContent(
+      '"Name": "app-data"',
+    );
+    await user.click(screen.getByRole("button", { name: "볼륨 목록" }));
 
     await user.click(screen.getByRole("link", { name: "네트워크" }));
 
@@ -3388,6 +3465,26 @@ describe("App", () => {
       "data-city-icon-only",
       "",
     );
+    await user.click(screen.getByRole("link", { name: "bridge" }));
+
+    expect(await screen.findByRole("heading", { name: "bridge", level: 1 })).toBeInTheDocument();
+    const networkNavigation = await screen.findByRole("navigation", {
+      name: "네트워크 상세 메뉴",
+    });
+    await user.click(within(networkNavigation).getByRole("button", { name: "IPAM" }));
+    expect(screen.getByText("172.17.0.0/16")).toBeInTheDocument();
+    await user.click(within(networkNavigation).getByRole("button", { name: "연결 컨테이너" }));
+    expect(screen.getByRole("link", { name: "web" })).toHaveAttribute(
+      "href",
+      "/containers/container-id",
+    );
+    await user.click(within(networkNavigation).getByRole("button", { name: "드라이버 설정" }));
+    expect(screen.getByText("com.docker.network.bridge.name")).toBeInTheDocument();
+    await user.click(within(networkNavigation).getByRole("button", { name: "Inspect" }));
+    expect(screen.getByRole("region", { name: "네트워크 Inspect JSON" })).toHaveTextContent(
+      '"Name": "bridge"',
+    );
+    await user.click(screen.getByRole("button", { name: "네트워크 목록" }));
     expect(window.location.pathname).toBe("/networks");
   });
 

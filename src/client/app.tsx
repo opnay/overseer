@@ -92,8 +92,10 @@ import {
   getAppLocation,
   getAppRoute,
   imageDetailPath,
+  networkDetailPath,
   type AppLocationPath,
   type AppPath,
+  volumeDetailPath,
 } from "./routes.ts";
 
 const RunContainerDialog = lazy(() =>
@@ -137,6 +139,16 @@ const ContainerDetailPage = lazy(() =>
 const ImageDetailPage = lazy(() =>
   import("./image-detail-page.tsx").then((module) => ({
     default: module.ImageDetailPage,
+  })),
+);
+const NetworkDetailPage = lazy(() =>
+  import("./network-detail-page.tsx").then((module) => ({
+    default: module.NetworkDetailPage,
+  })),
+);
+const VolumeDetailPage = lazy(() =>
+  import("./volume-detail-page.tsx").then((module) => ({
+    default: module.VolumeDetailPage,
   })),
 );
 const CreateBuilderComposeDialog = lazy(() =>
@@ -1549,6 +1561,14 @@ function AppContent() {
     currentDetail?.type === "image"
       ? dashboard?.images.find(({ id }) => id === currentDetail.identifier)
       : undefined;
+  const currentNetwork =
+    currentDetail?.type === "network"
+      ? dashboard?.networks.find(({ name }) => name === currentDetail.identifier)
+      : undefined;
+  const currentVolume =
+    currentDetail?.type === "volume"
+      ? dashboard?.volumes.find(({ name }) => name === currentDetail.identifier)
+      : undefined;
   const latestFinishedDetailOperation = currentDetail
     ? operations.find(
         ({ status, target }) =>
@@ -1564,23 +1584,35 @@ function AppContent() {
       ? "COMPOSE PROJECT"
       : currentDetail.type === "container"
         ? "CONTAINER DETAIL"
-        : "IMAGE DETAIL"
+        : currentDetail.type === "image"
+          ? "IMAGE DETAIL"
+          : currentDetail.type === "network"
+            ? "NETWORK DETAIL"
+            : "VOLUME DETAIL"
     : currentRoute.eyebrow;
   const pageLabel = currentDetail
     ? currentDetail.type === "compose"
       ? currentDetail.identifier
       : currentDetail.type === "container"
         ? (currentContainer?.name ?? currentDetail.identifier)
-        : currentImage
+        : currentDetail.type === "image" && currentImage
           ? imageDisplayReference(currentImage)
-          : currentDetail.identifier
+          : currentDetail.type === "network"
+            ? (currentNetwork?.name ?? currentDetail.identifier)
+            : currentDetail.type === "volume"
+              ? (currentVolume?.name ?? currentDetail.identifier)
+              : currentDetail.identifier
     : currentRoute.label;
   const pageDescription = currentDetail
     ? currentDetail.type === "compose"
       ? "프로젝트 구성, 서비스, 로그와 소스별 설정을 관리합니다."
       : currentDetail.type === "container"
         ? "컨테이너 실행 상태와 전체 구성을 확인합니다."
-        : "이미지의 실행 설정, 메타데이터와 파일 시스템 레이어를 확인합니다."
+        : currentDetail.type === "image"
+          ? "이미지의 실행 설정, 메타데이터와 파일 시스템 레이어를 확인합니다."
+          : currentDetail.type === "network"
+            ? "네트워크의 IPAM, 연결 컨테이너와 Docker Inspect 정보를 확인합니다."
+            : "볼륨의 드라이버, 저장 위치와 Docker Inspect 정보를 확인합니다."
     : currentRoute.description;
   const runComposeAction = (name: string, action: ComposeProjectAction) =>
     mutate({
@@ -1878,7 +1910,11 @@ function AppContent() {
                       ? "Compose 목록"
                       : currentDetail.type === "container"
                         ? "컨테이너 목록"
-                        : "이미지 목록"}
+                        : currentDetail.type === "image"
+                          ? "이미지 목록"
+                          : currentDetail.type === "network"
+                            ? "네트워크 목록"
+                            : "볼륨 목록"}
                   </Button>
                 ) : null}
                 <Button
@@ -2106,6 +2142,22 @@ function AppContent() {
             </Suspense>
           ) : null}
 
+          {dashboard && runtimeRunning && currentDetail?.type === "network" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <NetworkDetailPage
+                name={currentDetail.identifier}
+                onOpenContainer={(id) => selectResourcePath(containerDetailPath(id))}
+                refreshToken={detailRefreshToken}
+              />
+            </Suspense>
+          ) : null}
+
+          {dashboard && runtimeRunning && currentDetail?.type === "volume" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <VolumeDetailPage name={currentDetail.identifier} refreshToken={detailRefreshToken} />
+            </Suspense>
+          ) : null}
+
           {dashboard &&
           runtimeRunning &&
           !currentDetail &&
@@ -2252,6 +2304,7 @@ function AppContent() {
                         ),
                     }).catch(() => undefined)
                   }
+                  onInspect={(volume) => selectResourcePath(volumeDetailPath(volume.name))}
                   volumes={dashboard?.volumes ?? []}
                 />
               ) : null}
@@ -2260,6 +2313,7 @@ function AppContent() {
                 <NetworksPage
                   isBusy={(network) => runtimeBusy || targetBusy("network", network.name)}
                   networks={dashboard?.networks ?? []}
+                  onInspect={(network) => selectResourcePath(networkDetailPath(network.name))}
                   onRemove={(network) =>
                     void mutate({
                       key: `${network.name}-remove`,
@@ -2415,10 +2469,12 @@ function CreateNamedResourceDialog({
 
 function VolumesPage({
   isBusy,
+  onInspect,
   onRemove,
   volumes,
 }: {
   isBusy: (volume: VolumeSummary) => boolean;
+  onInspect: (volume: VolumeSummary) => void;
   onRemove: (volume: VolumeSummary) => void;
   volumes: VolumeSummary[];
 }) {
@@ -2463,7 +2519,13 @@ function VolumesPage({
               volumes.map((volume) => (
                 <Table.Row key={volume.name}>
                   <Table.Cell className="overseer-table-column-wide">
-                    <strong>{volume.name}</strong>
+                    <a
+                      className="overseer-detail-link"
+                      href={volumeDetailPath(volume.name)}
+                      onClick={(event) => followAppLink(event, () => onInspect(volume))}
+                    >
+                      {volume.name}
+                    </a>
                   </Table.Cell>
                   <Table.Cell>{volume.driver}</Table.Cell>
                   <Table.Cell>{volume.scope}</Table.Cell>
@@ -2496,10 +2558,12 @@ function VolumesPage({
 function NetworksPage({
   isBusy,
   networks,
+  onInspect,
   onRemove,
 }: {
   isBusy: (network: NetworkSummary) => boolean;
   networks: NetworkSummary[];
+  onInspect: (network: NetworkSummary) => void;
   onRemove: (network: NetworkSummary) => void;
 }) {
   return (
@@ -2546,7 +2610,13 @@ function NetworksPage({
                 <Table.Row key={network.id}>
                   <Table.Cell className="overseer-table-column-wide">
                     <div className="overseer-primary-cell">
-                      <strong>{network.name}</strong>
+                      <a
+                        className="overseer-detail-link"
+                        href={networkDetailPath(network.name)}
+                        onClick={(event) => followAppLink(event, () => onInspect(network))}
+                      >
+                        {network.name}
+                      </a>
                       {network.builtIn ? (
                         <span className="overseer-primary-meta">Docker 기본 네트워크</span>
                       ) : null}

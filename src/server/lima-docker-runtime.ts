@@ -29,6 +29,7 @@ import type {
   ImageHistoryEntry,
   ImageRepositoryTags,
   ImageSummary,
+  NetworkDetail,
   NetworkSummary,
   PullImageInput,
   RegisterRemoteComposeInput,
@@ -40,6 +41,7 @@ import type {
   UpdateDockerDaemonConfigurationSectionInput,
   UpdateContainerInput,
   UpdateComposeBuilderInput,
+  VolumeDetail,
   VolumeSummary,
 } from "../shared/contracts.ts";
 import { containerSpecNeedsReplacement } from "../shared/container-spec.ts";
@@ -98,9 +100,11 @@ export interface RuntimeController {
   getImageHistory(id: string): Promise<ImageHistoryEntry[]>;
   getImageRepositoryTags(id: string, page: number): Promise<ImageRepositoryTags>;
   getImages(): Promise<ImageSummary[]>;
+  getNetwork(name: string): Promise<NetworkDetail>;
   getNetworks(): Promise<NetworkSummary[]>;
   getRuntimeInstances(): Promise<RuntimeInstancesSnapshot>;
   getVolumes(): Promise<VolumeSummary[]>;
+  getVolume(name: string): Promise<VolumeDetail>;
   pullImage(input: PullImageInput, progress?: OperationProgress): Promise<void>;
   prepareRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   registerBuilderCompose(spec: ComposeBuilderSpec, progress?: OperationProgress): Promise<void>;
@@ -247,6 +251,16 @@ interface DockerVolumeRow {
   Scope: string;
 }
 
+interface DockerInspectVolume {
+  CreatedAt?: string;
+  Driver: string;
+  Labels?: Record<string, string> | null;
+  Mountpoint: string;
+  Name: string;
+  Options?: Record<string, string> | null;
+  Scope: string;
+}
+
 interface DockerNetworkRow {
   CreatedAt: string;
   Driver: string;
@@ -256,6 +270,42 @@ interface DockerNetworkRow {
   Internal: string;
   Labels: string;
   Name: string;
+  Scope: string;
+}
+
+interface DockerInspectNetworkContainer {
+  EndpointID?: string;
+  IPv4Address?: string;
+  IPv6Address?: string;
+  MacAddress?: string;
+  Name?: string;
+}
+
+interface DockerInspectNetwork {
+  Attachable?: boolean;
+  ConfigOnly?: boolean;
+  Containers?: Record<string, DockerInspectNetworkContainer> | null;
+  Created: string;
+  Driver: string;
+  EnableIPv4?: boolean;
+  EnableIPv6?: boolean;
+  Id: string;
+  Ingress?: boolean;
+  Internal?: boolean;
+  IPAM?: {
+    Config?: Array<{
+      AuxAddress?: Record<string, string> | null;
+      AuxiliaryAddresses?: Record<string, string> | null;
+      Gateway?: string;
+      IPRange?: string;
+      Subnet?: string;
+    }> | null;
+    Driver?: string;
+    Options?: Record<string, string> | null;
+  } | null;
+  Labels?: Record<string, string> | null;
+  Name: string;
+  Options?: Record<string, string> | null;
   Scope: string;
 }
 
@@ -424,6 +474,53 @@ function parseImageInspectOutput(stdout: string): DockerInspectImage[] {
     throw new ExpectedError(
       "invalid_image_output",
       "Docker 이미지 설정을 해석하지 못했습니다.",
+      503,
+    );
+  }
+}
+
+function parseVolumeInspectOutput(stdout: string): DockerInspectVolume {
+  try {
+    const value = JSON.parse(stdout) as unknown;
+    if (!Array.isArray(value) || !value[0]) throw new Error("empty inspect output");
+    const inspected = value[0] as Partial<DockerInspectVolume>;
+    if (
+      typeof inspected.Name !== "string" ||
+      typeof inspected.Driver !== "string" ||
+      typeof inspected.Mountpoint !== "string" ||
+      typeof inspected.Scope !== "string"
+    ) {
+      throw new Error("invalid volume inspect output");
+    }
+    return inspected as DockerInspectVolume;
+  } catch {
+    throw new ExpectedError(
+      "invalid_volume_output",
+      "Docker 볼륨 Inspect 정보를 해석하지 못했습니다.",
+      503,
+    );
+  }
+}
+
+function parseNetworkInspectOutput(stdout: string): DockerInspectNetwork {
+  try {
+    const value = JSON.parse(stdout) as unknown;
+    if (!Array.isArray(value) || !value[0]) throw new Error("empty inspect output");
+    const inspected = value[0] as Partial<DockerInspectNetwork>;
+    if (
+      typeof inspected.Name !== "string" ||
+      typeof inspected.Id !== "string" ||
+      typeof inspected.Created !== "string" ||
+      typeof inspected.Driver !== "string" ||
+      typeof inspected.Scope !== "string"
+    ) {
+      throw new Error("invalid network inspect output");
+    }
+    return inspected as DockerInspectNetwork;
+  } catch {
+    throw new ExpectedError(
+      "invalid_network_output",
+      "Docker 네트워크 Inspect 정보를 해석하지 못했습니다.",
       503,
     );
   }
@@ -1361,6 +1458,7 @@ export class LimaDockerRuntime implements RuntimeController {
       environment: environmentValues(config.Env),
       exposedPorts: Object.keys(config.ExposedPorts ?? {}).sort(),
       id: inspected.Id,
+      inspectJson: JSON.stringify(inspected, null, 2),
       labels: imageLabels(config.Labels),
       layers: [...(inspected.RootFS?.Layers ?? [])],
       operatingSystem: inspected.Os,
@@ -1540,6 +1638,21 @@ export class LimaDockerRuntime implements RuntimeController {
     }));
   }
 
+  async getVolume(name: string): Promise<VolumeDetail> {
+    const result = await this.docker(["volume", "inspect", name]);
+    const inspected = parseVolumeInspectOutput(result.stdout);
+    return {
+      ...(inspected.CreatedAt ? { createdAt: inspected.CreatedAt } : {}),
+      driver: inspected.Driver,
+      inspectJson: JSON.stringify(inspected, null, 2),
+      labels: imageLabels(inspected.Labels),
+      mountpoint: inspected.Mountpoint,
+      name: inspected.Name,
+      options: imageLabels(inspected.Options),
+      scope: inspected.Scope,
+    };
+  }
+
   async createNetwork(
     input: CreateNamedResourceInput,
     progress?: OperationProgress,
@@ -1574,6 +1687,52 @@ export class LimaDockerRuntime implements RuntimeController {
       name: row.Name,
       scope: row.Scope,
     }));
+  }
+
+  async getNetwork(name: string): Promise<NetworkDetail> {
+    const result = await this.docker(["network", "inspect", name]);
+    const inspected = parseNetworkInspectOutput(result.stdout);
+    return {
+      attachable: inspected.Attachable === true,
+      builtIn: BUILT_IN_NETWORKS.has(inspected.Name),
+      configOnly: inspected.ConfigOnly === true,
+      containers: Object.entries(inspected.Containers ?? {})
+        .map(([id, container]) => ({
+          ...(container.EndpointID ? { endpointId: container.EndpointID } : {}),
+          id,
+          ...(container.IPv4Address ? { ipv4Address: container.IPv4Address } : {}),
+          ...(container.IPv6Address ? { ipv6Address: container.IPv6Address } : {}),
+          ...(container.MacAddress ? { macAddress: container.MacAddress } : {}),
+          name: container.Name || id.slice(0, 12),
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+      createdAt: inspected.Created,
+      driver: inspected.Driver,
+      enableIpv4:
+        inspected.EnableIPv4 === true ||
+        (inspected.IPAM?.Config ?? []).some(({ Subnet }) => Subnet?.includes(".")),
+      enableIpv6:
+        inspected.EnableIPv6 === true ||
+        (inspected.IPAM?.Config ?? []).some(({ Subnet }) => Subnet?.includes(":")),
+      id: inspected.Id,
+      ingress: inspected.Ingress === true,
+      inspectJson: JSON.stringify(inspected, null, 2),
+      internal: inspected.Internal === true,
+      ipamConfigurations: (inspected.IPAM?.Config ?? []).map((configuration) => ({
+        auxiliaryAddresses: imageLabels(
+          configuration.AuxAddress ?? configuration.AuxiliaryAddresses,
+        ),
+        ...(configuration.Gateway ? { gateway: configuration.Gateway } : {}),
+        ...(configuration.IPRange ? { ipRange: configuration.IPRange } : {}),
+        ...(configuration.Subnet ? { subnet: configuration.Subnet } : {}),
+      })),
+      ipamDriver: inspected.IPAM?.Driver ?? "—",
+      ipamOptions: imageLabels(inspected.IPAM?.Options),
+      labels: imageLabels(inspected.Labels),
+      name: inspected.Name,
+      options: imageLabels(inspected.Options),
+      scope: inspected.Scope,
+    };
   }
 
   private createArguments(spec: ContainerSpecInput): string[] {

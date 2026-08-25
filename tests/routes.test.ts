@@ -6,10 +6,12 @@ import {
   getAppLocation,
   getAppRoute,
   imageDetailPath,
+  networkDetailPath,
+  volumeDetailPath,
 } from "../src/client/routes.ts";
 
 describe("application routes", () => {
-  it("recognizes direct Compose, container, and image detail URLs", () => {
+  it("recognizes direct resource detail URLs", () => {
     expect(getAppDetailLocation("/compose/demo-stack")).toEqual({
       identifier: "demo-stack",
       parentPath: "/compose",
@@ -28,18 +30,35 @@ describe("application routes", () => {
       path: "/images/3e24e96c89ef",
       type: "image",
     });
+    expect(getAppDetailLocation("/networks/app-network")).toEqual({
+      identifier: "app-network",
+      parentPath: "/networks",
+      path: "/networks/app-network",
+      type: "network",
+    });
+    expect(getAppDetailLocation("/volumes/app-data")).toEqual({
+      identifier: "app-data",
+      parentPath: "/volumes",
+      path: "/volumes/app-data",
+      type: "volume",
+    });
     expect(getAppLocation("/compose/demo-stack")).toBe("/compose/demo-stack");
     expect(getAppRoute("/containers/container-id").path).toBe("/containers");
     expect(getAppRoute("/images/3e24e96c89ef").path).toBe("/images");
+    expect(getAppRoute("/networks/app-network").path).toBe("/networks");
+    expect(getAppRoute("/volumes/app-data").path).toBe("/volumes");
   });
 
   it("encodes detail paths and rejects invalid nested routes", () => {
     expect(composeProjectDetailPath("demo-stack")).toBe("/compose/demo-stack");
     expect(containerDetailPath("worker:latest")).toBe("/containers/worker%3Alatest");
     expect(imageDetailPath("3e24e96c89ef")).toBe("/images/3e24e96c89ef");
+    expect(networkDetailPath("app network")).toBe("/networks/app%20network");
+    expect(volumeDetailPath("app data")).toBe("/volumes/app%20data");
     expect(getAppDetailLocation("/compose/INVALID")).toBeUndefined();
     expect(getAppDetailLocation("/images/not-an-image")).toBeUndefined();
     expect(getAppDetailLocation("/containers/id/extra")).toBeUndefined();
+    expect(getAppDetailLocation("/volumes/bad%2Fname")).toBeUndefined();
     expect(getAppLocation("/containers/id/extra")).toBe("/containers");
   });
 });

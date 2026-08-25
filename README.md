@@ -41,9 +41,9 @@ pnpm dev
 - `/startup`: 설치 완료 후에도 Homebrew·Docker CLI·Compose·Lima·Docker Engine 시작 준비 흐름 확인
 - `/compose`, `/compose/:name`: 폼 또는 raw HTTPS URL 프로젝트 등록, 개요·서비스·구성·로그 상세, URL 업데이트와 폼 설정, 실행·중지·재시작·내리기
 - `/containers`, `/containers/:id`: 확장 설정으로 실행·수정, 개요·실행 설정·연결·환경 변수·Label 상세, 시작·중지·재시작·로그·삭제
-- `/images`: pull·삭제
-- `/volumes`: 생성·삭제
-- `/networks`: 생성·삭제, 기본 네트워크 보호
+- `/images`, `/images/:id`: pull·삭제, 실행 설정·환경 변수·Label·레이어·원본 Inspect 상세
+- `/volumes`, `/volumes/:name`: 생성·삭제, 드라이버·Mountpoint·옵션·Label·원본 Inspect 상세
+- `/networks`, `/networks/:name`: 생성·삭제, 기본 네트워크 보호, IPAM·연결 컨테이너·옵션·Label·원본 Inspect 상세
 - `/operations`: Overseer에서 요청한 전체 작업 기록·상세 출력·실패 작업 재시도
 
 시작 준비의 **Docker Engine 만들기**는 기본 `overseer` 인스턴스를 생성합니다. 이후 **인스턴스 설정**에서는 이름과 자원을 지정해 추가 Lima 인스턴스를 만들거나, Docker socket forwarding이 구성된 기존 인스턴스를 선택할 수 있습니다. macOS 홈 공유가 읽기 전용인 기존 인스턴스는 **준비** 작업으로 writable mount를 적용합니다. Overseer가 만든 인스턴스 여부와 무관하게 한 번에 하나만 활성 Engine이며 선택값은 호스트 SQLite에 저장됩니다. `OVERSEER_LIMA_INSTANCE`가 있으면 그 인스턴스로 선택이 고정됩니다.
@@ -81,6 +81,9 @@ pnpm check
 - `GET /api/containers/:id`: 수정용 설정과 config hash
 - `GET /api/containers/:id/inspect`: 전체 Docker inspect JSON과 Health Check 이력
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
+- `GET /api/images/:id`: 이미지 설정과 전체 Docker inspect JSON
+- `GET /api/volumes/:name`: 볼륨 설정과 전체 Docker inspect JSON
+- `GET /api/networks/:name`: 네트워크·IPAM·연결 컨테이너와 전체 Docker inspect JSON
 - `GET /api/runtime/configuration`: 실제 VM 설정 또는 기본 설정과 드라이버 가용성
 - `GET /api/runtime/instances`: 로컬 Lima 인스턴스와 호환성·준비·활성 상태
 - `POST /api/runtime/instances`: 이름과 VM 설정으로 관리 인스턴스 생성

@@ -224,11 +224,11 @@ export function RuntimeInstancesSettings({
             <Table.Header>
               <Table.Row>
                 <Table.Head className="overseer-table-column-compact">활성</Table.Head>
-                <Table.Head className="overseer-table-column-instance">인스턴스</Table.Head>
+                <Table.Head className="overseer-table-column-medium">인스턴스</Table.Head>
                 <Table.Head className="overseer-table-column-state">상태</Table.Head>
                 <Table.Head className="overseer-table-column-compact">Docker</Table.Head>
                 <Table.Head className="overseer-table-column-state">가상화</Table.Head>
-                <Table.Head className="overseer-table-column-instance">자원</Table.Head>
+                <Table.Head className="overseer-table-column-medium">자원</Table.Head>
                 <Table.Head className="overseer-table-column-state">연결</Table.Head>
                 <Table.Head className="overseer-actions-column">작업</Table.Head>
               </Table.Row>

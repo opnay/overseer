@@ -115,6 +115,7 @@ function createController(): RuntimeController {
       environment: [{ key: "NODE_ENV", value: "production" }],
       exposedPorts: ["3001/tcp"],
       id,
+      inspectJson: '{"Id":"image-id"}',
       labels: [{ key: "org.opencontainers.image.source", value: "https://example.com/source" }],
       layers: ["sha256:layer"],
       operatingSystem: "linux",
@@ -147,6 +148,27 @@ function createController(): RuntimeController {
       ],
     })),
     getImages: vi.fn(async () => []),
+    getNetwork: vi.fn(async (name) => ({
+      attachable: false,
+      builtIn: name === "bridge",
+      configOnly: false,
+      containers: [],
+      createdAt: "2026-08-24T10:00:00.000Z",
+      driver: "bridge",
+      enableIpv4: true,
+      enableIpv6: false,
+      id: "network-id",
+      ingress: false,
+      inspectJson: '{"Name":"bridge"}',
+      internal: false,
+      ipamConfigurations: [],
+      ipamDriver: "default",
+      ipamOptions: [],
+      labels: [],
+      name,
+      options: [],
+      scope: "local",
+    })),
     getNetworks: vi.fn(async () => []),
     getRuntimeInstances: vi.fn(async () => ({
       activeInstanceName: "overseer",
@@ -154,6 +176,16 @@ function createController(): RuntimeController {
       selectionLocked: false,
     })),
     getVolumes: vi.fn(async () => []),
+    getVolume: vi.fn(async (name) => ({
+      createdAt: "2026-08-24T10:00:00.000Z",
+      driver: "local",
+      inspectJson: '{"Name":"app-data"}',
+      labels: [],
+      mountpoint: "/var/lib/docker/volumes/app-data/_data",
+      name,
+      options: [],
+      scope: "local",
+    })),
     pullImage: vi.fn(async () => undefined),
     prepareRuntimeInstance: vi.fn(async () => undefined),
     registerBuilderCompose: vi.fn(async () => undefined),
@@ -728,7 +760,11 @@ describe("API boundary", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      image: { id: "3e24e96c89ef", operatingSystem: "linux" },
+      image: {
+        id: "3e24e96c89ef",
+        inspectJson: expect.stringContaining("image-id"),
+        operatingSystem: "linux",
+      },
     });
     expect(controller.getImage).toHaveBeenCalledWith("3e24e96c89ef");
 
@@ -755,6 +791,29 @@ describe("API boundary", () => {
       headers: localHeaders,
     });
     expect(invalidPage.status).toBe(400);
+  });
+
+  it("returns volume and network inspect details for validated names", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+
+    const volume = await app.request("/volumes/app-data", { headers: localHeaders });
+    expect(volume.status).toBe(200);
+    await expect(volume.json()).resolves.toMatchObject({
+      volume: { inspectJson: expect.stringContaining("app-data"), name: "app-data" },
+    });
+    expect(controller.getVolume).toHaveBeenCalledWith("app-data");
+
+    const network = await app.request("/networks/app-network", { headers: localHeaders });
+    expect(network.status).toBe(200);
+    await expect(network.json()).resolves.toMatchObject({
+      network: { id: "network-id", name: "app-network" },
+    });
+    expect(controller.getNetwork).toHaveBeenCalledWith("app-network");
+
+    const invalid = await app.request("/volumes/bad%2Fname", { headers: localHeaders });
+    expect(invalid.status).toBe(400);
+    expect(controller.getVolume).toHaveBeenCalledTimes(1);
   });
 
   it("lists Compose projects and forwards project actions", async () => {

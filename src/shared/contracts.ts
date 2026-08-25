@@ -425,6 +425,7 @@ export interface ImageDetail {
   environment: ContainerKeyValue[];
   exposedPorts: string[];
   id: string;
+  inspectJson: string;
   labels: ContainerKeyValue[];
   layers: string[];
   operatingSystem: string;
@@ -465,6 +466,17 @@ export interface VolumeSummary {
   scope: string;
 }
 
+export interface VolumeDetail {
+  createdAt?: string;
+  driver: string;
+  inspectJson: string;
+  labels: ContainerKeyValue[];
+  mountpoint: string;
+  name: string;
+  options: ContainerKeyValue[];
+  scope: string;
+}
+
 export interface NetworkSummary {
   builtIn: boolean;
   createdAt: string;
@@ -475,6 +487,44 @@ export interface NetworkSummary {
   ipv6: boolean;
   labels: string;
   name: string;
+  scope: string;
+}
+
+export interface NetworkIpamConfiguration {
+  auxiliaryAddresses: ContainerKeyValue[];
+  gateway?: string;
+  ipRange?: string;
+  subnet?: string;
+}
+
+export interface NetworkContainerAttachment {
+  endpointId?: string;
+  id: string;
+  ipv4Address?: string;
+  ipv6Address?: string;
+  macAddress?: string;
+  name: string;
+}
+
+export interface NetworkDetail {
+  attachable: boolean;
+  builtIn: boolean;
+  configOnly: boolean;
+  containers: NetworkContainerAttachment[];
+  createdAt: string;
+  driver: string;
+  enableIpv4: boolean;
+  enableIpv6: boolean;
+  id: string;
+  ingress: boolean;
+  inspectJson: string;
+  internal: boolean;
+  ipamConfigurations: NetworkIpamConfiguration[];
+  ipamDriver: string;
+  ipamOptions: ContainerKeyValue[];
+  labels: ContainerKeyValue[];
+  name: string;
+  options: ContainerKeyValue[];
   scope: string;
 }
 

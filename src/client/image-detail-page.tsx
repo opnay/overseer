@@ -28,6 +28,7 @@ interface ImageDetailPageProps {
 type ImageDetailSection =
   | "configuration"
   | "environment"
+  | "inspect"
   | "labels"
   | "layers"
   | "overview"
@@ -41,6 +42,10 @@ const sectionPresentation: Record<ImageDetailSection, { description: string; lab
   environment: {
     description: "이미지에 기본값으로 저장된 환경 변수를 확인합니다.",
     label: "환경 변수",
+  },
+  inspect: {
+    description: "Docker Engine이 반환한 전체 이미지 inspect JSON을 확인합니다.",
+    label: "Inspect",
   },
   labels: {
     description: "이미지 제작자가 저장한 OCI·Docker Label을 확인합니다.",
@@ -67,6 +72,7 @@ const sectionOrder: ImageDetailSection[] = [
   "environment",
   "labels",
   "layers",
+  "inspect",
 ];
 
 const tagPaginationLabels = {
@@ -520,6 +526,17 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                 value={reconstructDockerfileLayers(history)}
               />
             )
+          ) : null}
+
+          {section === "inspect" ? (
+            <LogViewer
+              ariaLabel="이미지 Inspect JSON"
+              context={<code>docker image inspect {detail.id.slice(0, 12)}</code>}
+              emptyMessage="Inspect 정보가 없습니다."
+              height="expanded"
+              optionsLabel="Inspect JSON 보기 옵션"
+              value={detail.inspectJson}
+            />
           ) : null}
         </div>
       </div>

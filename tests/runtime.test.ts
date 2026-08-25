@@ -277,6 +277,7 @@ describe("LimaDockerRuntime image inspection", () => {
           value: "https://github.com/louislam/uptime-kuma",
         },
       ],
+      inspectJson: expect.stringContaining('"Id": "sha256:3e24e96c89ef"'),
       layers: ["sha256:layer-one", "sha256:layer-two"],
       operatingSystem: "linux",
       repositoryTags: ["louislam/uptime-kuma:2"],
@@ -338,6 +339,117 @@ describe("LimaDockerRuntime image inspection", () => {
       "공개 Docker Hub 저장소",
     );
     expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe("LimaDockerRuntime volume and network inspection", () => {
+  it("maps volume and network inspect output without dropping the original JSON", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") return { stderr: "", stdout: limaRow };
+      const dockerArgs = args.slice(2);
+      if (dockerArgs[0] === "volume") {
+        return {
+          stderr: "",
+          stdout: JSON.stringify([
+            {
+              CreatedAt: "2026-08-24T10:00:00.000Z",
+              Driver: "local",
+              Labels: { team: "platform" },
+              Mountpoint: "/var/lib/docker/volumes/app-data/_data",
+              Name: "app-data",
+              Options: { type: "none" },
+              Scope: "local",
+            },
+          ]),
+        };
+      }
+      if (dockerArgs[0] === "network") {
+        return {
+          stderr: "",
+          stdout: JSON.stringify([
+            {
+              Attachable: true,
+              ConfigOnly: false,
+              Containers: {
+                "container-id": {
+                  EndpointID: "endpoint-id",
+                  IPv4Address: "172.20.0.2/16",
+                  MacAddress: "02:42:ac:14:00:02",
+                  Name: "web",
+                },
+              },
+              Created: "2026-08-24T10:00:00.000Z",
+              Driver: "bridge",
+              EnableIPv4: true,
+              EnableIPv6: false,
+              Id: "network-id",
+              Ingress: false,
+              Internal: false,
+              IPAM: {
+                Config: [
+                  {
+                    AuxAddress: { router: "172.20.0.10" },
+                    Gateway: "172.20.0.1",
+                    Subnet: "172.20.0.0/16",
+                  },
+                ],
+                Driver: "default",
+                Options: { mode: "auto" },
+              },
+              Labels: { project: "demo" },
+              Name: "app-network",
+              Options: { "com.docker.network.bridge.name": "br-demo" },
+              Scope: "local",
+            },
+          ]),
+        };
+      }
+      throw new Error(`unexpected Docker command: ${dockerArgs.join(" ")}`);
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getVolume("app-data")).resolves.toMatchObject({
+      driver: "local",
+      inspectJson: expect.stringContaining('"Name": "app-data"'),
+      labels: [{ key: "team", value: "platform" }],
+      mountpoint: "/var/lib/docker/volumes/app-data/_data",
+      name: "app-data",
+      options: [{ key: "type", value: "none" }],
+    });
+    await expect(runtime.getNetwork("app-network")).resolves.toMatchObject({
+      attachable: true,
+      containers: [
+        {
+          endpointId: "endpoint-id",
+          id: "container-id",
+          ipv4Address: "172.20.0.2/16",
+          macAddress: "02:42:ac:14:00:02",
+          name: "web",
+        },
+      ],
+      enableIpv4: true,
+      inspectJson: expect.stringContaining('"Name": "app-network"'),
+      ipamConfigurations: [
+        {
+          auxiliaryAddresses: [{ key: "router", value: "172.20.0.10" }],
+          gateway: "172.20.0.1",
+          subnet: "172.20.0.0/16",
+        },
+      ],
+      ipamDriver: "default",
+      name: "app-network",
+    });
+  });
+
+  it("rejects malformed volume inspect output", async () => {
+    const command: CommandRunner = vi.fn(async (executable) =>
+      executable === "limactl" ? { stderr: "", stdout: limaRow } : { stderr: "", stdout: "[]" },
+    );
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getVolume("app-data")).rejects.toThrow(
+      "Docker 볼륨 Inspect 정보를 해석하지 못했습니다.",
+    );
   });
 });
 
