@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.ts";
 
 export interface RuntimeInstanceStore {
   getActiveInstanceName(): string | undefined;
@@ -34,7 +34,7 @@ export class MemoryRuntimeInstanceStore implements RuntimeInstanceStore {
 export class SqliteRuntimeInstanceStore implements RuntimeInstanceStore {
   readonly dataDirectory: string;
   private readonly databasePath: string;
-  private database?: DatabaseSync;
+  private database?: SqliteDatabase;
 
   constructor(options: { dataDirectory?: string; databasePath?: string } = {}) {
     this.dataDirectory =
@@ -78,17 +78,14 @@ export class SqliteRuntimeInstanceStore implements RuntimeInstanceStore {
       .run(name);
   }
 
-  private get db(): DatabaseSync {
+  private get db(): SqliteDatabase {
     if (this.database) return this.database;
     if (this.databasePath !== ":memory:") {
       mkdirSync(this.dataDirectory, { mode: 0o700, recursive: true });
       chmodSync(this.dataDirectory, 0o700);
       mkdirSync(dirname(this.databasePath), { mode: 0o700, recursive: true });
     }
-    this.database = new DatabaseSync(this.databasePath, {
-      enableForeignKeyConstraints: true,
-      timeout: 5_000,
-    });
+    this.database = openSqliteDatabase(this.databasePath);
     if (this.databasePath !== ":memory:") chmodSync(this.databasePath, 0o600);
     this.database.exec(`
       PRAGMA journal_mode = WAL;

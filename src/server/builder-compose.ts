@@ -3,13 +3,13 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import type { ComposeBuilderSpec, UpdateComposeBuilderInput } from "../shared/contracts.ts";
 import { composeBuilderYaml, validateComposeBuilderSpec } from "../shared/compose-builder.ts";
 import { ExpectedError } from "./errors.ts";
 import type { CommandRunner } from "./lima-docker-runtime.ts";
 import type { OperationProgress } from "./operations.ts";
 import { runCommand } from "./process.ts";
+import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.ts";
 import { validateComposeContent } from "./remote-compose.ts";
 
 export interface BuilderComposeProject {
@@ -60,7 +60,7 @@ function mapRow(row: BuilderComposeRow, configFile: string): BuilderComposeProje
 export class BuilderComposeStore {
   readonly dataDirectory: string;
   private readonly databasePath: string;
-  private database?: DatabaseSync;
+  private database?: SqliteDatabase;
 
   constructor(options: { dataDirectory?: string; databasePath?: string } = {}) {
     this.dataDirectory =
@@ -177,17 +177,14 @@ export class BuilderComposeStore {
     await rm(dirname(this.configFile(name)), { force: true, recursive: true });
   }
 
-  private get db(): DatabaseSync {
+  private get db(): SqliteDatabase {
     if (this.database) return this.database;
     if (this.databasePath !== ":memory:") {
       mkdirSync(this.dataDirectory, { mode: 0o700, recursive: true });
       chmodSync(this.dataDirectory, 0o700);
       mkdirSync(dirname(this.databasePath), { mode: 0o700, recursive: true });
     }
-    this.database = new DatabaseSync(this.databasePath, {
-      enableForeignKeyConstraints: true,
-      timeout: 5_000,
-    });
+    this.database = openSqliteDatabase(this.databasePath);
     if (this.databasePath !== ":memory:") chmodSync(this.databasePath, 0o600);
     this.database.exec(`
       PRAGMA journal_mode = WAL;

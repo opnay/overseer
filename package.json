@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "PORTLESS_PORT=1355 PORTLESS_HTTPS=0 PORTLESS_SYNC_HOSTS=0 portless run --name overseer vite --force",
     "dev:direct": "vite --force",
-    "dev:tauri:frontend": "vite --host 127.0.0.1 --port 1420 --strictPort --force",
+    "dev:tauri:frontend": "pnpm build:sidecar && vite --host 127.0.0.1 --port 1420 --strictPort --force",
     "build": "vite build",
+    "build:desktop": "pnpm build:sidecar && pnpm build",
+    "build:sidecar": "bun scripts/build-sidecar.ts",
     "start": "node src/server/start.ts",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
@@ -23,6 +25,7 @@
   "dependencies": {
     "@hono/node-server": "2.1.1",
     "@opnay/city-ds-react": "file:vendor/opnay-city-ds-react-0.1.0-1dd3d58.tgz",
+    "@tauri-apps/api": "2.11.1",
     "hono": "4.13.3",
     "lucide-react": "1.26.0",
     "react": "19.2.8",
