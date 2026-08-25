@@ -1,6 +1,7 @@
 use std::{
     env, fs,
     io::{BufRead, BufReader, Read, Write},
+    net::Shutdown,
     os::unix::{
         fs::PermissionsExt,
         net::{UnixListener, UnixStream},
@@ -9,6 +10,7 @@ use std::{
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
+    time::Duration,
 };
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -19,6 +21,7 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 
 const LAUNCHER_SOCKET: &str = "launcher.sock";
 const MAIN_WINDOW_LABEL: &str = "main";
+const MAX_PROCESS_MESSAGE_BYTES: u64 = 10 * 1024 * 1024;
 const MENUBAR_ARGUMENT: &str = "--menubar";
 const MENUBAR_SOCKET: &str = "menubar.sock";
 const TRAY_OPEN_ID: &str = "tray-open";
@@ -131,8 +134,6 @@ impl Drop for DesktopApiProcess {
     }
 }
 
-struct DesktopApiState(Arc<Mutex<DesktopApiProcess>>);
-
 fn show_main_window(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         eprintln!("main window를 찾지 못했습니다.");
@@ -195,6 +196,22 @@ fn send_process_command(path: &Path, command: &str) -> bool {
         .is_ok()
 }
 
+fn ping_menubar(path: &Path) -> bool {
+    let Ok(mut stream) = UnixStream::connect(path) else {
+        return false;
+    };
+    let timeout = Some(Duration::from_secs(1));
+    if stream.set_read_timeout(timeout).is_err()
+        || stream.set_write_timeout(timeout).is_err()
+        || stream.write_all(b"ping\n").is_err()
+        || stream.shutdown(Shutdown::Write).is_err()
+    {
+        return false;
+    }
+    let mut response = String::new();
+    stream.read_to_string(&mut response).is_ok() && response.trim() == "pong"
+}
+
 fn claim_process_socket(path: &Path) -> Result<Option<UnixListener>, String> {
     if send_process_command(path, "ping\n") {
         return Ok(None);
@@ -226,14 +243,130 @@ fn claim_process_socket(path: &Path) -> Result<Option<UnixListener>, String> {
     Ok(Some(listener))
 }
 
-fn start_menubar_listener(listener: UnixListener) {
+fn read_process_message(stream: &mut UnixStream) -> Result<String, String> {
+    let mut message = String::new();
+    stream
+        .take(MAX_PROCESS_MESSAGE_BYTES + 1)
+        .read_to_string(&mut message)
+        .map_err(|error| format!("프로세스 요청을 읽지 못했습니다: {error}"))?;
+    if message.len() as u64 > MAX_PROCESS_MESSAGE_BYTES {
+        return Err("프로세스 요청이 너무 큽니다.".into());
+    }
+    Ok(message)
+}
+
+fn write_process_message(stream: &mut UnixStream, value: &serde_json::Value) -> Result<(), String> {
+    serde_json::to_writer(&mut *stream, value)
+        .map_err(|error| format!("프로세스 응답을 만들지 못했습니다: {error}"))?;
+    stream
+        .write_all(b"\n")
+        .and_then(|_| stream.flush())
+        .map_err(|error| format!("프로세스 응답을 보내지 못했습니다: {error}"))
+}
+
+fn handle_menubar_connection(
+    mut stream: UnixStream,
+    api: &Arc<Mutex<DesktopApiProcess>>,
+) -> Result<(), String> {
+    let message = read_process_message(&mut stream)?;
+    if message.trim() == "ping" {
+        stream
+            .write_all(b"pong\n")
+            .and_then(|_| stream.flush())
+            .map_err(|error| format!("menubar 상태를 보내지 못했습니다: {error}"))?;
+        return Ok(());
+    }
+
+    let request = serde_json::from_str::<serde_json::Value>(&message)
+        .map_err(|error| format!("menubar API 요청이 잘못됐습니다: {error}"))?;
+    let path = request
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("menubar API 경로가 없습니다.")?
+        .to_owned();
+    let method = request
+        .get("method")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("menubar API 요청 방식이 없습니다.")?
+        .to_owned();
+    let body = match request.get("body") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(value) => Some(
+            value
+                .as_str()
+                .ok_or("menubar API 요청 본문이 잘못됐습니다.")?
+                .to_owned(),
+        ),
+    };
+    let result = api
+        .lock()
+        .map_err(|_| "API sidecar 잠금이 손상됐습니다.".to_owned())?
+        .request(path, method, body);
+    let response = match result {
+        Ok((status, body)) => serde_json::json!({ "body": body, "status": status }),
+        Err(error) => serde_json::json!({ "error": error }),
+    };
+    write_process_message(&mut stream, &response)
+}
+
+fn start_menubar_listener(listener: UnixListener, api: Arc<Mutex<DesktopApiProcess>>) {
     thread::spawn(move || {
         for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let mut command = [0; 16];
-            let _ = stream.read(&mut command);
+            let Ok(stream) = stream else { continue };
+            let api = Arc::clone(&api);
+            thread::spawn(move || {
+                if let Err(error) = handle_menubar_connection(stream, &api) {
+                    eprintln!("menubar 요청을 처리하지 못했습니다: {error}");
+                }
+            });
         }
     });
+}
+
+fn request_menubar_api(
+    path: String,
+    method: String,
+    body: Option<String>,
+) -> Result<(u16, String), String> {
+    let socket = process_socket_path(MENUBAR_SOCKET)?;
+    let mut stream = match UnixStream::connect(&socket) {
+        Ok(stream) => stream,
+        Err(_) => {
+            ensure_menubar_process()?;
+            UnixStream::connect(socket)
+                .map_err(|error| format!("menubar API에 연결하지 못했습니다: {error}"))?
+        }
+    };
+    let timeout = Some(Duration::from_secs(120));
+    stream
+        .set_read_timeout(timeout)
+        .and_then(|_| stream.set_write_timeout(timeout))
+        .map_err(|error| format!("menubar API 제한 시간을 설정하지 못했습니다: {error}"))?;
+    let request = serde_json::json!({ "body": body, "method": method, "path": path });
+    serde_json::to_writer(&mut stream, &request)
+        .map_err(|error| format!("menubar API 요청을 만들지 못했습니다: {error}"))?;
+    stream
+        .write_all(b"\n")
+        .and_then(|_| stream.flush())
+        .and_then(|_| stream.shutdown(Shutdown::Write))
+        .map_err(|error| format!("menubar API 요청을 보내지 못했습니다: {error}"))?;
+    let response = read_process_message(&mut stream)?;
+    let value = serde_json::from_str::<serde_json::Value>(&response)
+        .map_err(|error| format!("menubar API 응답이 잘못됐습니다: {error}"))?;
+    if let Some(error) = value.get("error").and_then(serde_json::Value::as_str) {
+        return Err(error.to_owned());
+    }
+    let status = value
+        .get("status")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|status| u16::try_from(status).ok())
+        .ok_or("menubar API 응답 상태가 잘못됐습니다.")?;
+    let body = value
+        .get("body")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("menubar API 응답 본문이 잘못됐습니다.")?
+        .to_owned();
+    Ok((status, body))
 }
 
 fn start_launcher_listener(listener: UnixListener, app: tauri::AppHandle) {
@@ -286,10 +419,17 @@ fn spawn_launcher_process() -> Result<(), String> {
 
 fn ensure_menubar_process() -> Result<(), String> {
     let path = process_socket_path(MENUBAR_SOCKET)?;
-    if send_process_command(&path, "ping\n") {
+    if ping_menubar(&path) {
         return Ok(());
     }
-    spawn_current_process(&[MENUBAR_ARGUMENT])
+    spawn_current_process(&[MENUBAR_ARGUMENT])?;
+    for _ in 0..100 {
+        thread::sleep(Duration::from_millis(100));
+        if ping_menubar(&path) {
+            return Ok(());
+        }
+    }
+    Err("menubar API가 준비되지 않았습니다.".into())
 }
 
 fn open_launcher() -> Result<(), String> {
@@ -345,20 +485,13 @@ fn sidecar_path() -> Result<PathBuf, String> {
 
 #[tauri::command]
 async fn api_request(
-    state: tauri::State<'_, DesktopApiState>,
     path: String,
     method: String,
     body: Option<String>,
 ) -> Result<(u16, String), String> {
-    let process = Arc::clone(&state.0);
-    tauri::async_runtime::spawn_blocking(move || {
-        process
-            .lock()
-            .map_err(|_| "API sidecar 잠금이 손상됐습니다.".to_owned())?
-            .request(path, method, body)
-    })
-    .await
-    .map_err(|error| format!("API 요청 작업이 중단됐습니다: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || request_menubar_api(path, method, body))
+        .await
+        .map_err(|error| format!("API 요청 작업이 중단됐습니다: {error}"))?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -379,12 +512,13 @@ fn run_menubar(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
     let Some(listener) = claim_process_socket(&socket_path)? else {
         return Ok(());
     };
+    let api = Arc::new(Mutex::new(DesktopApiProcess::start()?));
     let cleanup_path = socket_path.clone();
     let app = tauri::Builder::default()
         .setup(move |app| {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             setup_tray(app)?;
-            start_menubar_listener(listener);
+            start_menubar_listener(listener, api);
             Ok(())
         })
         .build(context)
@@ -430,9 +564,6 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
                     std::io::Error::other("로그인 자동 시작을 등록하지 못했습니다.").into(),
                 );
             }
-            app.manage(DesktopApiState(Arc::new(Mutex::new(
-                DesktopApiProcess::start()?,
-            ))));
             create_main_window(app)?;
             show_main_window(app.handle());
             start_launcher_listener(listener, app.handle().clone());
