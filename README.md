@@ -39,7 +39,15 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
-macOS 앱은 `src-tauri/target/release/bundle/macos/Overseer.app`에 생성됩니다. 개발 모드는 Tauri가 전용 Vite/Hono 서버를 함께 실행하므로 기존 기능을 사용할 수 있습니다. 현재 프로덕션 `.app`에는 서버 sidecar가 포함되지 않아 UI 셸만 실행되며, Docker API 연결은 다음 Bun sidecar 단계에서 제공합니다.
+macOS 앱은 `src-tauri/target/release/bundle/macos/Overseer.app`에 생성되며 Bun으로 컴파일한 API sidecar를 포함합니다. 앱을 열면 로그인 자동 시작되는 메뉴바 프로세스가 sidecar와 Docker 작업을 소유하고, launcher 창은 Tauri IPC로 같은 API를 사용합니다.
+
+배포 인증서 없이 로컬 설치할 때는 bundle 전체를 ad-hoc 서명한 뒤 `/Applications`로 복사하십시오.
+
+```bash
+codesign --force --deep --sign - --timestamp=none src-tauri/target/release/bundle/macos/Overseer.app
+ditto src-tauri/target/release/bundle/macos/Overseer.app /Applications/Overseer.app
+open -a /Applications/Overseer.app
+```
 
 시작 준비 화면은 Homebrew, Docker CLI, Lima, Docker Engine 순서로 안내합니다. Docker Compose는 Docker 단계에서 선택하거나 건너뛸 수 있습니다. 모든 도구 설치 단계는 Terminal용 명령을 복사할 수 있으며 Docker·Compose·Lima는 UI에서 Homebrew 설치 작업을 시작하고 진행 출력도 확인할 수 있습니다. Homebrew는 관리자 인증이 필요하므로 공식 명령을 Terminal에서 직접 실행해야 합니다. 마지막 단계는 전용 Lima VM과 Docker Engine의 준비 상태를 확인하고, 설정이 필요하면 실행 환경·VM 드라이버·자원을 간략한 폼에서 선택해 Engine을 만듭니다. 상태는 시작 화면에서 10초마다 다시 확인합니다. 준비가 감지되면 자동 설치 로그를 접고 일반 구분선 뒤에 **다음**을 표시하며, 사용자가 선택할 때만 다음 단계로 이동합니다.
 
