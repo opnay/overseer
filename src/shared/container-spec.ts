@@ -92,7 +92,7 @@ export function validateContainerSpec(spec: ContainerSpecInput): ContainerSpecEr
     errors.name = "영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오.";
   }
   if (spec.hostname && !isHostname(spec.hostname)) {
-    errors.hostname = "유효한 hostname을 입력하십시오.";
+    errors.hostname = "유효한 호스트 이름을 입력하십시오.";
   }
   if (
     spec.command.length > 64 ||
@@ -110,7 +110,7 @@ export function validateContainerSpec(spec: ContainerSpecInput): ContainerSpecEr
     !validKeyValues(spec.labels, isLabelName, 64) ||
     spec.labels.some(({ key }) => reservedLabel(key))
   ) {
-    errors.labels = "Label 이름과 중복 여부를 확인하십시오.";
+    errors.labels = "라벨 이름과 중복 여부를 확인하십시오.";
   }
   if (!validVolumes(spec.volumes)) {
     errors.volumes = "볼륨 이름, 절대 컨테이너 경로와 중복 여부를 확인하십시오.";

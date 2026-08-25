@@ -45,16 +45,16 @@ const sectionPresentation: Record<ContainerDetailSection, { description: string;
       label: "환경 변수",
     },
     health: {
-      description: "현재 Health 상태와 Docker가 보관한 최근 검사 결과를 확인합니다.",
-      label: "Health Check",
+      description: "현재 상태와 Docker가 보관한 최근 검사 결과를 확인합니다.",
+      label: "상태 검사",
     },
     inspect: {
-      description: "Docker Engine이 반환한 전체 컨테이너 inspect JSON을 확인합니다.",
-      label: "Inspect",
+      description: "Docker Engine이 반환한 전체 컨테이너 원본 JSON을 확인합니다.",
+      label: "원본 정보",
     },
     labels: {
-      description: "Overseer 예약 항목을 제외한 사용자 Label을 확인합니다.",
-      label: "Label",
+      description: "Overseer 예약 항목을 제외한 사용자 라벨을 확인합니다.",
+      label: "라벨",
     },
     overview: {
       description: "컨테이너 상태와 식별 정보, Compose 소속을 확인합니다.",
@@ -169,13 +169,13 @@ function Definition({
 
 function mountPresentation(mount: ContainerMount) {
   if (mount.type === "bind") {
-    return { label: "Bind mount", sourceLabel: "호스트 경로", source: mount.hostPath };
+    return { label: "바인드 마운트", sourceLabel: "호스트 경로", source: mount.hostPath };
   }
   if (mount.type === "volume") {
-    return { label: "Named volume", sourceLabel: "Volume", source: mount.volume };
+    return { label: "이름 있는 볼륨", sourceLabel: "볼륨", source: mount.volume };
   }
   return {
-    label: `${mount.dockerType} mount`,
+    label: `${mount.dockerType} 마운트`,
     sourceLabel: "소스",
     source: mount.source ?? "—",
   };
@@ -260,7 +260,7 @@ function HealthCheckHistory({ health }: { health: ContainerHealth }) {
         <header>
           <div>
             <h3 className="city-text-subsection-title">실행 이력</h3>
-            <p>Docker가 보관한 최근 Health Check 결과입니다.</p>
+            <p>Docker가 보관한 최근 상태 검사 결과입니다.</p>
           </div>
         </header>
         {health.history.length === 0 ? (
@@ -268,7 +268,7 @@ function HealthCheckHistory({ health }: { health: ContainerHealth }) {
             <EmptyState.Icon>
               <Activity aria-hidden="true" />
             </EmptyState.Icon>
-            <EmptyState.Title level={4}>Health Check 실행 기록이 없습니다.</EmptyState.Title>
+            <EmptyState.Title level={4}>상태 검사 실행 기록이 없습니다.</EmptyState.Title>
             <EmptyState.Description>
               첫 검사가 끝나면 결과와 출력이 여기에 표시됩니다.
             </EmptyState.Description>
@@ -299,15 +299,15 @@ function HealthCheckHistory({ health }: { health: ContainerHealth }) {
                   </Accordion.Header>
                   <Accordion.Panel>
                     <LogViewer
-                      ariaLabel={`${formatDateTime(entry.startedAt)} Health Check 출력`}
+                      ariaLabel={`${formatDateTime(entry.startedAt)} 상태 검사 출력`}
                       context={
                         <span>
                           종료 <time dateTime={entry.endedAt}>{formatDateTime(entry.endedAt)}</time>
                         </span>
                       }
-                      emptyMessage="Health Check 출력이 없습니다."
+                      emptyMessage="상태 검사 출력이 없습니다."
                       height="compact"
-                      optionsLabel="Health Check 출력 옵션"
+                      optionsLabel="상태 검사 출력 옵션"
                       value={entry.output}
                     />
                   </Accordion.Panel>
@@ -382,7 +382,7 @@ export function ContainerDetailPage({
         (loadError: unknown) =>
           active &&
           setInspectionError(
-            loadError instanceof Error ? loadError.message : "Inspect 정보를 불러오지 못했습니다.",
+            loadError instanceof Error ? loadError.message : "원본 정보를 불러오지 못했습니다.",
           ),
       )
       .finally(() => active && setInspectionLoading(false));
@@ -542,41 +542,79 @@ export function ContainerDetailPage({
           ) : null}
 
           {section === "runtime" ? (
-            <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-              <Definition label="이미지" value={<code>{spec.image}</code>} />
-              <Definition label="Hostname" value={spec.hostname ?? "—"} />
-              <Definition label="재시작 정책" value={<code>{restartPolicy(detail)}</code>} />
-              <Definition label="CPU" value={spec.resources.cpus ?? "제한 없음"} />
-              <Definition
-                label="메모리"
-                value={
-                  spec.resources.memoryMiB === undefined
-                    ? "제한 없음"
-                    : `${spec.resources.memoryMiB} MiB`
-                }
-              />
-              <Definition
-                label="명령"
-                value={
-                  spec.command.length > 0 ? <code>{spec.command.join(" ")}</code> : "지정되지 않음"
-                }
-              />
-              <Definition
-                label="포트"
-                value={
-                  ports.length > 0 ? ports.map((port) => <code key={port}>{port}</code>) : "없음"
-                }
-              />
-              <Definition
-                label="네트워크"
-                value={
-                  spec.networks.length > 0
-                    ? spec.networks.map((network) => <code key={network}>{network}</code>)
-                    : "없음"
-                }
-              />
-              <Definition label="마운트" value={<Mounts mounts={detail.mounts} />} wide />
-            </dl>
+            <div className="overseer-detail-section-list">
+              <section className="overseer-detail-section">
+                <header>
+                  <div>
+                    <h3 className="city-text-subsection-title">기본 정보</h3>
+                    <p>컨테이너가 시작될 때 적용되는 이미지와 프로세스 설정입니다.</p>
+                  </div>
+                </header>
+                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                  <Definition label="이미지" value={<code>{spec.image}</code>} />
+                  <Definition label="호스트 이름" value={spec.hostname ?? "—"} />
+                  <Definition label="재시작 정책" value={<code>{restartPolicy(detail)}</code>} />
+                  <Definition
+                    label="명령"
+                    value={
+                      spec.command.length > 0 ? (
+                        <code>{spec.command.join(" ")}</code>
+                      ) : (
+                        "지정되지 않음"
+                      )
+                    }
+                  />
+                </dl>
+              </section>
+
+              <section className="overseer-detail-section">
+                <header>
+                  <div>
+                    <h3 className="city-text-subsection-title">리소스 제한</h3>
+                    <p>컨테이너가 사용할 수 있는 CPU와 메모리 한도입니다.</p>
+                  </div>
+                </header>
+                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                  <Definition label="CPU" value={spec.resources.cpus ?? "제한 없음"} />
+                  <Definition
+                    label="메모리"
+                    value={
+                      spec.resources.memoryMiB === undefined
+                        ? "제한 없음"
+                        : `${spec.resources.memoryMiB} MiB`
+                    }
+                  />
+                </dl>
+              </section>
+
+              <section className="overseer-detail-section">
+                <header>
+                  <div>
+                    <h3 className="city-text-subsection-title">네트워크 및 저장소</h3>
+                    <p>외부 공개 포트, 연결 네트워크와 데이터 마운트입니다.</p>
+                  </div>
+                </header>
+                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                  <Definition
+                    label="포트"
+                    value={
+                      ports.length > 0
+                        ? ports.map((port) => <code key={port}>{port}</code>)
+                        : "없음"
+                    }
+                  />
+                  <Definition
+                    label="네트워크"
+                    value={
+                      spec.networks.length > 0
+                        ? spec.networks.map((network) => <code key={network}>{network}</code>)
+                        : "없음"
+                    }
+                  />
+                  <Definition label="마운트" value={<Mounts mounts={detail.mounts} />} wide />
+                </dl>
+              </section>
+            </div>
           ) : null}
 
           {terminalVisible && terminalLoading ? (
@@ -608,7 +646,7 @@ export function ContainerDetailPage({
 
           {inspectionVisible && inspectionError ? (
             <Alert.Root tone="destructive">
-              <Alert.Title level={3}>Inspect 정보를 불러오지 못했습니다.</Alert.Title>
+              <Alert.Title level={3}>원본 정보를 불러오지 못했습니다.</Alert.Title>
               <Alert.Description>{inspectionError}</Alert.Description>
               <Alert.Action>
                 <Button
@@ -623,7 +661,7 @@ export function ContainerDetailPage({
           ) : null}
 
           {section === "health" && inspectionLoading ? (
-            <section aria-label="Health Check 불러오는 중" className="overseer-detail-loading">
+            <section aria-label="상태 검사 불러오는 중" className="overseer-detail-loading">
               <Skeleton />
               <Skeleton />
               <Skeleton className="overseer-loading-table" />
@@ -638,10 +676,9 @@ export function ContainerDetailPage({
                 <EmptyState.Icon>
                   <Activity aria-hidden="true" />
                 </EmptyState.Icon>
-                <EmptyState.Title level={3}>Health Check가 설정되지 않았습니다.</EmptyState.Title>
+                <EmptyState.Title level={3}>상태 검사가 설정되지 않았습니다.</EmptyState.Title>
                 <EmptyState.Description>
-                  이미지 또는 Compose에 healthcheck를 추가하면 상태와 실행 이력을 확인할 수
-                  있습니다.
+                  이미지 또는 Compose에 상태 검사를 추가하면 상태와 실행 이력을 확인할 수 있습니다.
                 </EmptyState.Description>
               </EmptyState.Root>
             )
@@ -652,17 +689,17 @@ export function ContainerDetailPage({
               <Alert.Root appearance="subtle" tone="warning">
                 <Alert.Title level={3}>민감한 설정이 포함될 수 있습니다.</Alert.Title>
                 <Alert.Description>
-                  Inspect JSON에는 환경 변수, Label과 호스트 경로가 그대로 표시됩니다.
+                  원본 JSON에는 환경 변수, 라벨과 호스트 경로가 그대로 표시됩니다.
                 </Alert.Description>
               </Alert.Root>
               <LogViewer
-                ariaLabel="Docker inspect JSON"
+                ariaLabel="Docker 원본 JSON"
                 context={<code>docker inspect {detail.id.slice(0, 12)}</code>}
-                emptyMessage="Inspect 정보가 없습니다."
+                emptyMessage="원본 정보가 없습니다."
                 height="expanded"
                 loading={inspectionLoading}
-                loadingMessage="Inspect JSON을 불러오는 중…"
-                optionsLabel="Inspect 보기 옵션"
+                loadingMessage="원본 JSON을 불러오는 중…"
+                optionsLabel="원본 정보 보기 옵션"
                 value={inspection?.json ?? ""}
               />
             </section>
@@ -673,7 +710,7 @@ export function ContainerDetailPage({
           ) : null}
 
           {section === "labels" ? (
-            <KeyValues empty="사용자 label이 없습니다." values={spec.labels} />
+            <KeyValues empty="사용자 라벨이 없습니다." values={spec.labels} />
           ) : null}
         </div>
       </div>

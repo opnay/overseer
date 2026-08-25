@@ -532,9 +532,9 @@ function ContainerForm({
                   <Field.Error match>{errors.name}</Field.Error>
                 </Field.Root>
                 <Field.Root invalid={Boolean(errors.hostname)}>
-                  <Field.Label>Hostname (선택)</Field.Label>
+                  <Field.Label>호스트 이름 (선택)</Field.Label>
                   <Input
-                    aria-label="Hostname"
+                    aria-label="호스트 이름"
                     disabled={immutableDisabled}
                     onValueChange={(hostname) => update("hostname", hostname || undefined)}
                     placeholder="web.local"
@@ -737,11 +737,11 @@ function ContainerForm({
               <Fieldset.Legend>메타데이터</Fieldset.Legend>
               <Fieldset.Content>
                 <KeyValueRows
-                  addLabel="Label 추가"
+                  addLabel="라벨 추가"
                   disabled={immutableDisabled}
-                  keyLabel="Label 이름"
+                  keyLabel="라벨 이름"
                   onChange={(labels) => update("labels", labels)}
-                  valueLabel="Label 값"
+                  valueLabel="라벨 값"
                   values={spec.labels}
                 />
               </Fieldset.Content>

@@ -114,7 +114,7 @@ export function parseContainerSpec(value: unknown): ContainerSpecInput {
   ) {
     throw new ExpectedError("invalid_container_spec", "재시작 정책을 확인하십시오.", 400);
   }
-  const hostname = optionalString(source.hostname, "Hostname");
+  const hostname = optionalString(source.hostname, "호스트 이름");
   const name = optionalString(source.name, "이름");
   const cpus = optionalNumber(resources.cpus, "CPU 수");
   const memoryMiB = optionalNumber(resources.memoryMiB, "메모리");

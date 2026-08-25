@@ -50,7 +50,7 @@ const sectionPresentation: Record<
 > = {
   engine: {
     category: "Docker Engine",
-    description: "활성 Docker Engine의 상태와 daemon 동작을 관리합니다.",
+    description: "활성 Docker Engine의 상태와 동작을 관리합니다.",
     title: "엔진 설정",
   },
   instances: {

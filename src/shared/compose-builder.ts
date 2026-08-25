@@ -217,7 +217,7 @@ export function validateComposeBuilderSpec(spec: ComposeBuilderSpec): ComposeBui
 
     if (service.networks.length > MAX_ROWS)
       issues.push({
-        message: `${service.name} 서비스의 network 연결은 ${MAX_ROWS}개 이하여야 합니다.`,
+        message: `${service.name} 서비스의 네트워크 연결은 ${MAX_ROWS}개 이하여야 합니다.`,
         path: `${path}.networks`,
       });
     if (
@@ -230,7 +230,7 @@ export function validateComposeBuilderSpec(spec: ComposeBuilderSpec): ComposeBui
       });
     if (service.volumes.length > MAX_ROWS)
       issues.push({
-        message: `${service.name} 서비스의 volume 연결은 ${MAX_ROWS}개 이하여야 합니다.`,
+        message: `${service.name} 서비스의 볼륨 연결은 ${MAX_ROWS}개 이하여야 합니다.`,
         path: `${path}.volumes`,
       });
     if (duplicates(service.volumes.map(({ containerPath }) => containerPath)).size > 0)
@@ -241,7 +241,7 @@ export function validateComposeBuilderSpec(spec: ComposeBuilderSpec): ComposeBui
     for (const mount of service.volumes) {
       if (!volumeNames.has(mount.volume) || !isContainerPath(mount.containerPath))
         issues.push({
-          message: `${service.name} 서비스의 volume 연결을 확인하십시오.`,
+          message: `${service.name} 서비스의 볼륨 연결을 확인하십시오.`,
           path: `${path}.volumes`,
         });
     }

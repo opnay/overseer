@@ -185,12 +185,12 @@ function addressPools(value: unknown): DockerDaemonAddressPool[] {
 
 function proxies(value: unknown): DockerDaemonProxyConfiguration {
   const input = record(value, "프록시 설정을 확인하십시오.");
-  const httpProxySource = optionalString(input.httpProxy, "HTTP Proxy");
-  const httpsProxySource = optionalString(input.httpsProxy, "HTTPS Proxy");
+  const httpProxySource = optionalString(input.httpProxy, "HTTP 프록시");
+  const httpsProxySource = optionalString(input.httpsProxy, "HTTPS 프록시");
   return {
-    ...(httpProxySource ? { httpProxy: url(httpProxySource, "HTTP Proxy") } : {}),
-    ...(httpsProxySource ? { httpsProxy: url(httpsProxySource, "HTTPS Proxy") } : {}),
-    noProxy: strings(input.noProxy, "No Proxy"),
+    ...(httpProxySource ? { httpProxy: url(httpProxySource, "HTTP 프록시") } : {}),
+    ...(httpsProxySource ? { httpsProxy: url(httpsProxySource, "HTTPS 프록시") } : {}),
+    noProxy: strings(input.noProxy, "프록시 제외"),
   };
 }
 
@@ -280,15 +280,15 @@ function parseNetworkConfiguration(
 function parseRegistryConfiguration(
   value: unknown,
 ): Pick<DockerDaemonConfiguration, "insecureRegistries" | "registryMirrors"> {
-  const input = record(value, "Registry 설정을 확인하십시오.");
-  const registryMirrors = strings(input.registryMirrors, "Registry mirror").map((entry) =>
-    url(entry, "Registry mirror"),
+  const input = record(value, "레지스트리 설정을 확인하십시오.");
+  const registryMirrors = strings(input.registryMirrors, "레지스트리 미러").map((entry) =>
+    url(entry, "레지스트리 미러"),
   );
-  const insecureRegistries = strings(input.insecureRegistries, "Insecure registry");
+  const insecureRegistries = strings(input.insecureRegistries, "비보안 레지스트리");
   if (insecureRegistries.some((entry) => /\s/.test(entry))) {
     throw new ExpectedError(
       "invalid_daemon_configuration",
-      "Insecure registry에는 공백을 사용할 수 없습니다.",
+      "비보안 레지스트리에는 공백을 사용할 수 없습니다.",
       400,
     );
   }
@@ -298,7 +298,7 @@ function parseRegistryConfiguration(
 function parseStabilityConfiguration(
   value: unknown,
 ): Pick<DockerDaemonConfiguration, "debug" | "liveRestore"> {
-  const input = record(value, "daemon 동작 및 진단 설정을 확인하십시오.");
+  const input = record(value, "Docker Engine 동작 및 진단 설정을 확인하십시오.");
   return {
     debug: boolean(input.debug, "Debug mode"),
     liveRestore: boolean(input.liveRestore, "Live restore"),
@@ -321,7 +321,7 @@ function parseProxyConfiguration(value: unknown): Pick<DockerDaemonConfiguration
 }
 
 export function parseDockerDaemonConfiguration(value: unknown): DockerDaemonConfiguration {
-  const input = record(value, "Docker daemon 설정을 확인하십시오.");
+  const input = record(value, "Docker Engine 설정을 확인하십시오.");
   return {
     ...parseStabilityConfiguration(input),
     ...parseLoggingConfiguration(input),
@@ -335,7 +335,7 @@ export function parseDockerDaemonConfiguration(value: unknown): DockerDaemonConf
 export function parseUpdateDockerDaemonConfigurationInput(
   value: unknown,
 ): UpdateDockerDaemonConfigurationInput {
-  const input = record(value, "Docker daemon 설정 요청을 확인하십시오.");
+  const input = record(value, "Docker Engine 설정 요청을 확인하십시오.");
   if (typeof input.additionalJson !== "string") {
     throw new ExpectedError(
       "invalid_daemon_configuration",
@@ -354,7 +354,7 @@ export function parseUpdateDockerDaemonConfigurationSectionInput(
   section: string,
   value: unknown,
 ): UpdateDockerDaemonConfigurationSectionInput {
-  const input = record(value, "Docker daemon 부분 설정 요청을 확인하십시오.");
+  const input = record(value, "Docker Engine 부분 설정 요청을 확인하십시오.");
   switch (section) {
     case "advanced":
       onlyKeys(input, ["additionalJson"], "고급 JSON 설정 요청");
@@ -404,11 +404,11 @@ export function parseUpdateDockerDaemonConfigurationSectionInput(
       return { configuration: parseRegistryConfiguration(configuration), section };
     }
     case "stability": {
-      onlyKeys(input, ["configuration"], "daemon 동작 및 진단 설정 요청");
+      onlyKeys(input, ["configuration"], "Docker Engine 동작 및 진단 설정 요청");
       const configuration = onlyKeys(
-        record(input.configuration, "daemon 동작 및 진단 설정을 확인하십시오."),
+        record(input.configuration, "Docker Engine 동작 및 진단 설정을 확인하십시오."),
         ["debug", "liveRestore"],
-        "daemon 동작 및 진단 설정",
+        "Docker Engine 동작 및 진단 설정",
       );
       return { configuration: parseStabilityConfiguration(configuration), section };
     }
@@ -424,7 +424,7 @@ export function parseUpdateDockerDaemonConfigurationSectionInput(
     default:
       throw new ExpectedError(
         "invalid_daemon_configuration_section",
-        "지원하지 않는 Docker daemon 설정 섹션입니다.",
+        "지원하지 않는 Docker Engine 설정 섹션입니다.",
         400,
       );
   }

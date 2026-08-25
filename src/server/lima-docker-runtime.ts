@@ -502,7 +502,7 @@ function parseVolumeInspectOutput(stdout: string): DockerInspectVolume {
   } catch {
     throw new ExpectedError(
       "invalid_volume_output",
-      "Docker 볼륨 Inspect 정보를 해석하지 못했습니다.",
+      "Docker 볼륨 원본 정보를 해석하지 못했습니다.",
       503,
     );
   }
@@ -526,7 +526,7 @@ function parseNetworkInspectOutput(stdout: string): DockerInspectNetwork {
   } catch {
     throw new ExpectedError(
       "invalid_network_output",
-      "Docker 네트워크 Inspect 정보를 해석하지 못했습니다.",
+      "Docker 네트워크 원본 정보를 해석하지 못했습니다.",
       503,
     );
   }
@@ -877,7 +877,7 @@ export class LimaDockerRuntime implements RuntimeController {
         "{}",
         false,
         false,
-        "Docker Engine을 만든 뒤 daemon 설정을 변경할 수 있습니다.",
+        "Docker Engine을 만든 뒤 설정을 변경할 수 있습니다.",
       );
     }
     if (instance.status.toLowerCase() !== "running") {
@@ -885,7 +885,7 @@ export class LimaDockerRuntime implements RuntimeController {
         "{}",
         false,
         false,
-        "Docker Engine을 시작한 뒤 daemon 설정을 변경할 수 있습니다.",
+        "Docker Engine을 시작한 뒤 설정을 변경할 수 있습니다.",
       );
     }
     const current = await this.readDockerDaemonConfiguration();
@@ -893,7 +893,7 @@ export class LimaDockerRuntime implements RuntimeController {
       current.source,
       current.exists,
       true,
-      "저장하면 Docker daemon만 다시 시작하며 Lima VM은 유지됩니다.",
+      "저장하면 Docker Engine만 다시 시작하며 Lima VM은 유지됩니다.",
     );
   }
 
@@ -1986,14 +1986,14 @@ export class LimaDockerRuntime implements RuntimeController {
     if (!instance) {
       throw new ExpectedError(
         "runtime_missing",
-        "Docker daemon 설정을 적용하려면 Docker Engine을 먼저 만드십시오.",
+        "Docker Engine 설정을 적용하려면 Docker Engine을 먼저 만드십시오.",
         409,
       );
     }
     if (instance.status.toLowerCase() !== "running") {
       throw new ExpectedError(
         "runtime_not_running",
-        "Docker daemon 설정을 적용하려면 Docker Engine을 먼저 시작하십시오.",
+        "Docker Engine 설정을 적용하려면 Docker Engine을 먼저 시작하십시오.",
         409,
       );
     }
@@ -2038,13 +2038,13 @@ export class LimaDockerRuntime implements RuntimeController {
         );
         throw new ExpectedError(
           "daemon_configuration_rollback_failed",
-          "daemon 설정 적용에 실패했고 이전 설정도 자동 복구하지 못했습니다.",
+          "Docker Engine 설정 적용에 실패했고 이전 설정도 자동 복구하지 못했습니다.",
           503,
         );
       }
       throw new ExpectedError(
         "daemon_configuration_apply_failed",
-        "daemon 설정을 적용하지 못해 이전 설정으로 복구했습니다.",
+        "Docker Engine 설정을 적용하지 못해 이전 설정으로 복구했습니다.",
         503,
       );
     }
@@ -2095,7 +2095,7 @@ export class LimaDockerRuntime implements RuntimeController {
   }
 
   private async restartDockerDaemon(progress?: OperationProgress): Promise<void> {
-    progress?.step("Docker daemon 다시 시작 중");
+    progress?.step("Docker Engine 다시 시작 중");
     await this.command(
       "limactl",
       ["shell", this.instanceName, "systemctl", "--user", "restart", "docker"],
@@ -2268,7 +2268,7 @@ export class LimaDockerRuntime implements RuntimeController {
       : !homeMountWritable
         ? "macOS 홈 공유 준비가 필요합니다."
         : instance.status.toLowerCase() === "running" && !dockerVersion
-          ? "Docker daemon을 확인할 수 없습니다."
+          ? "Docker Engine을 확인할 수 없습니다."
           : "Overseer에서 사용할 수 있습니다.";
     return {
       active: instance.name === this.instanceName,

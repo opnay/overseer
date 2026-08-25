@@ -187,7 +187,7 @@ export function StartupPage({
             accessibleLabel: `${dockerWithCompose ? "Docker CLI와 Compose" : prerequisite.label} 설치 명령`,
             command: displayedInstallCommand,
             id: "install",
-            label: "Terminal에서 실행",
+            label: "터미널에서 실행",
           },
         ];
   const active = operation?.status === "queued" || operation?.status === "running";
@@ -231,7 +231,7 @@ export function StartupPage({
               </Badge>
             ) : null}
           </div>
-          <p>STARTUP</p>
+          <p>시작 설정</p>
           <h1 className="city-text-page-title">시작 준비</h1>
         </header>
 

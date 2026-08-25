@@ -116,8 +116,8 @@ function dockerDaemonSnapshot(available = true): DockerDaemonConfigurationSnapsh
       registryMirrors: [],
     },
     message: available
-      ? "저장하면 Docker daemon만 다시 시작합니다."
-      : "Docker Engine을 시작한 뒤 daemon 설정을 변경할 수 있습니다.",
+      ? "저장하면 Docker Engine만 다시 시작합니다."
+      : "Docker Engine을 시작한 뒤 설정을 변경할 수 있습니다.",
     path: "~/.config/docker/daemon.json",
     source: available ? "file" : "default",
   };
@@ -161,7 +161,7 @@ function startupSnapshot(
       {
         automaticInstall: false,
         automaticInstallUnavailableReason:
-          "Homebrew는 관리자 인증이 필요하므로 Terminal에서 설치해야 합니다.",
+          "Homebrew는 관리자 인증이 필요하므로 터미널에서 설치해야 합니다.",
         description: "Docker CLI와 Lima를 설치하는 macOS 패키지 관리자입니다.",
         id: "homebrew",
         installCommand:
@@ -390,7 +390,7 @@ describe("App", () => {
     expect(
       screen.getByText("다음 단계부터 Docker CLI와 Lima를 자동 설치할 수 있습니다."),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Terminal에서 설치하십시오.")).not.toBeInTheDocument();
+    expect(screen.queryByText("터미널에서 설치하십시오.")).not.toBeInTheDocument();
     expect(screen.queryByText("또는")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "공식 홈페이지" })).toHaveAttribute(
       "href",
@@ -1156,9 +1156,9 @@ describe("App", () => {
     };
     const accepted = operation("queued", {
       kind: "runtime.daemon.configure",
-      successMessage: "Docker daemon 설정을 적용했습니다.",
+      successMessage: "Docker Engine 설정을 적용했습니다.",
       target: { name: "overseer", resource: "runtime" },
-      title: "Docker daemon 설정 적용",
+      title: "Docker Engine 설정 적용",
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -1182,20 +1182,20 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
-    const liveRestore = await screen.findByRole("switch", { name: "Live restore" });
+    const liveRestore = await screen.findByRole("switch", { name: "컨테이너 실행 유지" });
     expect(liveRestore).not.toBeChecked();
     expect(liveRestore.children).toHaveLength(1);
-    expect(screen.getByRole("switch", { name: "Debug mode" }).children).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: "디버그 모드" }).children).toHaveLength(1);
     expect(screen.queryByLabelText("DNS 서버")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "daemon 동작 및 진단 설정 저장" }),
+      screen.getByRole("button", { name: "Docker Engine 동작 및 진단 설정 저장" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "컨테이너 로그 설정 저장" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "전송 설정 저장" })).toBeInTheDocument();
-    await user.click(screen.getByRole("switch", { name: "Live restore" }));
+    await user.click(screen.getByRole("switch", { name: "컨테이너 실행 유지" }));
     await user.click(screen.getByRole("combobox", { name: "로그 드라이버" }));
-    await user.click(await screen.findByRole("option", { name: "Local" }));
-    await user.click(screen.getByRole("button", { name: "daemon 동작 및 진단 설정 저장" }));
+    await user.click(await screen.findByRole("option", { name: "로컬" }));
+    await user.click(screen.getByRole("button", { name: "Docker Engine 동작 및 진단 설정 저장" }));
 
     await waitFor(() =>
       expect(
@@ -1233,9 +1233,9 @@ describe("App", () => {
     };
     const accepted = operation("queued", {
       kind: "runtime.daemon.configure",
-      successMessage: "Docker daemon 설정을 적용했습니다.",
+      successMessage: "Docker Engine 설정을 적용했습니다.",
       target: { name: "overseer", resource: "runtime" },
-      title: "Docker daemon 설정 적용",
+      title: "Docker Engine 설정 적용",
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -1260,21 +1260,21 @@ describe("App", () => {
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "네트워크 설정" }));
     expect(await screen.findByLabelText("DNS 서버")).toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: "Live restore" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "컨테이너 실행 유지" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "추가 daemon.json 설정" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "네트워크 설정 저장" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Registry 설정 저장" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "레지스트리 설정 저장" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "프록시 설정 저장" })).toBeInTheDocument();
     await user.type(screen.getByLabelText("DNS 서버"), "1.1.1.1");
     await user.type(screen.getByLabelText("네트워크 주소 풀"), "172.30.0.0/16,24");
-    await user.type(screen.getByLabelText("Registry mirror"), "https://mirror.gcr.io");
-    await user.type(screen.getByLabelText("HTTP Proxy"), "http://proxy.example.com:3128");
-    await user.type(screen.getByLabelText("No Proxy"), "localhost");
+    await user.type(screen.getByLabelText("레지스트리 미러"), "https://mirror.gcr.io");
+    await user.type(screen.getByLabelText("HTTP 프록시"), "http://proxy.example.com:3128");
+    await user.type(screen.getByLabelText("프록시 제외"), "localhost");
     await user.click(screen.getByRole("button", { name: "네트워크 설정 초기화" }));
     expect(screen.getByLabelText("DNS 서버")).toHaveValue("");
     expect(screen.getByLabelText("네트워크 주소 풀")).toHaveValue("");
-    expect(screen.getByLabelText("Registry mirror")).toHaveValue("https://mirror.gcr.io");
-    expect(screen.getByLabelText("HTTP Proxy")).toHaveValue("http://proxy.example.com:3128");
+    expect(screen.getByLabelText("레지스트리 미러")).toHaveValue("https://mirror.gcr.io");
+    expect(screen.getByLabelText("HTTP 프록시")).toHaveValue("http://proxy.example.com:3128");
     await user.type(screen.getByLabelText("DNS 서버"), "1.1.1.1");
     await user.type(screen.getByLabelText("네트워크 주소 풀"), "172.30.0.0/16,24");
     await user.click(screen.getByRole("button", { name: "네트워크 설정 저장" }));
@@ -2440,7 +2440,7 @@ describe("App", () => {
     await user.click(within(imageGroup).getByRole("button", { name: "환경 변수" }));
     expect(screen.getByText("NODE_ENV")).toBeInTheDocument();
 
-    await user.click(within(imageGroup).getByRole("button", { name: "Label" }));
+    await user.click(within(imageGroup).getByRole("button", { name: "라벨" }));
     expect(screen.getByText("org.opencontainers.image.source")).toBeInTheDocument();
 
     await user.click(within(imageGroup).getByRole("button", { name: "레이어" }));
@@ -2454,11 +2454,11 @@ describe("App", () => {
     expect(within(layerCode).getByRole("button", { name: "코드 보기 옵션" })).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "이미지 레이어 기록" })).not.toBeInTheDocument();
 
-    await user.click(within(imageGroup).getByRole("button", { name: "Inspect" }));
-    const imageInspect = screen.getByRole("region", { name: "이미지 Inspect JSON" });
+    await user.click(within(imageGroup).getByRole("button", { name: "원본 정보" }));
+    const imageInspect = screen.getByRole("region", { name: "이미지 원본 JSON" });
     expect(imageInspect.querySelector("pre")).toHaveTextContent('"Id": "sha256:3e24e96c89ef"');
     expect(
-      within(imageInspect).getByRole("button", { name: "Inspect JSON 보기 옵션" }),
+      within(imageInspect).getByRole("button", { name: "원본 JSON 보기 옵션" }),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "이미지 목록" }));
@@ -2584,14 +2584,19 @@ describe("App", () => {
 
     await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
     expect(screen.getByRole("heading", { name: "실행 설정", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "기본 정보", level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "리소스 제한", level: 3 })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "네트워크 및 저장소", level: 3 }),
+    ).toBeInTheDocument();
     expect(screen.getByText("sleep 600")).toBeInTheDocument();
     expect(screen.getByText("bridge")).toBeInTheDocument();
-    expect(screen.getByText("Bind mount")).toBeInTheDocument();
+    expect(screen.getByText("바인드 마운트")).toBeInTheDocument();
     expect(
       screen.getByText("/home/test.guest/.local/share/overseer/compose/demo/data"),
     ).toBeInTheDocument();
     expect(screen.getByText("/app/data")).toBeInTheDocument();
-    expect(screen.getByText("Named volume")).toBeInTheDocument();
+    expect(screen.getByText("이름 있는 볼륨")).toBeInTheDocument();
     expect(screen.getByText("audit-data")).toBeInTheDocument();
     expect(within(containerGroup).queryByRole("button", { name: "연결" })).not.toBeInTheDocument();
 
@@ -2632,29 +2637,29 @@ describe("App", () => {
       }),
     ).toBeInTheDocument();
 
-    await user.click(within(containerGroup).getByRole("button", { name: "Health Check" }));
+    await user.click(within(containerGroup).getByRole("button", { name: "상태 검사" }));
     expect(await screen.findByText("비정상")).toBeInTheDocument();
     expect(screen.getByText("1회")).toBeInTheDocument();
     expect(screen.getAllByText("2026-08-25 01:01:00")).toHaveLength(2);
     expect(
       await screen.findByRole("region", {
-        name: "2026-08-25 01:01:00 Health Check 출력",
+        name: "2026-08-25 01:01:00 상태 검사 출력",
       }),
     ).toHaveTextContent("service unavailable");
-    expect(screen.getByRole("button", { name: "Health Check 출력 옵션" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "상태 검사 출력 옵션" })).toBeInTheDocument();
 
-    await user.click(within(containerGroup).getByRole("button", { name: "Inspect" }));
+    await user.click(within(containerGroup).getByRole("button", { name: "원본 정보" }));
     expect(screen.getByText("민감한 설정이 포함될 수 있습니다.")).toBeInTheDocument();
-    const inspectViewer = await screen.findByRole("region", { name: "Docker inspect JSON" });
+    const inspectViewer = await screen.findByRole("region", { name: "Docker 원본 JSON" });
     expect(inspectViewer).toHaveTextContent('"Id": "container-id"');
-    expect(screen.getByRole("button", { name: "Inspect 보기 옵션" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "원본 정보 보기 옵션" })).toBeInTheDocument();
 
     includeHealth = false;
     await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
-    await user.click(within(containerGroup).getByRole("button", { name: "Health Check" }));
+    await user.click(within(containerGroup).getByRole("button", { name: "상태 검사" }));
     expect(
       await screen.findByRole("heading", {
-        name: "Health Check가 설정되지 않았습니다.",
+        name: "상태 검사가 설정되지 않았습니다.",
         level: 3,
       }),
     ).toBeInTheDocument();
@@ -2662,7 +2667,7 @@ describe("App", () => {
     await user.click(within(containerGroup).getByRole("button", { name: "환경 변수" }));
     expect(screen.getByText("MODE")).toBeInTheDocument();
 
-    await user.click(within(containerGroup).getByRole("button", { name: "Label" }));
+    await user.click(within(containerGroup).getByRole("button", { name: "라벨" }));
     expect(screen.getByText("team")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "컨테이너 목록" }));
@@ -3095,14 +3100,14 @@ describe("App", () => {
     await user.type(within(dialog).getByRole("textbox", { name: "프로젝트 이름" }), "demo-stack");
     const serviceOne = within(dialog).getByRole("region", { name: "서비스 1" });
     await user.type(within(serviceOne).getByRole("textbox", { name: "이미지" }), "nginx");
-    await user.click(within(dialog).getByRole("button", { name: "network 추가" }));
+    await user.click(within(dialog).getByRole("button", { name: "네트워크 추가" }));
     await user.type(
-      within(dialog).getByRole("textbox", { name: "Compose network 이름 1" }),
+      within(dialog).getByRole("textbox", { name: "Compose 네트워크 이름 1" }),
       "frontend",
     );
-    await user.click(within(dialog).getByRole("button", { name: "volume 추가" }));
+    await user.click(within(dialog).getByRole("button", { name: "볼륨 추가" }));
     await user.type(
-      within(dialog).getByRole("textbox", { name: "Compose volume 이름 1" }),
+      within(dialog).getByRole("textbox", { name: "Compose 볼륨 이름 1" }),
       "app-data",
     );
     await user.click(within(dialog).getByRole("button", { name: "서비스 추가" }));
@@ -3398,7 +3403,7 @@ describe("App", () => {
     ).toHaveLength(1);
   });
 
-  it("opens volume and network detail pages with Inspect information", async () => {
+  it("opens volume and network detail pages with raw information", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -3498,10 +3503,10 @@ describe("App", () => {
     const volumeNavigation = screen.getByRole("navigation", { name: "볼륨 상세 메뉴" });
     await user.click(within(volumeNavigation).getByRole("button", { name: "드라이버 설정" }));
     expect(screen.getByText("type")).toBeInTheDocument();
-    await user.click(within(volumeNavigation).getByRole("button", { name: "Label" }));
+    await user.click(within(volumeNavigation).getByRole("button", { name: "라벨" }));
     expect(screen.getByText("team")).toBeInTheDocument();
-    await user.click(within(volumeNavigation).getByRole("button", { name: "Inspect" }));
-    expect(screen.getByRole("region", { name: "볼륨 Inspect JSON" })).toHaveTextContent(
+    await user.click(within(volumeNavigation).getByRole("button", { name: "원본 정보" }));
+    expect(screen.getByRole("region", { name: "볼륨 원본 JSON" })).toHaveTextContent(
       '"Name": "app-data"',
     );
     await user.click(screen.getByRole("button", { name: "볼륨 목록" }));
@@ -3520,7 +3525,7 @@ describe("App", () => {
     const networkNavigation = await screen.findByRole("navigation", {
       name: "네트워크 상세 메뉴",
     });
-    await user.click(within(networkNavigation).getByRole("button", { name: "IPAM" }));
+    await user.click(within(networkNavigation).getByRole("button", { name: "IP 주소 관리" }));
     expect(screen.getByText("172.17.0.0/16")).toBeInTheDocument();
     await user.click(within(networkNavigation).getByRole("button", { name: "연결 컨테이너" }));
     expect(screen.getByRole("link", { name: "web" })).toHaveAttribute(
@@ -3529,8 +3534,8 @@ describe("App", () => {
     );
     await user.click(within(networkNavigation).getByRole("button", { name: "드라이버 설정" }));
     expect(screen.getByText("com.docker.network.bridge.name")).toBeInTheDocument();
-    await user.click(within(networkNavigation).getByRole("button", { name: "Inspect" }));
-    expect(screen.getByRole("region", { name: "네트워크 Inspect JSON" })).toHaveTextContent(
+    await user.click(within(networkNavigation).getByRole("button", { name: "원본 정보" }));
+    expect(screen.getByRole("region", { name: "네트워크 원본 JSON" })).toHaveTextContent(
       '"Name": "bridge"',
     );
     await user.click(screen.getByRole("button", { name: "네트워크 목록" }));

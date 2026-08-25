@@ -39,8 +39,8 @@ const sectionLabels: Record<DockerDaemonConfigurationSection, string> = {
   logging: "컨테이너 로그",
   network: "네트워크",
   proxy: "프록시",
-  registry: "Registry",
-  stability: "daemon 동작 및 진단",
+  registry: "레지스트리",
+  stability: "Docker Engine 동작 및 진단",
   transfer: "전송",
 };
 
@@ -161,7 +161,9 @@ export function DockerDaemonSettings({
       setErrors({});
       setSectionError(undefined);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "daemon 설정을 불러오지 못했습니다.");
+      setLoadError(
+        error instanceof Error ? error.message : "Docker Engine 설정을 불러오지 못했습니다.",
+      );
     }
   }, []);
 
@@ -207,7 +209,7 @@ export function DockerDaemonSettings({
 
   return (
     <section
-      aria-label={networkMode ? "Docker 네트워크 설정" : "Docker daemon 설정"}
+      aria-label={networkMode ? "Docker 네트워크 설정" : "Docker Engine 설정"}
       className="overseer-daemon-settings"
     >
       <div className="overseer-daemon-source">
@@ -216,7 +218,7 @@ export function DockerDaemonSettings({
       </div>
 
       {!snapshot && !loadError ? (
-        <div aria-label="daemon 설정 불러오는 중" className="overseer-daemon-loading">
+        <div aria-label="Docker Engine 설정 불러오는 중" className="overseer-daemon-loading">
           <Skeleton />
           <Skeleton />
           <Skeleton />
@@ -225,7 +227,7 @@ export function DockerDaemonSettings({
 
       {loadError ? (
         <Alert.Root tone="destructive">
-          <Alert.Title level={3}>daemon 설정을 불러오지 못했습니다.</Alert.Title>
+          <Alert.Title level={3}>Docker Engine 설정을 불러오지 못했습니다.</Alert.Title>
           <Alert.Description>{loadError}</Alert.Description>
           <Alert.Action>
             <Button onClick={() => void load()} size="sm" variant="outline">
@@ -248,22 +250,22 @@ export function DockerDaemonSettings({
             <>
               <Fieldset.Root appearance="plain" className="overseer-daemon-section">
                 <Fieldset.Legend className="overseer-daemon-section-title">
-                  daemon 동작 및 진단
+                  Docker Engine 동작 및 진단
                 </Fieldset.Legend>
                 <Fieldset.Description className="overseer-daemon-section-description">
-                  daemon 재시작 동작과 문제 진단 출력을 제어합니다.
+                  Docker Engine 재시작 동작과 문제 진단 출력을 제어합니다.
                 </Fieldset.Description>
                 <Fieldset.Content className="overseer-daemon-switch-grid">
                   <SettingSwitch
                     checked={form.liveRestore}
-                    description="daemon이 중단되어도 실행 중인 컨테이너를 유지합니다."
-                    label="Live restore"
+                    description="Docker Engine이 중단되어도 실행 중인 컨테이너를 유지합니다."
+                    label="컨테이너 실행 유지"
                     onCheckedChange={(checked) => update("liveRestore", checked)}
                   />
                   <SettingSwitch
                     checked={form.debug}
-                    description="문제 진단을 위한 상세 daemon 로그를 기록합니다."
-                    label="Debug mode"
+                    description="문제 진단을 위한 상세 Docker Engine 로그를 기록합니다."
+                    label="디버그 모드"
                     onCheckedChange={(checked) => update("debug", checked)}
                   />
                 </Fieldset.Content>
@@ -288,7 +290,7 @@ export function DockerDaemonSettings({
                   <Field.Root>
                     <Field.Label>로그 드라이버</Field.Label>
                     <Select.Root
-                      items={{ "json-file": "JSON file", local: "Local" }}
+                      items={{ "json-file": "JSON 파일", local: "로컬" }}
                       onValueChange={(value) =>
                         value && update("logDriver", String(value) as DockerDaemonLogDriver)
                       }
@@ -304,11 +306,11 @@ export function DockerDaemonSettings({
                             <Select.List>
                               <Select.Item value="local">
                                 <Select.ItemIndicator />
-                                <Select.ItemText>Local</Select.ItemText>
+                                <Select.ItemText>로컬</Select.ItemText>
                               </Select.Item>
                               <Select.Item value="json-file">
                                 <Select.ItemIndicator />
-                                <Select.ItemText>JSON file</Select.ItemText>
+                                <Select.ItemText>JSON 파일</Select.ItemText>
                               </Select.Item>
                             </Select.List>
                           </Select.Popup>
@@ -395,16 +397,16 @@ export function DockerDaemonSettings({
               </Fieldset.Root>
               <Fieldset.Root appearance="plain" className="overseer-daemon-section">
                 <Fieldset.Legend className="overseer-daemon-section-title">
-                  Registry
+                  레지스트리
                 </Fieldset.Legend>
                 <Fieldset.Description className="overseer-daemon-section-description">
-                  이미지 다운로드 경로와 신뢰할 수 없는 Registry 예외를 관리합니다.
+                  이미지 다운로드 경로와 신뢰할 수 없는 레지스트리 예외를 관리합니다.
                 </Fieldset.Description>
                 <Fieldset.Content className="overseer-settings-grid">
                   <Field.Root>
-                    <Field.Label>Registry mirror</Field.Label>
+                    <Field.Label>레지스트리 미러</Field.Label>
                     <Textarea
-                      aria-label="Registry mirror"
+                      aria-label="레지스트리 미러"
                       onChange={(event) => update("registryMirrors", event.target.value)}
                       placeholder="https://mirror.gcr.io"
                       rows={3}
@@ -415,9 +417,9 @@ export function DockerDaemonSettings({
                     </Field.Description>
                   </Field.Root>
                   <Field.Root>
-                    <Field.Label>Insecure registry</Field.Label>
+                    <Field.Label>비보안 레지스트리</Field.Label>
                     <Textarea
-                      aria-label="Insecure registry"
+                      aria-label="비보안 레지스트리"
                       onChange={(event) => update("insecureRegistries", event.target.value)}
                       placeholder="registry.local:5000"
                       rows={3}
@@ -441,32 +443,32 @@ export function DockerDaemonSettings({
               <Fieldset.Root appearance="plain" className="overseer-daemon-section">
                 <Fieldset.Legend className="overseer-daemon-section-title">프록시</Fieldset.Legend>
                 <Fieldset.Description className="overseer-daemon-section-description">
-                  이미지 pull·push 등 daemon의 외부 통신에 사용합니다. 인증 정보가 포함되면 VM 설정
-                  파일에 그대로 저장됩니다.
+                  이미지 받기·올리기 등 Docker Engine의 외부 통신에 사용합니다. 인증 정보가 포함되면
+                  VM 설정 파일에 그대로 저장됩니다.
                 </Fieldset.Description>
                 <Fieldset.Content className="overseer-daemon-proxy-grid">
                   <Field.Root>
-                    <Field.Label>HTTP Proxy</Field.Label>
+                    <Field.Label>HTTP 프록시</Field.Label>
                     <Input
-                      aria-label="HTTP Proxy"
+                      aria-label="HTTP 프록시"
                       onChange={(event) => update("httpProxy", event.target.value)}
                       placeholder="http://proxy.example.com:3128"
                       value={form.httpProxy}
                     />
                   </Field.Root>
                   <Field.Root>
-                    <Field.Label>HTTPS Proxy</Field.Label>
+                    <Field.Label>HTTPS 프록시</Field.Label>
                     <Input
-                      aria-label="HTTPS Proxy"
+                      aria-label="HTTPS 프록시"
                       onChange={(event) => update("httpsProxy", event.target.value)}
                       placeholder="http://proxy.example.com:3128"
                       value={form.httpsProxy}
                     />
                   </Field.Root>
                   <Field.Root className="overseer-daemon-proxy-exclusions">
-                    <Field.Label>No Proxy</Field.Label>
+                    <Field.Label>프록시 제외</Field.Label>
                     <Textarea
-                      aria-label="No Proxy"
+                      aria-label="프록시 제외"
                       onChange={(event) => update("noProxy", event.target.value)}
                       placeholder={"localhost\n127.0.0.1\n.example.com"}
                       rows={3}

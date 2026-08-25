@@ -30,19 +30,19 @@ const sectionPresentation: Record<NetworkDetailSection, { description: string; l
     label: "연결 컨테이너",
   },
   inspect: {
-    description: "Docker Engine이 반환한 전체 네트워크 inspect JSON을 확인합니다.",
-    label: "Inspect",
+    description: "Docker Engine이 반환한 전체 네트워크 원본 JSON을 확인합니다.",
+    label: "원본 정보",
   },
   ipam: {
-    description: "IPAM 드라이버와 주소 풀, Gateway를 확인합니다.",
-    label: "IPAM",
+    description: "IP 주소 관리 드라이버와 주소 풀, 게이트웨이를 확인합니다.",
+    label: "IP 주소 관리",
   },
   labels: {
-    description: "네트워크에 저장된 Docker Label을 확인합니다.",
-    label: "Label",
+    description: "네트워크에 저장된 Docker 라벨을 확인합니다.",
+    label: "라벨",
   },
   options: {
-    description: "네트워크와 IPAM 드라이버에 전달된 옵션을 확인합니다.",
+    description: "네트워크와 IP 주소 관리 드라이버에 전달된 옵션을 확인합니다.",
     label: "드라이버 설정",
   },
   overview: {
@@ -299,7 +299,10 @@ export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: Netwo
           {section === "ipam" ? (
             <div className="overseer-detail-section-list">
               <dl className="overseer-detail-definitions">
-                <Definition label="IPAM 드라이버" value={<code>{detail.ipamDriver}</code>} />
+                <Definition
+                  label="IP 주소 관리 드라이버"
+                  value={<code>{detail.ipamDriver}</code>}
+                />
                 <Definition label="주소 풀" value={`${detail.ipamConfigurations.length}개`} />
               </dl>
               {detail.ipamConfigurations.map((configuration, index) => (
@@ -315,7 +318,7 @@ export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: Netwo
                   <dl className="overseer-detail-definitions">
                     <Definition label="Subnet" value={<code>{configuration.subnet ?? "—"}</code>} />
                     <Definition
-                      label="Gateway"
+                      label="게이트웨이"
                       value={<code>{configuration.gateway ?? "—"}</code>}
                     />
                     <Definition
@@ -329,7 +332,7 @@ export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: Netwo
                 </section>
               ))}
               {detail.ipamConfigurations.length === 0 ? (
-                <p className="overseer-detail-empty-copy">IPAM 주소 풀이 없습니다.</p>
+                <p className="overseer-detail-empty-copy">IP 주소 풀이 없습니다.</p>
               ) : null}
             </div>
           ) : null}
@@ -351,25 +354,28 @@ export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: Netwo
               <section className="overseer-detail-section">
                 <header>
                   <div>
-                    <h3 className="city-text-subsection-title">IPAM 드라이버</h3>
+                    <h3 className="city-text-subsection-title">IP 주소 관리 드라이버</h3>
                   </div>
                 </header>
-                <KeyValues empty="IPAM 드라이버 옵션이 없습니다." values={detail.ipamOptions} />
+                <KeyValues
+                  empty="IP 주소 관리 드라이버 옵션이 없습니다."
+                  values={detail.ipamOptions}
+                />
               </section>
             </div>
           ) : null}
 
           {section === "labels" ? (
-            <KeyValues empty="Label이 없습니다." values={detail.labels} />
+            <KeyValues empty="라벨이 없습니다." values={detail.labels} />
           ) : null}
 
           {section === "inspect" ? (
             <LogViewer
-              ariaLabel="네트워크 Inspect JSON"
+              ariaLabel="네트워크 원본 JSON"
               context={<code>docker network inspect {detail.name}</code>}
-              emptyMessage="Inspect 정보가 없습니다."
+              emptyMessage="원본 정보가 없습니다."
               height="expanded"
-              optionsLabel="Inspect JSON 보기 옵션"
+              optionsLabel="원본 JSON 보기 옵션"
               value={detail.inspectJson}
             />
           ) : null}

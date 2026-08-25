@@ -10,6 +10,12 @@
 - 페이지 제목은 `city-text-page-title`, 영역 제목은 `city-text-section-title`, 설명은 `city-text-supporting`을 사용합니다.
 - Table의 주요 값은 14px semibold, 보조 맥락·시각·소요 시간은 12px을 사용합니다. 오류는 보조 색으로 약화하지 않습니다.
 
+## 사용자 표시 용어
+
+- 일반 기능명은 `상태 검사`, `라벨`, `원본 정보`, `IP 주소 관리`, `호스트 이름`, `터미널`로 표시합니다.
+- Docker·Compose·Lima·JSON·YAML·CPU·IP처럼 제품명, 형식과 기술 약어는 원문을 유지합니다.
+- Docker CLI 명령과 원본 JSON 안의 `inspect`, `Labels`, `Hostname` 같은 식별자는 번역하지 않습니다.
+
 ## Table
 
 - 비교에 필요한 열만 독립 열로 둡니다. 대상 이름과 리소스처럼 작업을 설명하는 맥락은 주요 작업 셀에 함께 배치합니다.

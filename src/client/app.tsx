@@ -209,7 +209,7 @@ function AppBrand() {
       </span>
       <div>
         <strong>Overseer</strong>
-        <small>Lima control plane</small>
+        <small>Lima 제어판</small>
       </div>
     </div>
   );
@@ -1581,14 +1581,14 @@ function AppContent() {
   const detailRefreshToken = `${detailRefreshRevision}:${latestFinishedDetailOperation?.id ?? ""}:${latestFinishedDetailOperation?.status ?? ""}`;
   const pageEyebrow = currentDetail
     ? currentDetail.type === "compose"
-      ? "COMPOSE PROJECT"
+      ? "COMPOSE 프로젝트"
       : currentDetail.type === "container"
-        ? "CONTAINER DETAIL"
+        ? "컨테이너 상세"
         : currentDetail.type === "image"
-          ? "IMAGE DETAIL"
+          ? "이미지 상세"
           : currentDetail.type === "network"
-            ? "NETWORK DETAIL"
-            : "VOLUME DETAIL"
+            ? "네트워크 상세"
+            : "볼륨 상세"
     : currentRoute.eyebrow;
   const pageLabel = currentDetail
     ? currentDetail.type === "compose"
@@ -1611,8 +1611,8 @@ function AppContent() {
         : currentDetail.type === "image"
           ? "이미지의 실행 설정, 메타데이터와 파일 시스템 레이어를 확인합니다."
           : currentDetail.type === "network"
-            ? "네트워크의 IPAM, 연결 컨테이너와 Docker Inspect 정보를 확인합니다."
-            : "볼륨의 드라이버, 저장 위치와 Docker Inspect 정보를 확인합니다."
+            ? "네트워크의 IP 주소 관리, 연결 컨테이너와 Docker 원본 정보를 확인합니다."
+            : "볼륨의 드라이버, 저장 위치와 Docker 원본 정보를 확인합니다."
     : currentRoute.description;
   const runComposeAction = (name: string, action: ComposeProjectAction) =>
     mutate({
@@ -1849,7 +1849,7 @@ function AppContent() {
         ) : (
           <header className="overseer-topbar">
             <div>
-              <span>Local container console</span>
+              <span>로컬 컨테이너 콘솔</span>
               <strong>127.0.0.1 전용</strong>
             </div>
             <div className="overseer-topbar-actions">

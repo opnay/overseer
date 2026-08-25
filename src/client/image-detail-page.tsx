@@ -44,12 +44,12 @@ const sectionPresentation: Record<ImageDetailSection, { description: string; lab
     label: "환경 변수",
   },
   inspect: {
-    description: "Docker Engine이 반환한 전체 이미지 inspect JSON을 확인합니다.",
-    label: "Inspect",
+    description: "Docker Engine이 반환한 전체 이미지 원본 JSON을 확인합니다.",
+    label: "원본 정보",
   },
   labels: {
-    description: "이미지 제작자가 저장한 OCI·Docker Label을 확인합니다.",
-    label: "Label",
+    description: "이미지 제작자가 저장한 OCI·Docker 라벨을 확인합니다.",
+    label: "라벨",
   },
   layers: {
     description: "이미지 기록을 빌드 순서의 Dockerfile 코드로 재구성합니다.",
@@ -494,7 +494,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
           ) : null}
 
           {section === "labels" ? (
-            <KeyValues empty="Label이 없습니다." values={detail.labels} />
+            <KeyValues empty="라벨이 없습니다." values={detail.labels} />
           ) : null}
 
           {section === "layers" ? (
@@ -530,11 +530,11 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
 
           {section === "inspect" ? (
             <LogViewer
-              ariaLabel="이미지 Inspect JSON"
+              ariaLabel="이미지 원본 JSON"
               context={<code>docker image inspect {detail.id.slice(0, 12)}</code>}
-              emptyMessage="Inspect 정보가 없습니다."
+              emptyMessage="원본 정보가 없습니다."
               height="expanded"
-              optionsLabel="Inspect JSON 보기 옵션"
+              optionsLabel="원본 JSON 보기 옵션"
               value={detail.inspectJson}
             />
           ) : null}

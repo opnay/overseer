@@ -62,8 +62,8 @@ const dockerDaemonSectionLabels: Record<DockerDaemonConfigurationSection, string
   logging: "컨테이너 로그",
   network: "네트워크",
   proxy: "프록시",
-  registry: "Registry",
-  stability: "daemon 동작 및 진단",
+  registry: "레지스트리",
+  stability: "Docker Engine 동작 및 진단",
   transfer: "전송",
 };
 
@@ -203,7 +203,7 @@ export function createApi(
       throw new ExpectedError(
         "startup_manual_install_required",
         prerequisite.automaticInstallUnavailableReason ??
-          "Terminal에서 설치한 뒤 상태를 다시 확인하십시오.",
+          "터미널에서 설치한 뒤 상태를 다시 확인하십시오.",
         409,
       );
     }
@@ -312,9 +312,9 @@ export function createApi(
         kind: "runtime.daemon.configure",
         locks: [],
         run: (progress) => controller.applyDockerDaemonConfiguration(input, progress),
-        successMessage: "Docker daemon 설정을 적용했습니다.",
+        successMessage: "Docker Engine 설정을 적용했습니다.",
         target: { name: "Docker Engine", resource: "runtime" },
-        title: "Docker daemon 설정 적용",
+        title: "Docker Engine 설정 적용",
       },
       undefined,
       false,

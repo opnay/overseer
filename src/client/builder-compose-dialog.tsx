@@ -284,7 +284,7 @@ function VolumeRows({
       {values.map((mount, index) => (
         <div className="overseer-volume-row" key={index}>
           <Input
-            aria-label={`서비스 ${serviceIndex + 1} volume 이름 ${index + 1}`}
+            aria-label={`서비스 ${serviceIndex + 1} 볼륨 이름 ${index + 1}`}
             onValueChange={(volume) =>
               onChange(
                 values.map((item, itemIndex) => (itemIndex === index ? { ...item, volume } : item)),
@@ -294,7 +294,7 @@ function VolumeRows({
             value={mount.volume}
           />
           <Input
-            aria-label={`서비스 ${serviceIndex + 1} volume 경로 ${index + 1}`}
+            aria-label={`서비스 ${serviceIndex + 1} 볼륨 경로 ${index + 1}`}
             onValueChange={(containerPath) =>
               onChange(
                 values.map((item, itemIndex) =>
@@ -307,7 +307,7 @@ function VolumeRows({
           />
           <label className="overseer-checkbox-label">
             <Checkbox
-              aria-label={`서비스 ${serviceIndex + 1} volume ${index + 1} 읽기 전용`}
+              aria-label={`서비스 ${serviceIndex + 1} 볼륨 ${index + 1} 읽기 전용`}
               checked={mount.readOnly}
               onCheckedChange={(readOnly) =>
                 onChange(
@@ -336,7 +336,7 @@ function VolumeRows({
         variant="outline"
       >
         <Plus aria-hidden="true" size={14} />
-        volume 연결 추가
+        볼륨 연결 추가
       </Button>
     </div>
   );
@@ -443,7 +443,7 @@ function ServiceFields({
           </Fieldset.Content>
         </Fieldset.Root>
         <Fieldset.Root appearance="plain">
-          <Fieldset.Legend>volume 연결</Fieldset.Legend>
+          <Fieldset.Legend>볼륨 연결</Fieldset.Legend>
           <Fieldset.Content>
             <VolumeRows
               onChange={(volumes) => onChange({ ...service, volumes })}
@@ -453,11 +453,11 @@ function ServiceFields({
           </Fieldset.Content>
         </Fieldset.Root>
         <Fieldset.Root appearance="plain">
-          <Fieldset.Legend>network 연결</Fieldset.Legend>
+          <Fieldset.Legend>네트워크 연결</Fieldset.Legend>
           <Fieldset.Content>
             <StringRows
-              addLabel="network 연결 추가"
-              ariaLabel={`서비스 ${index + 1} network`}
+              addLabel="네트워크 연결 추가"
+              ariaLabel={`서비스 ${index + 1} 네트워크`}
               onChange={(networks) => onChange({ ...service, networks })}
               placeholder="frontend"
               values={service.networks}
@@ -631,14 +631,14 @@ export function BuilderComposeDialog({
                       </Fieldset.Root>
                       <div className="overseer-form-section-grid">
                         <Fieldset.Root appearance="plain">
-                          <Fieldset.Legend>network</Fieldset.Legend>
+                          <Fieldset.Legend>네트워크</Fieldset.Legend>
                           <Fieldset.Description>
-                            기본 bridge network를 만듭니다.
+                            기본 bridge 네트워크를 만듭니다.
                           </Fieldset.Description>
                           <Fieldset.Content>
                             <StringRows
-                              addLabel="network 추가"
-                              ariaLabel="Compose network 이름"
+                              addLabel="네트워크 추가"
+                              ariaLabel="Compose 네트워크 이름"
                               onChange={(networks) =>
                                 setSpec((current) => ({ ...current, networks }))
                               }
@@ -648,14 +648,14 @@ export function BuilderComposeDialog({
                           </Fieldset.Content>
                         </Fieldset.Root>
                         <Fieldset.Root appearance="plain">
-                          <Fieldset.Legend>named volume</Fieldset.Legend>
+                          <Fieldset.Legend>이름 있는 볼륨</Fieldset.Legend>
                           <Fieldset.Description>
-                            Docker가 관리하는 volume을 만듭니다.
+                            Docker가 관리하는 볼륨을 만듭니다.
                           </Fieldset.Description>
                           <Fieldset.Content>
                             <StringRows
-                              addLabel="volume 추가"
-                              ariaLabel="Compose volume 이름"
+                              addLabel="볼륨 추가"
+                              ariaLabel="Compose 볼륨 이름"
                               onChange={(volumes) =>
                                 setSpec((current) => ({ ...current, volumes }))
                               }

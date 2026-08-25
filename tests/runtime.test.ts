@@ -448,7 +448,7 @@ describe("LimaDockerRuntime volume and network inspection", () => {
     const runtime = new LimaDockerRuntime(command);
 
     await expect(runtime.getVolume("app-data")).rejects.toThrow(
-      "Docker 볼륨 Inspect 정보를 해석하지 못했습니다.",
+      "Docker 볼륨 원본 정보를 해석하지 못했습니다.",
     );
   });
 });

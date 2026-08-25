@@ -432,7 +432,7 @@ export function ComposeProjectDetailPage({
             <section className="overseer-detail-section">
               <dl className="overseer-detail-definitions">
                 <div>
-                  <dt>Config hash</dt>
+                  <dt>구성 해시</dt>
                   <dd>
                     <code>{detail.configuration.configHash}</code>
                   </dd>

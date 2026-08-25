@@ -180,7 +180,7 @@ export class StartupPrerequisiteService implements StartupPrerequisiteController
       {
         automaticInstall: false,
         automaticInstallUnavailableReason:
-          "Homebrew는 관리자 인증이 필요하므로 Terminal에서 설치해야 합니다.",
+          "Homebrew는 관리자 인증이 필요하므로 터미널에서 설치해야 합니다.",
         description: "Docker CLI와 Lima를 설치하는 macOS 패키지 관리자입니다.",
         id: "homebrew",
         installCommand: HOMEBREW_INSTALL_COMMAND,
@@ -424,7 +424,7 @@ export class StartupPrerequisiteService implements StartupPrerequisiteController
     if (target === "homebrew") {
       throw new ExpectedError(
         "homebrew_manual_install_required",
-        "Homebrew는 Terminal에서 공식 설치 명령을 실행하십시오.",
+        "Homebrew는 터미널에서 공식 설치 명령을 실행하십시오.",
         409,
       );
     }

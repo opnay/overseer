@@ -87,7 +87,7 @@ function createController(): RuntimeController {
         proxies: { noProxy: [] },
         registryMirrors: [],
       },
-      message: "저장하면 Docker daemon만 다시 시작합니다.",
+      message: "저장하면 Docker Engine만 다시 시작합니다.",
       path: "~/.config/docker/daemon.json",
       source: "file" as const,
     })),
@@ -344,7 +344,7 @@ describe("API boundary", () => {
         prerequisites: [
           {
             automaticInstall: false,
-            automaticInstallUnavailableReason: "Terminal에서 설치하십시오.",
+            automaticInstallUnavailableReason: "터미널에서 설치하십시오.",
             description: "패키지 관리자",
             id: "homebrew",
             installCommand: "install brew",

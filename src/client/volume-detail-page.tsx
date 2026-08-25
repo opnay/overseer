@@ -15,12 +15,12 @@ type VolumeDetailSection = "inspect" | "labels" | "overview" | "settings";
 
 const sectionPresentation: Record<VolumeDetailSection, { description: string; label: string }> = {
   inspect: {
-    description: "Docker Engine이 반환한 전체 볼륨 inspect JSON을 확인합니다.",
-    label: "Inspect",
+    description: "Docker Engine이 반환한 전체 볼륨 원본 JSON을 확인합니다.",
+    label: "원본 정보",
   },
   labels: {
-    description: "볼륨에 저장된 Docker Label을 확인합니다.",
-    label: "Label",
+    description: "볼륨에 저장된 Docker 라벨을 확인합니다.",
+    label: "라벨",
   },
   overview: {
     description: "볼륨의 식별자, 드라이버와 데이터 저장 위치를 확인합니다.",
@@ -184,16 +184,16 @@ export function VolumeDetailPage({ name, refreshToken }: VolumeDetailPageProps) 
           ) : null}
 
           {section === "labels" ? (
-            <KeyValues empty="Label이 없습니다." values={detail.labels} />
+            <KeyValues empty="라벨이 없습니다." values={detail.labels} />
           ) : null}
 
           {section === "inspect" ? (
             <LogViewer
-              ariaLabel="볼륨 Inspect JSON"
+              ariaLabel="볼륨 원본 JSON"
               context={<code>docker volume inspect {detail.name}</code>}
-              emptyMessage="Inspect 정보가 없습니다."
+              emptyMessage="원본 정보가 없습니다."
               height="expanded"
-              optionsLabel="Inspect JSON 보기 옵션"
+              optionsLabel="원본 JSON 보기 옵션"
               value={detail.inspectJson}
             />
           ) : null}
