@@ -1,6 +1,8 @@
 import { Button } from "@opnay/city-ds-react/button";
+import { Dialog } from "@opnay/city-ds-react/dialog";
 import { Menu } from "@opnay/city-ds-react/menu";
-import { SlidersHorizontal } from "lucide-react";
+import { Tooltip } from "@opnay/city-ds-react/tooltip";
+import { Maximize2, SlidersHorizontal } from "lucide-react";
 import { Fragment, useState, type ReactNode, type Ref } from "react";
 
 export type LogFontSize = "large" | "medium" | "small";
@@ -102,14 +104,16 @@ export function LogViewer({
   value: string;
 }) {
   const [fontSize, setFontSize] = useState<LogFontSize>(DEFAULT_LOG_FONT_SIZE);
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
   const [wrapped, setWrapped] = useState(false);
 
-  return (
+  const renderViewer = (fullscreen = false) => (
     <section
       aria-busy={loading}
-      aria-label={ariaLabel}
+      aria-label={fullscreen ? `${ariaLabel} 전체 화면` : ariaLabel}
       className="overseer-log-viewer"
+      data-fullscreen={fullscreen ? "true" : undefined}
       data-height={height}
     >
       <div className="overseer-log-viewer-toolbar">
@@ -125,6 +129,24 @@ export function LogViewer({
             showLineNumbers={showLineNumbers}
             wrapped={wrapped}
           />
+          {!fullscreen ? (
+            <Tooltip.Root>
+              <Tooltip.Trigger
+                render={
+                  <Dialog.Trigger
+                    render={<Button aria-label="크게 보기" iconOnly size="sm" variant="ghost" />}
+                  >
+                    <Maximize2 aria-hidden="true" size={14} />
+                  </Dialog.Trigger>
+                }
+              />
+              <Tooltip.Portal>
+                <Tooltip.Positioner align="end" side="top" sideOffset={6}>
+                  <Tooltip.Popup>크게 보기</Tooltip.Popup>
+                </Tooltip.Positioner>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          ) : null}
         </div>
       </div>
       {loading && !value ? (
@@ -137,7 +159,7 @@ export function LogViewer({
           data-font-size={fontSize}
           data-line-numbers={showLineNumbers}
           data-wrap={wrapped}
-          ref={scrollRef}
+          ref={fullscreen === fullscreenOpen ? scrollRef : undefined}
           tabIndex={0}
         >
           <LogCodeContent showLineNumbers={showLineNumbers} value={value} />
@@ -146,6 +168,31 @@ export function LogViewer({
         <div className="overseer-log-viewer-empty">{emptyMessage}</div>
       )}
     </section>
+  );
+
+  return (
+    <Dialog.Root onOpenChange={setFullscreenOpen} open={fullscreenOpen}>
+      {renderViewer()}
+      <Dialog.Portal>
+        <Dialog.Backdrop className="overseer-log-viewer-fullscreen-backdrop" />
+        <Dialog.Viewport className="overseer-log-viewer-fullscreen-viewport">
+          <Dialog.Popup className="overseer-log-viewer-fullscreen-dialog" scroll="body" size="full">
+            <Dialog.Header>
+              <div>
+                <Dialog.Title>{ariaLabel}</Dialog.Title>
+                <Dialog.Description>로그를 창 전체에서 확인합니다.</Dialog.Description>
+              </div>
+            </Dialog.Header>
+            <Dialog.Body className="overseer-log-viewer-fullscreen-body">
+              {renderViewer(true)}
+            </Dialog.Body>
+            <Dialog.Footer>
+              <Dialog.Close render={<Button variant="outline" />}>닫기</Dialog.Close>
+            </Dialog.Footer>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

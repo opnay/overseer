@@ -1769,6 +1769,41 @@
     gap: var(--city-space-1);
   }
 
+  .overseer-log-viewer-fullscreen-backdrop,
+  .overseer-log-viewer-fullscreen-viewport {
+    position: fixed;
+    z-index: 60;
+    inset: 0;
+  }
+
+  .overseer-log-viewer-fullscreen-viewport {
+    padding: 0;
+  }
+
+  .overseer-log-viewer-fullscreen-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .overseer-log-viewer-fullscreen-body {
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .overseer-log-viewer[data-fullscreen="true"] {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
   .overseer-log-viewer-code {
     box-sizing: border-box;
     width: 100%;
@@ -1794,6 +1829,12 @@
   .overseer-log-viewer[data-height="expanded"] .overseer-log-viewer-code {
     min-height: 22rem;
     max-height: min(60vh, 42rem);
+  }
+
+  .overseer-log-viewer[data-fullscreen="true"] .overseer-log-viewer-code {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
   }
 
   .overseer-log-viewer-code code {
@@ -1879,6 +1920,10 @@
 
   .overseer-log-viewer[data-height="expanded"] .overseer-log-viewer-empty {
     min-height: 22rem;
+  }
+
+  .overseer-log-viewer[data-fullscreen="true"] .overseer-log-viewer-empty {
+    min-height: 0;
   }
 
   .overseer-log-viewer-code:focus-visible {
