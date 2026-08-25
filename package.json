@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "PORTLESS_PORT=1355 PORTLESS_HTTPS=0 PORTLESS_SYNC_HOSTS=0 portless run --name overseer vite --force",
     "dev:direct": "vite --force",
+    "dev:tauri:frontend": "vite --host 127.0.0.1 --port 1420 --strictPort --force",
     "build": "vite build",
     "start": "node src/server/start.ts",
     "format": "oxfmt .",
@@ -13,6 +14,9 @@
     "lint": "oxlint src tests vite.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
+    "tauri": "tauri",
+    "tauri:build": "tauri build --bundles app",
+    "tauri:dev": "tauri dev",
     "test:ci": "vitest run",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:ci && pnpm build"
   },
@@ -26,6 +30,7 @@
   },
   "devDependencies": {
     "@hono/vite-dev-server": "0.26.1",
+    "@tauri-apps/cli": "2.11.4",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.6",
