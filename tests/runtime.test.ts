@@ -333,6 +333,55 @@ describe("LimaDockerRuntime image inspection", () => {
 });
 
 describe("LimaDockerRuntime container configuration", () => {
+  it("returns full inspect JSON and newest-first sanitized Health Check history", async () => {
+    const inspected = {
+      ...inspectFixture(),
+      State: {
+        Health: {
+          FailingStreak: 2,
+          Log: [
+            {
+              End: "2026-08-25T01:00:01.000000000+09:00",
+              ExitCode: 0,
+              Output: "older check\n",
+              Start: "2026-08-25T01:00:00.000000000+09:00",
+            },
+            {
+              End: "2026-08-25T01:01:01.000000000+09:00",
+              ExitCode: 1,
+              Output: `\u001b[31mfailed\u001b[0m${"x".repeat(8_100)}`,
+              Start: "2026-08-25T01:01:00.000000000+09:00",
+            },
+          ],
+          Status: "unhealthy",
+        },
+        Running: true,
+      },
+    };
+    const command: CommandRunner = vi.fn(async (executable) =>
+      executable === "limactl"
+        ? { stderr: "", stdout: limaRow }
+        : { stderr: "", stdout: JSON.stringify([inspected]) },
+    );
+    const runtime = new LimaDockerRuntime(command);
+
+    const inspection = await runtime.getContainerInspection(inspected.Id);
+
+    expect(inspection.json).toContain('"Status": "unhealthy"');
+    expect(inspection.health).toMatchObject({
+      failingStreak: 2,
+      history: [
+        {
+          exitCode: 1,
+          output: expect.stringMatching(/^failedx+\n… 출력이 잘렸습니다\.$/),
+          startedAt: "2026-08-25T01:01:00.000000000+09:00",
+        },
+        { exitCode: 0, output: "older check" },
+      ],
+      status: "unhealthy",
+    });
+  });
+
   it("separates observed bind mounts from editable named volumes", async () => {
     const inspected = {
       ...inspectFixture(),

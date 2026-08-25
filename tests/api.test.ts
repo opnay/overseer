@@ -33,6 +33,14 @@ function createController(): RuntimeController {
       running: true,
       spec: { ...emptyContainerSpec(), image: "nginx:alpine", name: "web" },
     })),
+    getContainerInspection: vi.fn(async () => ({
+      health: {
+        failingStreak: 0,
+        history: [],
+        status: "healthy" as const,
+      },
+      json: '{\n  "Id": "container-id"\n}',
+    })),
     getContainers: vi.fn(async () => []),
     getComposeProject: vi.fn(async (name) => ({
       configFiles: ["/workspace/compose.yaml"],
@@ -647,6 +655,14 @@ describe("API boundary", () => {
     expect(detailResponse.status).toBe(200);
     await expect(detailResponse.json()).resolves.toMatchObject({
       container: { configHash: "a".repeat(64), id: "container-id" },
+    });
+
+    const inspectResponse = await app.request("/containers/container-id/inspect", {
+      headers: localHeaders,
+    });
+    expect(inspectResponse.status).toBe(200);
+    await expect(inspectResponse.json()).resolves.toMatchObject({
+      inspection: { health: { status: "healthy" }, json: expect.stringContaining("container-id") },
     });
 
     const spec = { ...emptyContainerSpec(), image: "nginx:alpine", name: "renamed" };

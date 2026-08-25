@@ -1,15 +1,24 @@
+import { Accordion } from "@opnay/city-ds-react/accordion";
 import { Alert } from "@opnay/city-ds-react/alert";
 import { Badge } from "@opnay/city-ds-react/badge";
+import { Button } from "@opnay/city-ds-react/button";
+import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
+import { Activity } from "lucide-react";
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import type {
   ContainerDetail,
+  ContainerHealth,
+  ContainerHealthStatus,
+  ContainerInspection,
   ContainerKeyValue,
   ContainerMount,
   ContainerSummary,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
 import { composeProjectDetailPath } from "./routes.ts";
+import { formatDateTime } from "./date-time.ts";
+import { LogViewer } from "./log-display-options.tsx";
 
 interface ContainerDetailPageProps {
   id: string;
@@ -18,13 +27,28 @@ interface ContainerDetailPageProps {
   summary?: ContainerSummary;
 }
 
-type ContainerDetailSection = "environment" | "labels" | "network" | "overview" | "runtime";
+type ContainerDetailSection =
+  | "environment"
+  | "health"
+  | "inspect"
+  | "labels"
+  | "network"
+  | "overview"
+  | "runtime";
 
 const sectionPresentation: Record<ContainerDetailSection, { description: string; label: string }> =
   {
     environment: {
       description: "컨테이너 프로세스에 전달되는 환경 변수를 확인합니다.",
       label: "환경 변수",
+    },
+    health: {
+      description: "현재 Health 상태와 Docker가 보관한 최근 검사 결과를 확인합니다.",
+      label: "Health Check",
+    },
+    inspect: {
+      description: "Docker Engine이 반환한 전체 컨테이너 inspect JSON을 확인합니다.",
+      label: "Inspect",
     },
     labels: {
       description: "Overseer 예약 항목을 제외한 사용자 Label을 확인합니다.",
@@ -46,10 +70,21 @@ const sectionPresentation: Record<ContainerDetailSection, { description: string;
 const sectionOrder: ContainerDetailSection[] = [
   "overview",
   "runtime",
+  "health",
   "network",
   "environment",
   "labels",
+  "inspect",
 ];
+
+const healthStatusPresentation: Record<
+  ContainerHealthStatus,
+  { label: string; tone: "destructive" | "info" | "success" }
+> = {
+  healthy: { label: "정상", tone: "success" },
+  starting: { label: "확인 중", tone: "info" },
+  unhealthy: { label: "비정상", tone: "destructive" },
+};
 
 function followComposeLink(
   event: MouseEvent<HTMLAnchorElement>,
@@ -152,6 +187,93 @@ function KeyValues({ empty, values }: { empty: string; values: ContainerKeyValue
   );
 }
 
+function HealthCheckHistory({ health }: { health: ContainerHealth }) {
+  const status = healthStatusPresentation[health.status];
+  const latest = health.history[0];
+  return (
+    <>
+      <dl className="overseer-detail-definitions">
+        <Definition
+          label="현재 상태"
+          value={
+            <span className="overseer-settings-status-value">
+              <Badge dot size="sm" tone={status.tone} />
+              {status.label}
+            </span>
+          }
+        />
+        <Definition label="연속 실패" value={`${health.failingStreak}회`} />
+        <Definition
+          label="최근 검사"
+          value={latest ? formatDateTime(latest.startedAt) : "기록 없음"}
+        />
+      </dl>
+
+      <section className="overseer-detail-section">
+        <header>
+          <div>
+            <h3 className="city-text-subsection-title">실행 이력</h3>
+            <p>Docker가 보관한 최근 Health Check 결과입니다.</p>
+          </div>
+        </header>
+        {health.history.length === 0 ? (
+          <EmptyState.Root density="compact">
+            <EmptyState.Icon>
+              <Activity aria-hidden="true" />
+            </EmptyState.Icon>
+            <EmptyState.Title level={4}>Health Check 실행 기록이 없습니다.</EmptyState.Title>
+            <EmptyState.Description>
+              첫 검사가 끝나면 결과와 출력이 여기에 표시됩니다.
+            </EmptyState.Description>
+          </EmptyState.Root>
+        ) : (
+          <Accordion.Root
+            className="overseer-health-check-history"
+            defaultValue={["health-check-0"]}
+          >
+            {health.history.map((entry, index) => {
+              const succeeded = entry.exitCode === 0;
+              return (
+                <Accordion.Item key={`${entry.startedAt}-${index}`} value={`health-check-${index}`}>
+                  <Accordion.Header render={<h4 />}>
+                    <Accordion.Trigger>
+                      <span className="overseer-health-check-trigger">
+                        <Badge
+                          appearance="subtle"
+                          size="lg"
+                          tone={succeeded ? "success" : "destructive"}
+                        >
+                          {succeeded ? "성공" : "실패"}
+                        </Badge>
+                        <time dateTime={entry.startedAt}>{formatDateTime(entry.startedAt)}</time>
+                        <code>exit {entry.exitCode}</code>
+                      </span>
+                    </Accordion.Trigger>
+                  </Accordion.Header>
+                  <Accordion.Panel>
+                    <LogViewer
+                      ariaLabel={`${formatDateTime(entry.startedAt)} Health Check 출력`}
+                      context={
+                        <span>
+                          종료 <time dateTime={entry.endedAt}>{formatDateTime(entry.endedAt)}</time>
+                        </span>
+                      }
+                      emptyMessage="Health Check 출력이 없습니다."
+                      height="compact"
+                      optionsLabel="Health Check 출력 옵션"
+                      value={entry.output}
+                    />
+                  </Accordion.Panel>
+                </Accordion.Item>
+              );
+            })}
+          </Accordion.Root>
+        )}
+      </section>
+    </>
+  );
+}
+
 export function ContainerDetailPage({
   id,
   onOpenCompose,
@@ -160,9 +282,18 @@ export function ContainerDetailPage({
 }: ContainerDetailPageProps) {
   const [detail, setDetail] = useState<ContainerDetail>();
   const [error, setError] = useState<string>();
+  const [inspection, setInspection] = useState<ContainerInspection>();
+  const [inspectionAttempt, setInspectionAttempt] = useState(0);
+  const [inspectionError, setInspectionError] = useState<string>();
+  const [inspectionLoading, setInspectionLoading] = useState(false);
   const [section, setSection] = useState<ContainerDetailSection>("overview");
 
-  useEffect(() => setSection("overview"), [id]);
+  useEffect(() => {
+    setInspection(undefined);
+    setInspectionAttempt(0);
+    setInspectionError(undefined);
+    setSection("overview");
+  }, [id]);
 
   useEffect(() => {
     let active = true;
@@ -181,6 +312,30 @@ export function ContainerDetailPage({
       active = false;
     };
   }, [id, refreshToken]);
+
+  const inspectionVisible = section === "health" || section === "inspect";
+  useEffect(() => {
+    if (!inspectionVisible) return;
+    let active = true;
+    setInspection(undefined);
+    setInspectionError(undefined);
+    setInspectionLoading(true);
+    void apiRequest<{ inspection: ContainerInspection }>(
+      `/containers/${encodeURIComponent(id)}/inspect`,
+    )
+      .then(({ inspection: value }) => active && setInspection(value))
+      .catch(
+        (loadError: unknown) =>
+          active &&
+          setInspectionError(
+            loadError instanceof Error ? loadError.message : "Inspect 정보를 불러오지 못했습니다.",
+          ),
+      )
+      .finally(() => active && setInspectionLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [id, inspectionAttempt, inspectionVisible, refreshToken]);
 
   if (error) {
     return (
@@ -349,6 +504,68 @@ export function ContainerDetailPage({
               />
               <Definition label="마운트" value={<Mounts mounts={detail.mounts} />} wide />
             </dl>
+          ) : null}
+
+          {inspectionVisible && inspectionError ? (
+            <Alert.Root tone="destructive">
+              <Alert.Title level={3}>Inspect 정보를 불러오지 못했습니다.</Alert.Title>
+              <Alert.Description>{inspectionError}</Alert.Description>
+              <Alert.Action>
+                <Button
+                  onClick={() => setInspectionAttempt((value) => value + 1)}
+                  size="sm"
+                  variant="outline"
+                >
+                  다시 시도
+                </Button>
+              </Alert.Action>
+            </Alert.Root>
+          ) : null}
+
+          {section === "health" && inspectionLoading ? (
+            <section aria-label="Health Check 불러오는 중" className="overseer-detail-loading">
+              <Skeleton />
+              <Skeleton />
+              <Skeleton className="overseer-loading-table" />
+            </section>
+          ) : null}
+
+          {section === "health" && inspection && !inspectionError ? (
+            inspection.health ? (
+              <HealthCheckHistory health={inspection.health} />
+            ) : (
+              <EmptyState.Root>
+                <EmptyState.Icon>
+                  <Activity aria-hidden="true" />
+                </EmptyState.Icon>
+                <EmptyState.Title level={3}>Health Check가 설정되지 않았습니다.</EmptyState.Title>
+                <EmptyState.Description>
+                  이미지 또는 Compose에 healthcheck를 추가하면 상태와 실행 이력을 확인할 수
+                  있습니다.
+                </EmptyState.Description>
+              </EmptyState.Root>
+            )
+          ) : null}
+
+          {section === "inspect" && !inspectionError ? (
+            <section className="overseer-detail-section">
+              <Alert.Root appearance="subtle" tone="warning">
+                <Alert.Title level={3}>민감한 설정이 포함될 수 있습니다.</Alert.Title>
+                <Alert.Description>
+                  Inspect JSON에는 환경 변수, Label과 호스트 경로가 그대로 표시됩니다.
+                </Alert.Description>
+              </Alert.Root>
+              <LogViewer
+                ariaLabel="Docker inspect JSON"
+                context={<code>docker inspect {detail.id.slice(0, 12)}</code>}
+                emptyMessage="Inspect 정보가 없습니다."
+                height="expanded"
+                loading={inspectionLoading}
+                loadingMessage="Inspect JSON을 불러오는 중…"
+                optionsLabel="Inspect 보기 옵션"
+                value={inspection?.json ?? ""}
+              />
+            </section>
           ) : null}
 
           {section === "environment" ? (

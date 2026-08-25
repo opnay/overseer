@@ -1027,6 +1027,27 @@
     border-top: 1px solid var(--city-color-border);
   }
 
+  .overseer-health-check-trigger {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--city-space-2) var(--city-space-3);
+  }
+
+  .overseer-health-check-trigger time {
+    color: var(--city-color-muted-foreground);
+    font-family: var(--city-font-family-mono);
+    font-size: var(--city-font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .overseer-health-check-trigger code {
+    margin-left: auto;
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
   .overseer-detail-key-values > div {
     padding: var(--city-space-2-5) 0;
     border-bottom: 1px solid var(--city-color-border);

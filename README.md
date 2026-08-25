@@ -79,6 +79,7 @@ pnpm check
 - `DELETE /api/operations/:id`: 대기 작업 취소
 - `POST /api/operations/:id/retry`: 실패 작업을 새 작업으로 재접수
 - `GET /api/containers/:id`: 수정용 설정과 config hash
+- `GET /api/containers/:id/inspect`: 전체 Docker inspect JSON과 Health Check 이력
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
 - `GET /api/runtime/configuration`: 실제 VM 설정 또는 기본 설정과 드라이버 가용성
 - `POST /api/runtime/start`: 중지된 VM 시작 또는 선택 설정으로 첫 VM 생성

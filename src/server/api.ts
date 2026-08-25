@@ -463,6 +463,13 @@ export function createApi(
       container: await controller.getContainer(requireContainerReference(context.req.param("id"))),
     }),
   );
+  app.get("/containers/:id/inspect", async (context) =>
+    context.json({
+      inspection: await controller.getContainerInspection(
+        requireContainerReference(context.req.param("id")),
+      ),
+    }),
+  );
   app.patch("/containers/:id", async (context) => {
     const id = requireContainerReference(context.req.param("id"));
     const input = parseUpdateContainerInput(await readObject(context));

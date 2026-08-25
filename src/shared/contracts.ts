@@ -176,6 +176,26 @@ export interface ContainerDetail {
   spec: ContainerSpecInput;
 }
 
+export type ContainerHealthStatus = "healthy" | "starting" | "unhealthy";
+
+export interface ContainerHealthCheck {
+  endedAt: string;
+  exitCode: number;
+  output: string;
+  startedAt: string;
+}
+
+export interface ContainerHealth {
+  failingStreak: number;
+  history: ContainerHealthCheck[];
+  status: ContainerHealthStatus;
+}
+
+export interface ContainerInspection {
+  health?: ContainerHealth;
+  json: string;
+}
+
 export interface UpdateContainerInput {
   expectedConfigHash: string;
   spec: ContainerSpecInput;

@@ -1235,7 +1235,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "엔진 설정", level: 2 })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "런타임 시작" }));
+    await user.click(await screen.findByRole("button", { name: "런타임 시작" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
@@ -2221,6 +2221,7 @@ describe("App", () => {
 
   it("navigates from the container list to the container detail page", async () => {
     const user = userEvent.setup();
+    let includeHealth = true;
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
       containers: [
@@ -2245,41 +2246,66 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).includes("/api/containers/container-id")
-          ? jsonResponse({
-              container: {
-                configHash: "a".repeat(64),
-                id: "container-id",
-                mounts: [
-                  {
-                    containerPath: "/app/data",
-                    hostPath: "/home/test.guest/.local/share/overseer/compose/demo/data",
-                    readOnly: false,
-                    type: "bind",
-                  },
-                  {
-                    containerPath: "/audit",
-                    readOnly: true,
-                    type: "volume",
-                    volume: "audit-data",
-                  },
-                ],
-                replacementBlockers: [],
-                running: true,
-                spec: {
-                  ...emptyContainerSpec(),
-                  command: ["sleep", "600"],
-                  environment: [{ key: "MODE", value: "worker" }],
-                  image: "alpine:3.23",
-                  labels: [{ key: "team", value: "platform" }],
-                  name: "worker",
-                  networks: ["bridge"],
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/containers/container-id/inspect")) {
+          return jsonResponse({
+            inspection: {
+              ...(includeHealth
+                ? {
+                    health: {
+                      failingStreak: 1,
+                      history: [
+                        {
+                          endedAt: "2026-08-25T01:01:01.000000000+09:00",
+                          exitCode: 1,
+                          output: "service unavailable",
+                          startedAt: "2026-08-25T01:01:00.000000000+09:00",
+                        },
+                      ],
+                      status: "unhealthy",
+                    },
+                  }
+                : {}),
+              json: '{\n  "Id": "container-id",\n  "State": { "Status": "running" }\n}',
+            },
+          });
+        }
+        if (url.endsWith("/api/containers/container-id")) {
+          return jsonResponse({
+            container: {
+              configHash: "a".repeat(64),
+              id: "container-id",
+              mounts: [
+                {
+                  containerPath: "/app/data",
+                  hostPath: "/home/test.guest/.local/share/overseer/compose/demo/data",
+                  readOnly: false,
+                  type: "bind",
                 },
+                {
+                  containerPath: "/audit",
+                  readOnly: true,
+                  type: "volume",
+                  volume: "audit-data",
+                },
+              ],
+              replacementBlockers: [],
+              running: true,
+              spec: {
+                ...emptyContainerSpec(),
+                command: ["sleep", "600"],
+                environment: [{ key: "MODE", value: "worker" }],
+                image: "alpine:3.23",
+                labels: [{ key: "team", value: "platform" }],
+                name: "worker",
+                networks: ["bridge"],
               },
-            })
-          : jsonResponse(dashboard),
-      ),
+            },
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
     );
     window.history.replaceState(null, "", "/containers");
     render(<App />);
@@ -2300,6 +2326,33 @@ describe("App", () => {
     await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
     expect(screen.getByRole("heading", { name: "실행 설정", level: 2 })).toBeInTheDocument();
     expect(screen.getByText("sleep 600")).toBeInTheDocument();
+
+    await user.click(within(containerGroup).getByRole("button", { name: "Health Check" }));
+    expect(await screen.findByText("비정상")).toBeInTheDocument();
+    expect(screen.getByText("1회")).toBeInTheDocument();
+    expect(screen.getAllByText("2026. 08. 25 01:01:00")).toHaveLength(2);
+    expect(
+      await screen.findByRole("region", {
+        name: "2026. 08. 25 01:01:00 Health Check 출력",
+      }),
+    ).toHaveTextContent("service unavailable");
+    expect(screen.getByRole("button", { name: "Health Check 출력 옵션" })).toBeInTheDocument();
+
+    await user.click(within(containerGroup).getByRole("button", { name: "Inspect" }));
+    expect(screen.getByText("민감한 설정이 포함될 수 있습니다.")).toBeInTheDocument();
+    const inspectViewer = await screen.findByRole("region", { name: "Docker inspect JSON" });
+    expect(inspectViewer).toHaveTextContent('"Id": "container-id"');
+    expect(screen.getByRole("button", { name: "Inspect 보기 옵션" })).toBeInTheDocument();
+
+    includeHealth = false;
+    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("button", { name: "Health Check" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "Health Check가 설정되지 않았습니다.",
+        level: 3,
+      }),
+    ).toBeInTheDocument();
 
     await user.click(within(containerGroup).getByRole("button", { name: "연결" }));
     expect(screen.getByText("bridge")).toBeInTheDocument();

@@ -9,6 +9,9 @@ import type {
   ComposeProjectSummary,
   ComposeServiceSummary,
   ContainerDetail,
+  ContainerHealth,
+  ContainerHealthStatus,
+  ContainerInspection,
   ContainerKeyValue,
   ContainerMount,
   ContainerPortMapping,
@@ -57,6 +60,7 @@ export interface RuntimeController {
   createNetwork(input: CreateNamedResourceInput, progress?: OperationProgress): Promise<void>;
   createVolume(input: CreateNamedResourceInput, progress?: OperationProgress): Promise<void>;
   getContainer(id: string): Promise<ContainerDetail>;
+  getContainerInspection(id: string): Promise<ContainerInspection>;
   getContainerLogs(id: string): Promise<string>;
   getContainers(): Promise<ContainerSummary[]>;
   getComposeProject(name: string): Promise<ComposeProjectDetail>;
@@ -257,7 +261,19 @@ interface DockerInspectContainer {
   Mounts?: DockerInspectMount[];
   Name: string;
   NetworkSettings: { Networks?: Record<string, unknown> | null };
-  State: { Running: boolean };
+  State: {
+    Health?: {
+      FailingStreak?: number;
+      Log?: Array<{
+        End?: string;
+        ExitCode?: number;
+        Output?: string;
+        Start?: string;
+      }>;
+      Status?: string;
+    };
+    Running: boolean;
+  };
 }
 
 const LIMA_INSTANCE = process.env.OVERSEER_LIMA_INSTANCE ?? "overseer";
@@ -374,6 +390,54 @@ function dockerHubRepository(repositoryTags: string[]): string | undefined {
 
 function restartMode(value: string): ContainerSpecInput["restartPolicy"]["mode"] {
   return value === "always" || value === "on-failure" || value === "unless-stopped" ? value : "no";
+}
+
+function parseContainerInspectOutput(stdout: string): DockerInspectContainer {
+  try {
+    const value = JSON.parse(stdout) as unknown;
+    if (!Array.isArray(value) || !value[0]) throw new Error("empty inspect output");
+    return value[0] as DockerInspectContainer;
+  } catch {
+    throw new ExpectedError(
+      "invalid_container_output",
+      "Docker 컨테이너 설정을 해석하지 못했습니다.",
+      503,
+    );
+  }
+}
+
+function containerHealthStatus(value: string | undefined): ContainerHealthStatus {
+  return value === "healthy" || value === "unhealthy" ? value : "starting";
+}
+
+function healthOutput(value: string | undefined): string {
+  const output = stripVTControlCharacters(value ?? "").trimEnd();
+  const limit = 8_000;
+  return output.length > limit ? `${output.slice(0, limit)}\n… 출력이 잘렸습니다.` : output;
+}
+
+function containerHealth(inspected: DockerInspectContainer): ContainerHealth | undefined {
+  const health = inspected.State.Health;
+  if (!health) return undefined;
+  return {
+    failingStreak:
+      typeof health.FailingStreak === "number" && Number.isSafeInteger(health.FailingStreak)
+        ? Math.max(0, health.FailingStreak)
+        : 0,
+    history: (health.Log ?? [])
+      .slice(-50)
+      .reverse()
+      .map((entry) => ({
+        endedAt: entry.End ?? "",
+        exitCode:
+          typeof entry.ExitCode === "number" && Number.isSafeInteger(entry.ExitCode)
+            ? entry.ExitCode
+            : -1,
+        output: healthOutput(entry.Output),
+        startedAt: entry.Start ?? "",
+      })),
+    status: containerHealthStatus(health.Status),
+  };
 }
 
 function configHash(spec: ContainerSpecInput): string {
@@ -590,20 +654,7 @@ export class LimaDockerRuntime implements RuntimeController {
   }
 
   async getContainer(id: string): Promise<ContainerDetail> {
-    const result = await this.docker(["container", "inspect", id]);
-    let inspected: DockerInspectContainer;
-    try {
-      const value = JSON.parse(result.stdout) as DockerInspectContainer[];
-      const first = value[0];
-      if (!first) throw new Error("empty inspect output");
-      inspected = first;
-    } catch {
-      throw new ExpectedError(
-        "invalid_container_output",
-        "Docker 컨테이너 설정을 해석하지 못했습니다.",
-        503,
-      );
-    }
+    const inspected = await this.inspectContainer(id);
 
     const blockers: string[] = [];
     const labels = inspected.Config.Labels ?? {};
@@ -700,6 +751,15 @@ export class LimaDockerRuntime implements RuntimeController {
       replacementBlockers: [...new Set(blockers)],
       running: inspected.State.Running,
       spec,
+    };
+  }
+
+  async getContainerInspection(id: string): Promise<ContainerInspection> {
+    const inspected = await this.inspectContainer(id);
+    const health = containerHealth(inspected);
+    return {
+      ...(health ? { health } : {}),
+      json: JSON.stringify(inspected, null, 2),
     };
   }
 
@@ -1377,6 +1437,11 @@ export class LimaDockerRuntime implements RuntimeController {
     } catch {
       // Preserve the original operation failure.
     }
+  }
+
+  private async inspectContainer(id: string): Promise<DockerInspectContainer> {
+    const result = await this.docker(["container", "inspect", id]);
+    return parseContainerInspectOutput(result.stdout);
   }
 
   private async startRuntimeOnce(
