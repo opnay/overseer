@@ -3,9 +3,21 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
-use tauri::Manager;
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::TrayIconBuilder,
+    Manager,
+};
+
+const MAIN_WINDOW_LABEL: &str = "main";
+const MENU_HIDE_ID: &str = "menu-hide";
+const TRAY_OPEN_ID: &str = "tray-open";
+const TRAY_QUIT_ID: &str = "tray-quit";
 
 struct DesktopApiProcess {
     child: Child,
@@ -116,6 +128,83 @@ impl Drop for DesktopApiProcess {
 
 struct DesktopApiState(Arc<Mutex<DesktopApiProcess>>);
 
+#[derive(Default)]
+struct AppLifecycleState {
+    allow_exit: AtomicBool,
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        eprintln!("main window를 찾지 못했습니다.");
+        return;
+    };
+    if let Err(error) = window
+        .show()
+        .and_then(|_| window.unminimize())
+        .and_then(|_| window.set_focus())
+    {
+        eprintln!("main window를 열지 못했습니다: {error}");
+    }
+}
+
+fn hide_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        if let Err(error) = window.hide() {
+            eprintln!("main window를 숨기지 못했습니다: {error}");
+        }
+    }
+}
+
+fn setup_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let menu = Menu::default(app)?;
+    let items = menu.items()?;
+    let app_submenu = items
+        .first()
+        .and_then(|item| item.as_submenu())
+        .expect("Tauri default macOS app menu is missing");
+    let quit_position = app_submenu
+        .items()?
+        .len()
+        .checked_sub(1)
+        .expect("Tauri default macOS quit item is missing");
+    app_submenu.remove_at(quit_position)?;
+    let hide = MenuItem::with_id(
+        app,
+        MENU_HIDE_ID,
+        "Overseer 윈도우 닫기",
+        true,
+        Some("Cmd+Q"),
+    )?;
+    app_submenu.insert(&hide, quit_position)?;
+    Ok(menu)
+}
+
+fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, TRAY_OPEN_ID, "Overseer 열기", true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Overseer 종료", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &separator, &quit])?;
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+
+    TrayIconBuilder::with_id("overseer")
+        .icon(icon)
+        .icon_as_template(true)
+        .menu(&menu)
+        .on_menu_event(|app, event| {
+            if event.id() == TRAY_OPEN_ID {
+                show_main_window(app);
+            } else if event.id() == TRAY_QUIT_ID {
+                app.state::<AppLifecycleState>()
+                    .allow_exit
+                    .store(true, Ordering::SeqCst);
+                app.exit(0);
+            }
+        })
+        .tooltip("Overseer")
+        .build(app)?;
+    Ok(())
+}
+
 fn sidecar_command_path() -> Result<std::ffi::OsString, String> {
     let mut paths = vec![
         PathBuf::from("/opt/homebrew/bin"),
@@ -168,14 +257,45 @@ async fn api_request(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        .menu(setup_app_menu)
+        .on_menu_event(|app, event| {
+            if event.id() == MENU_HIDE_ID {
+                hide_main_window(app);
+            }
+        })
         .setup(|app| {
             app.manage(DesktopApiState(Arc::new(Mutex::new(
                 DesktopApiProcess::start()?,
             ))));
+            app.manage(AppLifecycleState::default());
+            setup_tray(app)?;
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if window.label() == MAIN_WINDOW_LABEL {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    if let Err(error) = window.hide() {
+                        eprintln!("main window를 숨기지 못했습니다: {error}");
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![api_request])
-        .run(tauri::generate_context!())
-        .expect("error while running Overseer");
+        .build(tauri::generate_context!())
+        .expect("error while building Overseer");
+
+    app.run(|app, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            if !app
+                .state::<AppLifecycleState>()
+                .allow_exit
+                .load(Ordering::SeqCst)
+            {
+                api.prevent_exit();
+                hide_main_window(app);
+            }
+        }
+    });
 }
