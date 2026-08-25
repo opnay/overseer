@@ -1,8 +1,10 @@
 import type {
   DockerDaemonAddressPool,
+  DockerDaemonConfigurationSection,
   DockerDaemonConfigurationSnapshot,
   DockerDaemonLogDriver,
   UpdateDockerDaemonConfigurationInput,
+  UpdateDockerDaemonConfigurationSectionInput,
 } from "../shared/contracts.ts";
 
 const MANAGED_KEYS = new Set([
@@ -40,10 +42,36 @@ export interface DockerDaemonConfigurationForm {
 export interface DockerDaemonConfigurationErrors {
   additionalJson?: string;
   addressPools?: string;
-  form?: string;
   logMaxFile?: string;
   maxConcurrentDownloads?: string;
   maxConcurrentUploads?: string;
+}
+
+const formSectionByKey: Record<
+  keyof DockerDaemonConfigurationForm,
+  DockerDaemonConfigurationSection
+> = {
+  additionalJson: "advanced",
+  addressPools: "network",
+  debug: "stability",
+  dns: "network",
+  httpProxy: "proxy",
+  httpsProxy: "proxy",
+  insecureRegistries: "registry",
+  liveRestore: "stability",
+  logDriver: "logging",
+  logMaxFile: "logging",
+  logMaxSize: "logging",
+  maxConcurrentDownloads: "transfer",
+  maxConcurrentUploads: "transfer",
+  noProxy: "proxy",
+  registryMirrors: "registry",
+};
+
+export function dockerDaemonConfigurationFormSection(
+  key: keyof DockerDaemonConfigurationForm,
+): DockerDaemonConfigurationSection {
+  return formSectionByKey[key];
 }
 
 function lines(values: string[]): string {
@@ -127,6 +155,172 @@ function validAdditionalJson(value: string): string | undefined {
   } catch {
     return "유효한 JSON 객체를 입력하십시오.";
   }
+}
+
+export function validateDockerDaemonConfigurationSection(
+  form: DockerDaemonConfigurationForm,
+  section: DockerDaemonConfigurationSection,
+): {
+  errors: DockerDaemonConfigurationErrors;
+  input?: UpdateDockerDaemonConfigurationSectionInput;
+} {
+  if (section === "advanced") {
+    const error = validAdditionalJson(form.additionalJson);
+    return error
+      ? { errors: { additionalJson: error } }
+      : { errors: {}, input: { additionalJson: form.additionalJson, section } };
+  }
+  if (section === "stability") {
+    return {
+      errors: {},
+      input: {
+        configuration: { debug: form.debug, liveRestore: form.liveRestore },
+        section,
+      },
+    };
+  }
+  if (section === "logging") {
+    const logMaxFile = form.logMaxFile === null ? undefined : integer(form.logMaxFile, 1, 100);
+    if (form.logMaxFile !== null && logMaxFile === undefined) {
+      return { errors: { logMaxFile: "보관 파일 수는 1–100 사이의 정수여야 합니다." } };
+    }
+    return {
+      errors: {},
+      input: {
+        configuration: {
+          logDriver: form.logDriver,
+          ...(logMaxFile === undefined ? {} : { logMaxFile }),
+          ...(form.logMaxSize.trim() ? { logMaxSize: form.logMaxSize.trim() } : {}),
+        },
+        section,
+      },
+    };
+  }
+  if (section === "network") {
+    const parsedAddressPools = addressPools(form.addressPools);
+    if (!parsedAddressPools) {
+      return {
+        errors: { addressPools: "한 줄에 CIDR과 서브넷 크기를 쉼표로 구분하십시오." },
+      };
+    }
+    return {
+      errors: {},
+      input: {
+        configuration: { defaultAddressPools: parsedAddressPools, dns: splitLines(form.dns) },
+        section,
+      },
+    };
+  }
+  if (section === "registry") {
+    return {
+      errors: {},
+      input: {
+        configuration: {
+          insecureRegistries: splitLines(form.insecureRegistries),
+          registryMirrors: splitLines(form.registryMirrors),
+        },
+        section,
+      },
+    };
+  }
+  if (section === "proxy") {
+    return {
+      errors: {},
+      input: {
+        configuration: {
+          proxies: {
+            ...(form.httpProxy.trim() ? { httpProxy: form.httpProxy.trim() } : {}),
+            ...(form.httpsProxy.trim() ? { httpsProxy: form.httpsProxy.trim() } : {}),
+            noProxy: splitLines(form.noProxy),
+          },
+        },
+        section,
+      },
+    };
+  }
+  const maxConcurrentDownloads = integer(form.maxConcurrentDownloads, 0, 100);
+  const maxConcurrentUploads = integer(form.maxConcurrentUploads, 0, 100);
+  const errors: DockerDaemonConfigurationErrors = {};
+  if (maxConcurrentDownloads === undefined) {
+    errors.maxConcurrentDownloads = "동시 다운로드 수는 0–100 사이의 정수여야 합니다.";
+  }
+  if (maxConcurrentUploads === undefined) {
+    errors.maxConcurrentUploads = "동시 업로드 수는 0–100 사이의 정수여야 합니다.";
+  }
+  return maxConcurrentDownloads === undefined || maxConcurrentUploads === undefined
+    ? { errors }
+    : {
+        errors: {},
+        input: {
+          configuration: { maxConcurrentDownloads, maxConcurrentUploads },
+          section: "transfer",
+        },
+      };
+}
+
+export function resetDockerDaemonConfigurationSection(
+  form: DockerDaemonConfigurationForm,
+  snapshot: DockerDaemonConfigurationSnapshot,
+  section: DockerDaemonConfigurationSection,
+): DockerDaemonConfigurationForm {
+  return copyDockerDaemonConfigurationSection(
+    form,
+    dockerDaemonConfigurationToForm(snapshot),
+    section,
+  );
+}
+
+function copyDockerDaemonConfigurationSection(
+  target: DockerDaemonConfigurationForm,
+  source: DockerDaemonConfigurationForm,
+  section: DockerDaemonConfigurationSection,
+): DockerDaemonConfigurationForm {
+  switch (section) {
+    case "advanced":
+      return { ...target, additionalJson: source.additionalJson };
+    case "logging":
+      return {
+        ...target,
+        logDriver: source.logDriver,
+        logMaxFile: source.logMaxFile,
+        logMaxSize: source.logMaxSize,
+      };
+    case "network":
+      return { ...target, addressPools: source.addressPools, dns: source.dns };
+    case "proxy":
+      return {
+        ...target,
+        httpProxy: source.httpProxy,
+        httpsProxy: source.httpsProxy,
+        noProxy: source.noProxy,
+      };
+    case "registry":
+      return {
+        ...target,
+        insecureRegistries: source.insecureRegistries,
+        registryMirrors: source.registryMirrors,
+      };
+    case "stability":
+      return { ...target, debug: source.debug, liveRestore: source.liveRestore };
+    case "transfer":
+      return {
+        ...target,
+        maxConcurrentDownloads: source.maxConcurrentDownloads,
+        maxConcurrentUploads: source.maxConcurrentUploads,
+      };
+  }
+}
+
+export function preserveDockerDaemonConfigurationDrafts(
+  fresh: DockerDaemonConfigurationForm,
+  draft: DockerDaemonConfigurationForm,
+  dirtySections: Iterable<DockerDaemonConfigurationSection>,
+): DockerDaemonConfigurationForm {
+  let merged = fresh;
+  for (const section of dirtySections) {
+    merged = copyDockerDaemonConfigurationSection(merged, draft, section);
+  }
+  return merged;
 }
 
 export function validateDockerDaemonConfiguration(form: DockerDaemonConfigurationForm): {

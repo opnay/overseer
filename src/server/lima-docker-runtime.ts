@@ -34,13 +34,18 @@ import type {
   RunContainerInput,
   RuntimeSnapshot,
   UpdateDockerDaemonConfigurationInput,
+  UpdateDockerDaemonConfigurationSectionInput,
   UpdateContainerInput,
   UpdateComposeBuilderInput,
   VolumeSummary,
 } from "../shared/contracts.ts";
 import { containerSpecNeedsReplacement } from "../shared/container-spec.ts";
 import { BuilderComposeService, type BuilderComposeRegistry } from "./builder-compose.ts";
-import { dockerDaemonJson, dockerDaemonSnapshot } from "./docker-daemon-configuration.ts";
+import {
+  dockerDaemonJson,
+  dockerDaemonSnapshot,
+  mergeDockerDaemonConfigurationSection,
+} from "./docker-daemon-configuration.ts";
 import { ExpectedError } from "./errors.ts";
 import type { OperationProgress } from "./operations.ts";
 import { CommandError, parseJsonLines, runCommand } from "./process.ts";
@@ -49,6 +54,10 @@ import { RemoteComposeService, type RemoteComposeRegistry } from "./remote-compo
 export interface RuntimeController {
   applyDockerDaemonConfiguration(
     input: UpdateDockerDaemonConfigurationInput,
+    progress?: OperationProgress,
+  ): Promise<void>;
+  applyDockerDaemonConfigurationSection(
+    input: UpdateDockerDaemonConfigurationSectionInput,
     progress?: OperationProgress,
   ): Promise<void>;
   applyRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void>;
@@ -585,6 +594,20 @@ export class LimaDockerRuntime implements RuntimeController {
       throw new ExpectedError("runtime_busy", "다른 런타임 작업이 진행 중입니다.", 409);
     }
     const applying = this.applyDockerDaemonConfigurationOnce(input, progress);
+    this.daemonTransition = applying.finally(() => {
+      this.daemonTransition = undefined;
+    });
+    return this.daemonTransition;
+  }
+
+  applyDockerDaemonConfigurationSection(
+    input: UpdateDockerDaemonConfigurationSectionInput,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    if (this.transition || this.daemonTransition) {
+      throw new ExpectedError("runtime_busy", "다른 런타임 작업이 진행 중입니다.", 409);
+    }
+    const applying = this.applyDockerDaemonConfigurationSectionOnce(input, progress);
     this.daemonTransition = applying.finally(() => {
       this.daemonTransition = undefined;
     });
@@ -1531,6 +1554,24 @@ export class LimaDockerRuntime implements RuntimeController {
     input: UpdateDockerDaemonConfigurationInput,
     progress?: OperationProgress,
   ): Promise<void> {
+    const original = await this.requireRunningDockerDaemonConfiguration();
+    await this.replaceDockerDaemonConfiguration(input, original, progress);
+  }
+
+  private async applyDockerDaemonConfigurationSectionOnce(
+    input: UpdateDockerDaemonConfigurationSectionInput,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    const original = await this.requireRunningDockerDaemonConfiguration();
+    const snapshot = dockerDaemonSnapshot(original.source, original.exists, true, "");
+    const merged = mergeDockerDaemonConfigurationSection(snapshot, input);
+    await this.replaceDockerDaemonConfiguration(merged, original, progress);
+  }
+
+  private async requireRunningDockerDaemonConfiguration(): Promise<{
+    exists: boolean;
+    source: string;
+  }> {
     const instance = await this.getInstance();
     if (!instance) {
       throw new ExpectedError(
@@ -1546,8 +1587,14 @@ export class LimaDockerRuntime implements RuntimeController {
         409,
       );
     }
+    return this.readDockerDaemonConfiguration();
+  }
 
-    const original = await this.readDockerDaemonConfiguration();
+  private async replaceDockerDaemonConfiguration(
+    input: UpdateDockerDaemonConfigurationInput,
+    original: { exists: boolean; source: string },
+    progress?: OperationProgress,
+  ): Promise<void> {
     const next = dockerDaemonJson(input);
     progress?.step("daemon.json 검증 중");
     try {

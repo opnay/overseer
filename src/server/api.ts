@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import type {
   ComposeBuilderProjectDetail,
+  DockerDaemonConfigurationSection,
   OperationAccepted,
   PullImageInput,
   RegisterRemoteComposeInput,
@@ -8,7 +9,10 @@ import type {
   ToolUpdateId,
 } from "../shared/contracts.ts";
 import { parseContainerSpec, parseUpdateContainerInput } from "./container-spec.ts";
-import { parseUpdateDockerDaemonConfigurationInput } from "./docker-daemon-configuration.ts";
+import {
+  parseUpdateDockerDaemonConfigurationInput,
+  parseUpdateDockerDaemonConfigurationSectionInput,
+} from "./docker-daemon-configuration.ts";
 import {
   parseComposeBuilderSpec,
   parseUpdateComposeBuilderInput,
@@ -46,6 +50,16 @@ async function readObject(context: { req: { json: () => Promise<unknown> } }) {
     throw new ExpectedError("invalid_json", "JSON 요청 본문을 확인하십시오.", 400);
   }
 }
+
+const dockerDaemonSectionLabels: Record<DockerDaemonConfigurationSection, string> = {
+  advanced: "고급 JSON",
+  logging: "컨테이너 로그",
+  network: "네트워크",
+  proxy: "프록시",
+  registry: "Registry",
+  stability: "안정성",
+  transfer: "전송",
+};
 
 async function readOptionalObject(context: Context): Promise<Record<string, unknown> | undefined> {
   const source = await context.req.text();
@@ -217,6 +231,28 @@ export function createApi(
         successMessage: "Docker daemon 설정을 적용했습니다.",
         target: { name: "overseer", resource: "runtime" },
         title: "Docker daemon 설정 적용",
+      },
+      undefined,
+      false,
+    );
+    return context.json({ operation }, 202);
+  });
+  app.patch("/runtime/engine/configuration/:section", async (context) => {
+    const input = parseUpdateDockerDaemonConfigurationSectionInput(
+      context.req.param("section"),
+      await readObject(context),
+    );
+    const label = dockerDaemonSectionLabels[input.section];
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.daemon.configure",
+        locks: [],
+        run: (progress) => controller.applyDockerDaemonConfigurationSection(input, progress),
+        successMessage: `${label} 설정을 적용했습니다.`,
+        target: { name: "overseer", resource: "runtime" },
+        title: `${label} 설정 적용`,
       },
       undefined,
       false,

@@ -924,6 +924,47 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
     expect(commands.some(({ args }) => args[0] === "delete" || args[0] === "stop")).toBe(false);
   });
 
+  it("merges one section into the latest daemon file without overwriting other sections", async () => {
+    const original = JSON.stringify({
+      features: { "containerd-snapshotter": true },
+      "live-restore": true,
+      "log-driver": "local",
+      dns: ["1.1.1.1"],
+      proxies: { "no-proxy": "localhost" },
+      "registry-mirrors": ["https://mirror.example.com"],
+    });
+    const written: string[] = [];
+    const command: CommandRunner = vi.fn(async (executable, args, options) => {
+      if (executable === "docker") return { stderr: "", stdout: "29.7.2\n" };
+      if (args[0] === "list") return { stderr: "", stdout: limaRow };
+      if (args.includes("systemctl")) return { stderr: "", stdout: "" };
+      if (args[0] === "shell" && args.at(-1)?.includes("dockerd --validate")) {
+        written.push(options.input ?? "");
+        return { stderr: "", stdout: "configuration OK\n" };
+      }
+      return { stderr: "", stdout: `file\n${original}\n` };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await runtime.applyDockerDaemonConfigurationSection({
+      configuration: {
+        defaultAddressPools: [{ base: "172.31.0.0/16", size: 24 }],
+        dns: ["8.8.8.8"],
+      },
+      section: "network",
+    });
+
+    expect(JSON.parse(written[0] ?? "{}")).toMatchObject({
+      "default-address-pools": [{ base: "172.31.0.0/16", size: 24 }],
+      dns: ["8.8.8.8"],
+      features: { "containerd-snapshotter": true },
+      "live-restore": true,
+      "log-driver": "local",
+      proxies: { "no-proxy": "localhost" },
+      "registry-mirrors": ["https://mirror.example.com/"],
+    });
+  });
+
   it("restores the previous daemon file when restart fails", async () => {
     const original = '{"features":{"containerd-snapshotter":true}}\n';
     const written: string[] = [];

@@ -26,7 +26,7 @@ import type {
   RecreateDockerEngineInput,
   RuntimePhase,
   ToolUpdateId,
-  UpdateDockerDaemonConfigurationInput,
+  UpdateDockerDaemonConfigurationSectionInput,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
 import { DockerDaemonSettings } from "./docker-daemon-settings.tsx";
@@ -42,7 +42,7 @@ import { ToolUpdatesSection } from "./tool-updates-section.tsx";
 interface SettingsPageProps {
   busy: boolean;
   dashboard: DashboardSnapshot;
-  onApplyDaemonConfiguration(input: UpdateDockerDaemonConfigurationInput): Promise<void>;
+  onApplyDaemonConfiguration(input: UpdateDockerDaemonConfigurationSectionInput): Promise<void>;
   onCheckToolUpdates(): Promise<void>;
   onConnectDockerCli(): Promise<void>;
   onCreate(configuration: DockerEngineConfiguration): Promise<void>;

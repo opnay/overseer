@@ -1131,7 +1131,7 @@ describe("App", () => {
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
       }
-      if (url.endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH") {
+      if (url.includes("/api/runtime/engine/configuration/") && init?.method === "PATCH") {
         return jsonResponse({ operation: accepted }, 202);
       }
       if (url.endsWith("/api/runtime/engine/configuration")) {
@@ -1146,34 +1146,32 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
-    expect(
-      await screen.findByRole("heading", { name: "Docker daemon", level: 3 }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Live restore" })).not.toBeChecked();
+    expect(await screen.findByRole("switch", { name: "Live restore" })).not.toBeChecked();
     expect(screen.queryByLabelText("DNS 서버")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "안정성 설정 저장" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "컨테이너 로그 설정 저장" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "전송 설정 저장" })).toBeInTheDocument();
     await user.click(screen.getByRole("switch", { name: "Live restore" }));
     await user.click(screen.getByRole("combobox", { name: "로그 드라이버" }));
     await user.click(await screen.findByRole("option", { name: "Local" }));
-    await user.click(screen.getByRole("button", { name: "Daemon 설정 저장" }));
+    await user.click(screen.getByRole("button", { name: "안정성 설정 저장" }));
 
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
           ([input, init]) =>
-            String(input).endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH",
+            String(input).endsWith("/api/runtime/engine/configuration/stability") &&
+            init?.method === "PATCH",
         ),
       ).toBe(true),
     );
     const request = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input).endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH",
+        String(input).endsWith("/api/runtime/engine/configuration/stability") &&
+        init?.method === "PATCH",
     );
-    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
-      additionalJson: expect.stringContaining("containerd-snapshotter"),
-      configuration: {
-        liveRestore: true,
-        logDriver: "local",
-      },
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+      configuration: { debug: false, liveRestore: true },
     });
   });
 
@@ -1205,7 +1203,7 @@ describe("App", () => {
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
       }
-      if (url.endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH") {
+      if (url.includes("/api/runtime/engine/configuration/") && init?.method === "PATCH") {
         return jsonResponse({ operation: accepted }, 202);
       }
       if (url.endsWith("/api/runtime/engine/configuration")) {
@@ -1220,39 +1218,44 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "네트워크 설정" }));
-    expect(
-      await screen.findByRole("heading", { name: "Docker 네트워크", level: 3 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("DNS 서버")).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "Live restore" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "추가 daemon.json 설정" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "네트워크 설정 저장" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Registry 설정 저장" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "프록시 설정 저장" })).toBeInTheDocument();
     await user.type(screen.getByLabelText("DNS 서버"), "1.1.1.1");
     await user.type(screen.getByLabelText("네트워크 주소 풀"), "172.30.0.0/16,24");
     await user.type(screen.getByLabelText("Registry mirror"), "https://mirror.gcr.io");
     await user.type(screen.getByLabelText("HTTP Proxy"), "http://proxy.example.com:3128");
     await user.type(screen.getByLabelText("No Proxy"), "localhost");
+    await user.click(screen.getByRole("button", { name: "네트워크 설정 초기화" }));
+    expect(screen.getByLabelText("DNS 서버")).toHaveValue("");
+    expect(screen.getByLabelText("네트워크 주소 풀")).toHaveValue("");
+    expect(screen.getByLabelText("Registry mirror")).toHaveValue("https://mirror.gcr.io");
+    expect(screen.getByLabelText("HTTP Proxy")).toHaveValue("http://proxy.example.com:3128");
+    await user.type(screen.getByLabelText("DNS 서버"), "1.1.1.1");
+    await user.type(screen.getByLabelText("네트워크 주소 풀"), "172.30.0.0/16,24");
     await user.click(screen.getByRole("button", { name: "네트워크 설정 저장" }));
 
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
           ([input, init]) =>
-            String(input).endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH",
+            String(input).endsWith("/api/runtime/engine/configuration/network") &&
+            init?.method === "PATCH",
         ),
       ).toBe(true),
     );
     const request = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input).endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH",
+        String(input).endsWith("/api/runtime/engine/configuration/network") &&
+        init?.method === "PATCH",
     );
-    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
-      additionalJson: expect.stringContaining("containerd-snapshotter"),
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({
       configuration: {
         defaultAddressPools: [{ base: "172.30.0.0/16", size: 24 }],
         dns: ["1.1.1.1"],
-        liveRestore: false,
-        logDriver: "json-file",
-        proxies: { httpProxy: "http://proxy.example.com:3128", noProxy: ["localhost"] },
-        registryMirrors: ["https://mirror.gcr.io"],
       },
     });
   });

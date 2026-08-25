@@ -14,6 +14,7 @@ import type { StartupSnapshot } from "../src/shared/contracts.ts";
 function createController(): RuntimeController {
   return {
     applyDockerDaemonConfiguration: vi.fn(async () => undefined),
+    applyDockerDaemonConfigurationSection: vi.fn(async () => undefined),
     applyRemoteComposeUpdate: vi.fn(async () => undefined),
     checkRemoteComposeUpdate: vi.fn(async () => undefined),
     connectDockerCli: vi.fn(async () => undefined),
@@ -404,6 +405,69 @@ describe("API boundary", () => {
 
     expect(response.status).toBe(400);
     expect(controller.applyDockerDaemonConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("validates and applies one Docker daemon section without a retry body", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const input = {
+      configuration: {
+        defaultAddressPools: [{ base: "172.31.0.0/16", size: 24 }],
+        dns: ["8.8.8.8"],
+      },
+      section: "network" as const,
+    };
+    const response = await app.request("/runtime/engine/configuration/network", {
+      body: JSON.stringify({ configuration: input.configuration }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.applyDockerDaemonConfigurationSection).toHaveBeenCalledWith(
+        input,
+        expect.any(Object),
+      ),
+    );
+    await vi.waitFor(async () => {
+      const operations = await app.request("/operations", { headers: localHeaders });
+      const body = (await operations.json()) as {
+        operations: Array<{ retryable: boolean; title: string }>;
+      };
+      expect(body.operations[0]).toMatchObject({
+        retryable: false,
+        title: "네트워크 설정 적용",
+      });
+    });
+  });
+
+  it("rejects an unsupported Docker daemon section", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/engine/configuration/unknown", {
+      body: JSON.stringify({ configuration: {} }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+
+    expect(response.status).toBe(400);
+    expect(controller.applyDockerDaemonConfigurationSection).not.toHaveBeenCalled();
+  });
+
+  it("rejects keys owned by another Docker daemon section", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/engine/configuration/network", {
+      body: JSON.stringify({
+        configuration: { debug: true, defaultAddressPools: [], dns: [] },
+      }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+
+    expect(response.status).toBe(400);
+    expect(controller.applyDockerDaemonConfigurationSection).not.toHaveBeenCalled();
   });
 
   it("connects the macOS Docker CLI through an exclusive async operation", async () => {

@@ -5,6 +5,7 @@ import type {
   DockerDaemonConfigurationSnapshot,
   DockerDaemonProxyConfiguration,
   UpdateDockerDaemonConfigurationInput,
+  UpdateDockerDaemonConfigurationSectionInput,
 } from "../shared/contracts.ts";
 import { ExpectedError } from "./errors.ts";
 
@@ -43,6 +44,23 @@ function record(value: unknown, message: string): Record<string, unknown> {
     throw new ExpectedError("invalid_daemon_configuration", message, 400);
   }
   return value as Record<string, unknown>;
+}
+
+function onlyKeys(
+  input: Record<string, unknown>,
+  allowed: readonly string[],
+  label: string,
+): Record<string, unknown> {
+  const allowedKeys = new Set(allowed);
+  const unexpected = Object.keys(input).filter((key) => !allowedKeys.has(key));
+  if (unexpected.length > 0) {
+    throw new ExpectedError(
+      "invalid_daemon_configuration",
+      `${label}에서 지원하지 않는 키를 제거하십시오: ${unexpected.join(", ")}`,
+      400,
+    );
+  }
+  return input;
 }
 
 function boolean(value: unknown, label: string): boolean {
@@ -217,8 +235,10 @@ function additionalConfiguration(source: string): Record<string, unknown> {
   return input;
 }
 
-export function parseDockerDaemonConfiguration(value: unknown): DockerDaemonConfiguration {
-  const input = record(value, "Docker daemon 설정을 확인하십시오.");
+function parseLoggingConfiguration(
+  value: unknown,
+): Pick<DockerDaemonConfiguration, "logDriver" | "logMaxFile" | "logMaxSize"> {
+  const input = record(value, "컨테이너 로그 설정을 확인하십시오.");
   if (input.logDriver !== "json-file" && input.logDriver !== "local") {
     throw new ExpectedError(
       "invalid_daemon_configuration",
@@ -234,6 +254,18 @@ export function parseDockerDaemonConfiguration(value: unknown): DockerDaemonConf
       400,
     );
   }
+  const logMaxFile = optionalInteger(input.logMaxFile, "로그 보관 파일 수", 1, 100);
+  return {
+    logDriver: input.logDriver,
+    ...(logMaxFile === undefined ? {} : { logMaxFile }),
+    ...(logMaxSize ? { logMaxSize } : {}),
+  };
+}
+
+function parseNetworkConfiguration(
+  value: unknown,
+): Pick<DockerDaemonConfiguration, "defaultAddressPools" | "dns"> {
+  const input = record(value, "네트워크 설정을 확인하십시오.");
   const dns = strings(input.dns, "DNS");
   if (dns.some((entry) => !isIP(entry))) {
     throw new ExpectedError(
@@ -242,6 +274,13 @@ export function parseDockerDaemonConfiguration(value: unknown): DockerDaemonConf
       400,
     );
   }
+  return { defaultAddressPools: addressPools(input.defaultAddressPools), dns };
+}
+
+function parseRegistryConfiguration(
+  value: unknown,
+): Pick<DockerDaemonConfiguration, "insecureRegistries" | "registryMirrors"> {
+  const input = record(value, "Registry 설정을 확인하십시오.");
   const registryMirrors = strings(input.registryMirrors, "Registry mirror").map((entry) =>
     url(entry, "Registry mirror"),
   );
@@ -253,20 +292,43 @@ export function parseDockerDaemonConfiguration(value: unknown): DockerDaemonConf
       400,
     );
   }
-  const logMaxFile = optionalInteger(input.logMaxFile, "로그 보관 파일 수", 1, 100);
+  return { insecureRegistries, registryMirrors };
+}
+
+function parseStabilityConfiguration(
+  value: unknown,
+): Pick<DockerDaemonConfiguration, "debug" | "liveRestore"> {
+  const input = record(value, "안정성 설정을 확인하십시오.");
   return {
     debug: boolean(input.debug, "Debug mode"),
-    defaultAddressPools: addressPools(input.defaultAddressPools),
-    dns,
-    insecureRegistries,
     liveRestore: boolean(input.liveRestore, "Live restore"),
-    logDriver: input.logDriver,
-    ...(logMaxFile === undefined ? {} : { logMaxFile }),
-    ...(logMaxSize ? { logMaxSize } : {}),
+  };
+}
+
+function parseTransferConfiguration(
+  value: unknown,
+): Pick<DockerDaemonConfiguration, "maxConcurrentDownloads" | "maxConcurrentUploads"> {
+  const input = record(value, "전송 설정을 확인하십시오.");
+  return {
     maxConcurrentDownloads: integer(input.maxConcurrentDownloads, "최대 동시 다운로드", 0, 100),
     maxConcurrentUploads: integer(input.maxConcurrentUploads, "최대 동시 업로드", 0, 100),
-    proxies: proxies(input.proxies),
-    registryMirrors,
+  };
+}
+
+function parseProxyConfiguration(value: unknown): Pick<DockerDaemonConfiguration, "proxies"> {
+  const input = record(value, "프록시 설정을 확인하십시오.");
+  return { proxies: proxies(input.proxies) };
+}
+
+export function parseDockerDaemonConfiguration(value: unknown): DockerDaemonConfiguration {
+  const input = record(value, "Docker daemon 설정을 확인하십시오.");
+  return {
+    ...parseStabilityConfiguration(input),
+    ...parseLoggingConfiguration(input),
+    ...parseNetworkConfiguration(input),
+    ...parseRegistryConfiguration(input),
+    ...parseTransferConfiguration(input),
+    ...parseProxyConfiguration(input),
   };
 }
 
@@ -286,6 +348,86 @@ export function parseUpdateDockerDaemonConfigurationInput(
     additionalJson: input.additionalJson,
     configuration: parseDockerDaemonConfiguration(input.configuration),
   };
+}
+
+export function parseUpdateDockerDaemonConfigurationSectionInput(
+  section: string,
+  value: unknown,
+): UpdateDockerDaemonConfigurationSectionInput {
+  const input = record(value, "Docker daemon 부분 설정 요청을 확인하십시오.");
+  switch (section) {
+    case "advanced":
+      onlyKeys(input, ["additionalJson"], "고급 JSON 설정 요청");
+      if (typeof input.additionalJson !== "string") {
+        throw new ExpectedError(
+          "invalid_daemon_configuration",
+          "추가 daemon.json 설정을 확인하십시오.",
+          400,
+        );
+      }
+      additionalConfiguration(input.additionalJson);
+      return { additionalJson: input.additionalJson, section };
+    case "logging": {
+      onlyKeys(input, ["configuration"], "컨테이너 로그 설정 요청");
+      const configuration = onlyKeys(
+        record(input.configuration, "컨테이너 로그 설정을 확인하십시오."),
+        ["logDriver", "logMaxFile", "logMaxSize"],
+        "컨테이너 로그 설정",
+      );
+      return { configuration: parseLoggingConfiguration(configuration), section };
+    }
+    case "network": {
+      onlyKeys(input, ["configuration"], "네트워크 설정 요청");
+      const configuration = onlyKeys(
+        record(input.configuration, "네트워크 설정을 확인하십시오."),
+        ["defaultAddressPools", "dns"],
+        "네트워크 설정",
+      );
+      return { configuration: parseNetworkConfiguration(configuration), section };
+    }
+    case "proxy": {
+      onlyKeys(input, ["configuration"], "프록시 설정 요청");
+      const configuration = onlyKeys(
+        record(input.configuration, "프록시 설정을 확인하십시오."),
+        ["proxies"],
+        "프록시 설정",
+      );
+      return { configuration: parseProxyConfiguration(configuration), section };
+    }
+    case "registry": {
+      onlyKeys(input, ["configuration"], "Registry 설정 요청");
+      const configuration = onlyKeys(
+        record(input.configuration, "Registry 설정을 확인하십시오."),
+        ["insecureRegistries", "registryMirrors"],
+        "Registry 설정",
+      );
+      return { configuration: parseRegistryConfiguration(configuration), section };
+    }
+    case "stability": {
+      onlyKeys(input, ["configuration"], "안정성 설정 요청");
+      const configuration = onlyKeys(
+        record(input.configuration, "안정성 설정을 확인하십시오."),
+        ["debug", "liveRestore"],
+        "안정성 설정",
+      );
+      return { configuration: parseStabilityConfiguration(configuration), section };
+    }
+    case "transfer": {
+      onlyKeys(input, ["configuration"], "전송 설정 요청");
+      const configuration = onlyKeys(
+        record(input.configuration, "전송 설정을 확인하십시오."),
+        ["maxConcurrentDownloads", "maxConcurrentUploads"],
+        "전송 설정",
+      );
+      return { configuration: parseTransferConfiguration(configuration), section };
+    }
+    default:
+      throw new ExpectedError(
+        "invalid_daemon_configuration_section",
+        "지원하지 않는 Docker daemon 설정 섹션입니다.",
+        400,
+      );
+  }
 }
 
 function stringArray(value: unknown): string[] {
@@ -403,6 +545,27 @@ export function dockerDaemonSnapshot(
     message,
     path: "~/.config/docker/daemon.json",
     source: exists ? "file" : "default",
+  };
+}
+
+export function mergeDockerDaemonConfigurationSection(
+  snapshot: DockerDaemonConfigurationSnapshot,
+  input: UpdateDockerDaemonConfigurationSectionInput,
+): UpdateDockerDaemonConfigurationInput {
+  const current = structuredClone(snapshot.configuration);
+  if (input.section === "advanced") {
+    return { additionalJson: input.additionalJson, configuration: current };
+  }
+  if (input.section === "logging") {
+    const { logMaxFile: _logMaxFile, logMaxSize: _logMaxSize, ...rest } = current;
+    return {
+      additionalJson: snapshot.additionalJson,
+      configuration: { ...rest, ...input.configuration },
+    };
+  }
+  return {
+    additionalJson: snapshot.additionalJson,
+    configuration: { ...current, ...input.configuration },
   };
 }
 

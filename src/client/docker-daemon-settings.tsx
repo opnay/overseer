@@ -8,16 +8,20 @@ import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Switch } from "@opnay/city-ds-react/switch";
 import { RotateCcw, Save } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type {
+  DockerDaemonConfigurationSection,
   DockerDaemonConfigurationSnapshot,
   DockerDaemonLogDriver,
-  UpdateDockerDaemonConfigurationInput,
+  UpdateDockerDaemonConfigurationSectionInput,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
 import {
   dockerDaemonConfigurationToForm,
-  validateDockerDaemonConfiguration,
+  dockerDaemonConfigurationFormSection,
+  preserveDockerDaemonConfigurationDrafts,
+  resetDockerDaemonConfigurationSection,
+  validateDockerDaemonConfigurationSection,
   type DockerDaemonConfigurationErrors,
   type DockerDaemonConfigurationForm,
 } from "./docker-daemon-configuration.ts";
@@ -26,9 +30,19 @@ import { DockerEngineNumberSetting } from "./docker-engine-number-setting.tsx";
 interface DockerDaemonSettingsProps {
   busy: boolean;
   mode: "engine" | "network";
-  onApply(input: UpdateDockerDaemonConfigurationInput): Promise<void>;
+  onApply(input: UpdateDockerDaemonConfigurationSectionInput): Promise<void>;
   refreshToken: string;
 }
+
+const sectionLabels: Record<DockerDaemonConfigurationSection, string> = {
+  advanced: "고급 JSON",
+  logging: "컨테이너 로그",
+  network: "네트워크",
+  proxy: "프록시",
+  registry: "Registry",
+  stability: "안정성",
+  transfer: "전송",
+};
 
 function SettingSwitch({
   checked,
@@ -62,6 +76,58 @@ function SettingSwitch({
   );
 }
 
+function SectionActions({
+  busy,
+  error,
+  onReset,
+  onSave,
+  pending,
+  section,
+}: {
+  busy: boolean;
+  error?: string;
+  onReset(): void;
+  onSave(): void;
+  pending: boolean;
+  section: DockerDaemonConfigurationSection;
+}) {
+  const label = sectionLabels[section];
+  return (
+    <>
+      {error ? (
+        <Alert.Root tone="destructive">
+          <Alert.Title level={3}>{label} 설정을 적용하지 못했습니다.</Alert.Title>
+          <Alert.Description>{error}</Alert.Description>
+        </Alert.Root>
+      ) : null}
+      <div className="overseer-daemon-section-actions">
+        <Button
+          aria-label={`${label} 설정 초기화`}
+          disabled={busy}
+          onClick={onReset}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <RotateCcw aria-hidden="true" size={14} />
+          초기화
+        </Button>
+        <Button
+          aria-label={`${label} 설정 저장`}
+          disabled={busy}
+          onClick={onSave}
+          size="sm"
+          type="button"
+          variant="primary"
+        >
+          <Save aria-hidden="true" size={14} />
+          {pending ? "저장 중…" : "저장"}
+        </Button>
+      </div>
+    </>
+  );
+}
+
 export function DockerDaemonSettings({
   busy,
   mode,
@@ -72,8 +138,14 @@ export function DockerDaemonSettings({
   const [form, setForm] = useState<DockerDaemonConfigurationForm>();
   const [errors, setErrors] = useState<DockerDaemonConfigurationErrors>({});
   const [loadError, setLoadError] = useState<string>();
+  const [pendingSection, setPendingSection] = useState<DockerDaemonConfigurationSection>();
+  const [sectionError, setSectionError] = useState<{
+    message: string;
+    section: DockerDaemonConfigurationSection;
+  }>();
+  const dirtySections = useRef(new Set<DockerDaemonConfigurationSection>());
   const networkMode = mode === "network";
-  const headingId = networkMode ? "overseer-network-settings" : "overseer-daemon-settings";
+  const controlsBusy = busy || pendingSection !== undefined;
 
   const load = useCallback(async () => {
     setLoadError(undefined);
@@ -81,9 +153,15 @@ export function DockerDaemonSettings({
       const next = await apiRequest<DockerDaemonConfigurationSnapshot>(
         "/runtime/engine/configuration",
       );
+      const fresh = dockerDaemonConfigurationToForm(next);
       setSnapshot(next);
-      setForm(dockerDaemonConfigurationToForm(next));
+      setForm((current) =>
+        current
+          ? preserveDockerDaemonConfigurationDrafts(fresh, current, dirtySections.current)
+          : fresh,
+      );
       setErrors({});
+      setSectionError(undefined);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "daemon 설정을 불러오지 못했습니다.");
     }
@@ -96,41 +174,48 @@ export function DockerDaemonSettings({
   const update = <Key extends keyof DockerDaemonConfigurationForm>(
     key: Key,
     value: DockerDaemonConfigurationForm[Key],
-  ) => setForm((current) => (current ? { ...current, [key]: value } : current));
+  ) => {
+    dirtySections.current.add(dockerDaemonConfigurationFormSection(key));
+    setForm((current) => (current ? { ...current, [key]: value } : current));
+  };
 
-  const apply = async () => {
+  const apply = async (section: DockerDaemonConfigurationSection) => {
     if (!form || !snapshot?.available) return;
-    const result = validateDockerDaemonConfiguration(form);
+    const result = validateDockerDaemonConfigurationSection(form, section);
     setErrors(result.errors);
     if (!result.input) return;
+    setSectionError(undefined);
+    setPendingSection(section);
     try {
       await onApply(result.input);
+      dirtySections.current.delete(section);
     } catch (error) {
-      setErrors({
-        form: error instanceof Error ? error.message : "daemon 설정을 적용하지 못했습니다.",
+      setSectionError({
+        message: error instanceof Error ? error.message : "설정을 적용하지 못했습니다.",
+        section,
       });
+    } finally {
+      setPendingSection(undefined);
     }
   };
 
-  const reset = () => {
-    if (!snapshot) return;
-    setForm(dockerDaemonConfigurationToForm(snapshot));
+  const reset = (section: DockerDaemonConfigurationSection) => {
+    if (!snapshot || !form) return;
+    setForm(resetDockerDaemonConfigurationSection(form, snapshot, section));
+    dirtySections.current.delete(section);
     setErrors({});
+    setSectionError((current) => (current?.section === section ? undefined : current));
   };
 
   return (
-    <section aria-labelledby={headingId} className="overseer-daemon-settings">
-      <header className="overseer-daemon-settings-header">
-        <div>
-          <h3 id={headingId}>{networkMode ? "Docker 네트워크" : "Docker daemon"}</h3>
-          <p>
-            {networkMode
-              ? "Docker Engine의 네트워크와 외부 연결을 daemon.json에 저장합니다."
-              : "컨테이너 실행 정책을 daemon.json에 저장하고 Docker Engine에 적용합니다."}
-          </p>
-        </div>
+    <section
+      aria-label={networkMode ? "Docker 네트워크 설정" : "Docker daemon 설정"}
+      className="overseer-daemon-settings"
+    >
+      <div className="overseer-daemon-source">
+        <span>설정 파일</span>
         <code>{snapshot?.path ?? "~/.config/docker/daemon.json"}</code>
-      </header>
+      </div>
 
       {!snapshot && !loadError ? (
         <div aria-label="daemon 설정 불러오는 중" className="overseer-daemon-loading">
@@ -163,9 +248,9 @@ export function DockerDaemonSettings({
         <div className="overseer-daemon-settings-form">
           {!networkMode ? (
             <>
-              <Fieldset.Root appearance="plain">
-                <Fieldset.Legend>안정성</Fieldset.Legend>
-                <Fieldset.Description>
+              <Fieldset.Root appearance="plain" className="overseer-daemon-section">
+                <Fieldset.Legend className="overseer-daemon-section-title">안정성</Fieldset.Legend>
+                <Fieldset.Description className="overseer-daemon-section-description">
                   daemon 재시작 동작과 문제 진단 출력을 제어합니다.
                 </Fieldset.Description>
                 <Fieldset.Content className="overseer-daemon-switch-grid">
@@ -182,11 +267,21 @@ export function DockerDaemonSettings({
                     onCheckedChange={(checked) => update("debug", checked)}
                   />
                 </Fieldset.Content>
+                <SectionActions
+                  busy={controlsBusy}
+                  error={sectionError?.section === "stability" ? sectionError.message : undefined}
+                  onReset={() => reset("stability")}
+                  onSave={() => void apply("stability")}
+                  pending={pendingSection === "stability"}
+                  section="stability"
+                />
               </Fieldset.Root>
 
-              <Fieldset.Root appearance="plain">
-                <Fieldset.Legend>컨테이너 로그</Fieldset.Legend>
-                <Fieldset.Description>
+              <Fieldset.Root appearance="plain" className="overseer-daemon-section">
+                <Fieldset.Legend className="overseer-daemon-section-title">
+                  컨테이너 로그
+                </Fieldset.Legend>
+                <Fieldset.Description className="overseer-daemon-section-description">
                   변경값은 새로 만드는 컨테이너부터 적용됩니다.
                 </Fieldset.Description>
                 <Fieldset.Content className="overseer-daemon-log-grid">
@@ -241,15 +336,25 @@ export function DockerDaemonSettings({
                     value={form.logMaxFile}
                   />
                 </Fieldset.Content>
+                <SectionActions
+                  busy={controlsBusy}
+                  error={sectionError?.section === "logging" ? sectionError.message : undefined}
+                  onReset={() => reset("logging")}
+                  onSave={() => void apply("logging")}
+                  pending={pendingSection === "logging"}
+                  section="logging"
+                />
               </Fieldset.Root>
             </>
           ) : null}
 
           {networkMode ? (
             <>
-              <Fieldset.Root appearance="plain">
-                <Fieldset.Legend>네트워크</Fieldset.Legend>
-                <Fieldset.Description>
+              <Fieldset.Root appearance="plain" className="overseer-daemon-section">
+                <Fieldset.Legend className="overseer-daemon-section-title">
+                  네트워크
+                </Fieldset.Legend>
+                <Fieldset.Description className="overseer-daemon-section-description">
                   DNS는 컨테이너 전체에, 주소 풀은 새 네트워크부터 적용됩니다.
                 </Fieldset.Description>
                 <Fieldset.Content className="overseer-settings-grid">
@@ -279,10 +384,20 @@ export function DockerDaemonSettings({
                     <Field.Error match>{errors.addressPools}</Field.Error>
                   </Field.Root>
                 </Fieldset.Content>
+                <SectionActions
+                  busy={controlsBusy}
+                  error={sectionError?.section === "network" ? sectionError.message : undefined}
+                  onReset={() => reset("network")}
+                  onSave={() => void apply("network")}
+                  pending={pendingSection === "network"}
+                  section="network"
+                />
               </Fieldset.Root>
-              <Fieldset.Root appearance="plain">
-                <Fieldset.Legend>Registry</Fieldset.Legend>
-                <Fieldset.Description>
+              <Fieldset.Root appearance="plain" className="overseer-daemon-section">
+                <Fieldset.Legend className="overseer-daemon-section-title">
+                  Registry
+                </Fieldset.Legend>
+                <Fieldset.Description className="overseer-daemon-section-description">
                   이미지 다운로드 경로와 신뢰할 수 없는 Registry 예외를 관리합니다.
                 </Fieldset.Description>
                 <Fieldset.Content className="overseer-settings-grid">
@@ -313,11 +428,19 @@ export function DockerDaemonSettings({
                     </Field.Description>
                   </Field.Root>
                 </Fieldset.Content>
+                <SectionActions
+                  busy={controlsBusy}
+                  error={sectionError?.section === "registry" ? sectionError.message : undefined}
+                  onReset={() => reset("registry")}
+                  onSave={() => void apply("registry")}
+                  pending={pendingSection === "registry"}
+                  section="registry"
+                />
               </Fieldset.Root>
 
-              <Fieldset.Root appearance="plain">
-                <Fieldset.Legend>프록시</Fieldset.Legend>
-                <Fieldset.Description>
+              <Fieldset.Root appearance="plain" className="overseer-daemon-section">
+                <Fieldset.Legend className="overseer-daemon-section-title">프록시</Fieldset.Legend>
+                <Fieldset.Description className="overseer-daemon-section-description">
                   이미지 pull·push 등 daemon의 외부 통신에 사용합니다. 인증 정보가 포함되면 VM 설정
                   파일에 그대로 저장됩니다.
                 </Fieldset.Description>
@@ -354,15 +477,23 @@ export function DockerDaemonSettings({
                     </Field.Description>
                   </Field.Root>
                 </Fieldset.Content>
+                <SectionActions
+                  busy={controlsBusy}
+                  error={sectionError?.section === "proxy" ? sectionError.message : undefined}
+                  onReset={() => reset("proxy")}
+                  onSave={() => void apply("proxy")}
+                  pending={pendingSection === "proxy"}
+                  section="proxy"
+                />
               </Fieldset.Root>
             </>
           ) : null}
 
           {!networkMode ? (
             <>
-              <Fieldset.Root appearance="plain">
-                <Fieldset.Legend>전송</Fieldset.Legend>
-                <Fieldset.Description>
+              <Fieldset.Root appearance="plain" className="overseer-daemon-section">
+                <Fieldset.Legend className="overseer-daemon-section-title">전송</Fieldset.Legend>
+                <Fieldset.Description className="overseer-daemon-section-description">
                   동시에 처리할 이미지 레이어 수를 제한합니다.
                 </Fieldset.Description>
                 <Fieldset.Content className="overseer-settings-grid">
@@ -383,56 +514,59 @@ export function DockerDaemonSettings({
                     value={form.maxConcurrentUploads}
                   />
                 </Fieldset.Content>
+                <SectionActions
+                  busy={controlsBusy}
+                  error={sectionError?.section === "transfer" ? sectionError.message : undefined}
+                  onReset={() => reset("transfer")}
+                  onSave={() => void apply("transfer")}
+                  pending={pendingSection === "transfer"}
+                  section="transfer"
+                />
               </Fieldset.Root>
 
-              <Accordion.Root className="overseer-daemon-advanced">
-                <Accordion.Item value="additional-daemon-json">
-                  <Accordion.Header>
-                    <Accordion.Trigger>추가 daemon.json 설정</Accordion.Trigger>
-                  </Accordion.Header>
-                  <Accordion.Panel>
-                    <Field.Root invalid={Boolean(errors.additionalJson)}>
-                      <Field.Label>추가 JSON</Field.Label>
-                      <Textarea
-                        aria-label="추가 daemon.json 설정"
-                        className="overseer-daemon-json"
-                        onChange={(event) => update("additionalJson", event.target.value)}
-                        rows={10}
-                        spellCheck={false}
-                        value={form.additionalJson}
+              <section
+                aria-label="추가 daemon.json 설정"
+                className="overseer-daemon-section overseer-daemon-advanced-section"
+              >
+                <Accordion.Root className="overseer-daemon-advanced">
+                  <Accordion.Item value="additional-daemon-json">
+                    <Accordion.Header>
+                      <Accordion.Trigger className="overseer-daemon-advanced-trigger">
+                        추가 daemon.json 설정
+                      </Accordion.Trigger>
+                    </Accordion.Header>
+                    <Accordion.Panel>
+                      <Field.Root invalid={Boolean(errors.additionalJson)}>
+                        <Field.Label>추가 JSON</Field.Label>
+                        <Textarea
+                          aria-label="추가 daemon.json 설정"
+                          className="overseer-daemon-json"
+                          onChange={(event) => update("additionalJson", event.target.value)}
+                          rows={10}
+                          spellCheck={false}
+                          value={form.additionalJson}
+                        />
+                        <Field.Description>
+                          위 폼에서 관리하지 않는 키만 입력합니다. 기존 기능 설정은 보존됩니다.
+                        </Field.Description>
+                        <Field.Error match>{errors.additionalJson}</Field.Error>
+                      </Field.Root>
+                      <SectionActions
+                        busy={controlsBusy}
+                        error={
+                          sectionError?.section === "advanced" ? sectionError.message : undefined
+                        }
+                        onReset={() => reset("advanced")}
+                        onSave={() => void apply("advanced")}
+                        pending={pendingSection === "advanced"}
+                        section="advanced"
                       />
-                      <Field.Description>
-                        위 폼에서 관리하지 않는 키만 입력합니다. 기존 기능 설정은 보존됩니다.
-                      </Field.Description>
-                      <Field.Error match>{errors.additionalJson}</Field.Error>
-                    </Field.Root>
-                  </Accordion.Panel>
-                </Accordion.Item>
-              </Accordion.Root>
+                    </Accordion.Panel>
+                  </Accordion.Item>
+                </Accordion.Root>
+              </section>
             </>
           ) : null}
-
-          {errors.form ? (
-            <Alert.Root tone="destructive">
-              <Alert.Title level={3}>
-                {networkMode
-                  ? "네트워크 설정을 적용하지 못했습니다."
-                  : "daemon 설정을 적용하지 못했습니다."}
-              </Alert.Title>
-              <Alert.Description>{errors.form}</Alert.Description>
-            </Alert.Root>
-          ) : null}
-
-          <div className="overseer-settings-actions">
-            <Button disabled={busy} onClick={reset} type="button" variant="outline">
-              <RotateCcw aria-hidden="true" size={14} />
-              {networkMode ? "네트워크 설정 초기화" : "Daemon 설정 초기화"}
-            </Button>
-            <Button disabled={busy} onClick={() => void apply()} type="button" variant="primary">
-              <Save aria-hidden="true" size={14} />
-              {busy ? "적용 중…" : networkMode ? "네트워크 설정 저장" : "Daemon 설정 저장"}
-            </Button>
-          </div>
         </div>
       ) : null}
     </section>

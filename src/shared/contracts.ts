@@ -85,6 +85,48 @@ export interface UpdateDockerDaemonConfigurationInput {
   configuration: DockerDaemonConfiguration;
 }
 
+export type DockerDaemonConfigurationSection =
+  | "advanced"
+  | "logging"
+  | "network"
+  | "proxy"
+  | "registry"
+  | "stability"
+  | "transfer";
+
+export type UpdateDockerDaemonConfigurationSectionInput =
+  | {
+      additionalJson: string;
+      section: "advanced";
+    }
+  | {
+      configuration: Pick<DockerDaemonConfiguration, "logDriver" | "logMaxFile" | "logMaxSize">;
+      section: "logging";
+    }
+  | {
+      configuration: Pick<DockerDaemonConfiguration, "defaultAddressPools" | "dns">;
+      section: "network";
+    }
+  | {
+      configuration: Pick<DockerDaemonConfiguration, "proxies">;
+      section: "proxy";
+    }
+  | {
+      configuration: Pick<DockerDaemonConfiguration, "insecureRegistries" | "registryMirrors">;
+      section: "registry";
+    }
+  | {
+      configuration: Pick<DockerDaemonConfiguration, "debug" | "liveRestore">;
+      section: "stability";
+    }
+  | {
+      configuration: Pick<
+        DockerDaemonConfiguration,
+        "maxConcurrentDownloads" | "maxConcurrentUploads"
+      >;
+      section: "transfer";
+    };
+
 export interface RecreateDockerEngineInput {
   configuration: DockerEngineConfiguration;
   confirmation: string;
