@@ -56,7 +56,7 @@ interface SettingsPageProps {
   toolRequestPending: boolean;
 }
 
-type SettingsSection = "engine" | "environment" | "general";
+type SettingsSection = "engine" | "environment" | "general" | "network";
 
 const sectionPresentation: Record<
   SettingsSection,
@@ -64,7 +64,7 @@ const sectionPresentation: Record<
 > = {
   engine: {
     category: "Docker Engine",
-    description: "Docker Engine 상태와 daemon 설정, 단일 overseer VM 자원을 관리합니다.",
+    description: "Docker Engine 상태와 daemon 동작, 단일 overseer VM 자원을 관리합니다.",
     title: "엔진 설정",
   },
   environment: {
@@ -76,6 +76,11 @@ const sectionPresentation: Record<
     category: "Overseer",
     description: "Overseer의 기본 동작을 관리합니다.",
     title: "일반",
+  },
+  network: {
+    category: "Docker Engine",
+    description: "Docker Engine의 네트워크와 외부 연결을 구성합니다.",
+    title: "네트워크 설정",
   },
 };
 
@@ -230,6 +235,13 @@ export function SettingsPage({
                   type="button"
                 >
                   엔진 설정
+                </button>
+                <button
+                  aria-current={section === "network" ? "page" : undefined}
+                  onClick={() => setSection("network")}
+                  type="button"
+                >
+                  네트워크 설정
                 </button>
                 <button
                   aria-current={section === "environment" ? "page" : undefined}
@@ -464,6 +476,7 @@ export function SettingsPage({
 
                     <DockerDaemonSettings
                       busy={busy}
+                      mode="engine"
                       onApply={onApplyDaemonConfiguration}
                       refreshToken={refreshToken}
                     />
@@ -542,6 +555,13 @@ export function SettingsPage({
                       </Button>
                     </div>
                   </>
+                ) : section === "network" ? (
+                  <DockerDaemonSettings
+                    busy={busy}
+                    mode="network"
+                    onApply={onApplyDaemonConfiguration}
+                    refreshToken={refreshToken}
+                  />
                 ) : (
                   <>
                     <Fieldset.Root appearance="plain">

@@ -6,9 +6,10 @@
 
 ## 결정
 
-- **설정 > Docker Engine > 엔진 설정**에서 Docker daemon 설정을 조회하고 변경합니다.
+- **설정 > Docker Engine > 엔진 설정**에서 안정성·로그·전송과 추가 JSON을 관리합니다.
+- **설정 > Docker Engine > 네트워크 설정**에서 DNS·주소 풀·Registry·Proxy를 관리합니다.
 - 설정 원본은 `overseer` VM의 rootless Docker가 사용하는 `~/.config/docker/daemon.json`입니다. 호스트 SQLite에 설정을 중복 저장하지 않습니다.
-- 구조화 폼은 live restore, debug mode, 컨테이너 로그, DNS와 기본 주소 풀, Registry, 프록시, 동시 다운로드·업로드를 관리합니다.
+- 두 화면은 같은 daemon 설정 원본을 읽으며 한 화면에서 저장할 때 다른 화면의 설정을 보존합니다.
 - 폼에서 관리하지 않는 기존 JSON 키는 추가 JSON 영역에 보존합니다. 폼 관리 키와 추가 JSON 키의 중복은 거부합니다.
 - `data-root`, 스토리지 백엔드, `containerd-snapshotter`, daemon socket, cgroup, iptables와 OCI runtime은 구조화 폼에서 변경하지 않습니다.
 - 설정 요청 본문은 작업 재시도 정보나 SQLite에 저장하지 않습니다.
@@ -24,5 +25,5 @@
 ## 영향 안내
 
 - 기본 로그 설정은 새 컨테이너부터 적용됩니다.
-- 기본 주소 풀은 새 네트워크부터 적용됩니다.
+- 네트워크 주소 풀 변경은 새 네트워크부터 적용됩니다.
 - live restore는 Docker daemon 중단에만 적용되며 Lima VM 중지·삭제를 보호하지 않습니다.
