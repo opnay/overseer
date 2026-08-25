@@ -25,8 +25,14 @@ import {
   type OperationRetryRequest,
 } from "./operation-history.ts";
 import { OperationQueue, type EnqueueOperation } from "./operations.ts";
+import { SqliteRuntimeInstanceStore } from "./runtime-instance-store.ts";
 import { deriveRemoteComposeProjectName } from "./remote-compose.ts";
-import { parseRecreateDockerEngineInput, parseRuntimeStartInput } from "./runtime-configuration.ts";
+import {
+  parseCreateRuntimeInstanceInput,
+  parseRecreateDockerEngineInput,
+  parseRuntimeStartInput,
+  requireRuntimeInstanceName,
+} from "./runtime-configuration.ts";
 import { requireLocalRequest } from "./security.ts";
 import { StartupPrerequisiteService, type StartupPrerequisiteController } from "./startup.ts";
 import {
@@ -216,6 +222,84 @@ export function createApi(
   app.get("/runtime/configuration", async (context) =>
     context.json(await controller.getDockerEngineConfiguration()),
   );
+  app.get("/runtime/instances", async (context) =>
+    context.json(await controller.getRuntimeInstances()),
+  );
+  app.post("/runtime/instances", async (context) => {
+    const input = parseCreateRuntimeInstanceInput(await readObject(context));
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.start",
+        locks: [],
+        run: (progress) => controller.createRuntimeInstance(input, progress),
+        successMessage: `${input.name} Lima 인스턴스를 만들었습니다.`,
+        target: { name: input.name, resource: "runtime" },
+        title: "Lima 인스턴스 만들기",
+      },
+      undefined,
+      false,
+    );
+    return context.json({ operation }, 202);
+  });
+  app.post("/runtime/instances/:name/select", (context) => {
+    const name = requireRuntimeInstanceName(context.req.param("name"));
+    const operation = enqueue(context, {
+      exclusive: true,
+      kind: "runtime.connect",
+      locks: [],
+      run: (progress) => controller.selectRuntimeInstance(name, progress),
+      successMessage: `${name} 인스턴스를 활성 Docker Engine으로 선택했습니다.`,
+      target: { name, resource: "runtime" },
+      title: "활성 인스턴스 선택",
+    });
+    return context.json({ operation }, 202);
+  });
+  app.post("/runtime/instances/:name/prepare", (context) => {
+    const name = requireRuntimeInstanceName(context.req.param("name"));
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.connect",
+        locks: [],
+        run: (progress) => controller.prepareRuntimeInstance(name, progress),
+        successMessage: `${name} 인스턴스를 Overseer에서 사용할 수 있게 준비했습니다.`,
+        target: { name, resource: "runtime" },
+        title: "Lima 인스턴스 사용 준비",
+      },
+      undefined,
+      false,
+    );
+    return context.json({ operation }, 202);
+  });
+  app.post("/runtime/instances/:name/start", (context) => {
+    const name = requireRuntimeInstanceName(context.req.param("name"));
+    const operation = enqueue(context, {
+      exclusive: true,
+      kind: "runtime.start",
+      locks: [],
+      run: (progress) => controller.startRuntimeInstance(name, progress),
+      successMessage: `${name} 인스턴스를 시작했습니다.`,
+      target: { name, resource: "runtime" },
+      title: "Lima 인스턴스 시작",
+    });
+    return context.json({ operation }, 202);
+  });
+  app.post("/runtime/instances/:name/stop", (context) => {
+    const name = requireRuntimeInstanceName(context.req.param("name"));
+    const operation = enqueue(context, {
+      exclusive: true,
+      kind: "runtime.stop",
+      locks: [],
+      run: (progress) => controller.stopRuntimeInstance(name, progress),
+      successMessage: `${name} 인스턴스를 중지했습니다.`,
+      target: { name, resource: "runtime" },
+      title: "Lima 인스턴스 중지",
+    });
+    return context.json({ operation }, 202);
+  });
   app.get("/runtime/engine/configuration", async (context) =>
     context.json(await controller.getDockerDaemonConfiguration()),
   );
@@ -229,7 +313,7 @@ export function createApi(
         locks: [],
         run: (progress) => controller.applyDockerDaemonConfiguration(input, progress),
         successMessage: "Docker daemon 설정을 적용했습니다.",
-        target: { name: "overseer", resource: "runtime" },
+        target: { name: "Docker Engine", resource: "runtime" },
         title: "Docker daemon 설정 적용",
       },
       undefined,
@@ -251,7 +335,7 @@ export function createApi(
         locks: [],
         run: (progress) => controller.applyDockerDaemonConfigurationSection(input, progress),
         successMessage: `${label} 설정을 적용했습니다.`,
-        target: { name: "overseer", resource: "runtime" },
+        target: { name: "Docker Engine", resource: "runtime" },
         title: `${label} 설정 적용`,
       },
       undefined,
@@ -298,7 +382,7 @@ export function createApi(
         successMessage: configuration
           ? "Docker Engine을 만들었습니다."
           : "Lima 런타임을 시작했습니다.",
-        target: { name: "overseer", resource: "runtime" },
+        target: { name: "Docker Engine", resource: "runtime" },
         title: configuration ? "Docker Engine 만들기" : "런타임 시작",
       },
       configuration ? { configuration } : undefined,
@@ -313,7 +397,7 @@ export function createApi(
       locks: [],
       run: (progress) => controller.connectDockerCli(progress),
       successMessage: "Docker CLI를 overseer context에 연결했습니다.",
-      target: { name: "overseer", resource: "runtime" },
+      target: { name: "Docker Engine", resource: "runtime" },
       title: "Docker CLI 연결",
     });
     return context.json({ operation }, 202);
@@ -330,7 +414,7 @@ export function createApi(
         run: async (progress) =>
           void (await controller.recreateRuntime(input.configuration, progress)),
         successMessage: "Docker Engine을 재생성했습니다.",
-        target: { name: "overseer", resource: "runtime" },
+        target: { name: "Docker Engine", resource: "runtime" },
         title: "Docker Engine 재생성",
       },
       undefined,
@@ -346,7 +430,7 @@ export function createApi(
       locks: [],
       run: async (progress) => void (await controller.stopRuntime(progress)),
       successMessage: "Lima 런타임을 중지했습니다.",
-      target: { name: "overseer", resource: "runtime" },
+      target: { name: "Docker Engine", resource: "runtime" },
       title: "런타임 중지",
     });
     return context.json({ operation }, 202);
@@ -714,7 +798,11 @@ export function createApi(
 
 export function createPersistentApi() {
   const history = new SqliteOperationHistoryStore();
-  return createApi(new LimaDockerRuntime(), new OperationQueue(3, history));
+  const instances = new SqliteRuntimeInstanceStore();
+  return createApi(
+    new LimaDockerRuntime(undefined, undefined, undefined, undefined, instances),
+    new OperationQueue(3, history),
+  );
 }
 
 export type ApiType = ReturnType<typeof createApi>;

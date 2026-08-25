@@ -938,6 +938,96 @@
     width: 100%;
   }
 
+  .overseer-instance-settings,
+  .overseer-instance-loading,
+  .overseer-instance-create-form {
+    display: grid;
+    min-width: 0;
+  }
+
+  .overseer-instance-settings {
+    padding-top: var(--city-space-8);
+    border-top: 1px solid var(--city-color-border);
+    gap: var(--city-space-5);
+  }
+
+  .overseer-instance-settings-header {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--city-space-5);
+  }
+
+  .overseer-instance-settings-header > div {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-instance-settings-header h3,
+  .overseer-instance-settings-header p {
+    margin: 0;
+  }
+
+  .overseer-instance-settings-header h3 {
+    font-size: var(--city-font-size-md);
+  }
+
+  .overseer-instance-settings-header p,
+  .overseer-instance-origin {
+    color: var(--city-color-muted-foreground);
+  }
+
+  .overseer-instance-settings-header p {
+    font-size: var(--city-font-size-sm);
+  }
+
+  .overseer-instance-settings-header > [data-city-dialog-trigger],
+  .overseer-instance-settings-header > .city-button {
+    flex: none;
+  }
+
+  .overseer-instance-loading,
+  .overseer-instance-create-form {
+    gap: var(--city-space-4);
+  }
+
+  .overseer-instance-settings .overseer-data-table-region {
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-md);
+    background: var(--city-color-surface-raised);
+  }
+
+  .overseer-instance-origin {
+    display: block;
+    margin-top: var(--city-space-0-5);
+    font-size: var(--city-font-size-xs);
+    font-weight: var(--city-font-weight-normal);
+  }
+
+  .overseer-instance-actions {
+    display: flex;
+    min-width: max-content;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--city-space-2);
+  }
+
+  .overseer-table-column-compact {
+    min-width: 48px;
+  }
+
+  .overseer-table-column-state {
+    min-width: 82px;
+  }
+
+  .overseer-table-column-instance {
+    width: 240px;
+    min-width: 240px;
+    max-width: 240px;
+  }
+
   .overseer-settings-actions,
   .overseer-settings-environment-actions {
     display: flex;
@@ -2451,6 +2541,17 @@
 
     .overseer-settings-general-section > .city-button,
     .overseer-settings-runtime-section > .city-button {
+      width: 100%;
+    }
+
+    .overseer-instance-settings-header {
+      align-items: stretch;
+      flex-direction: column;
+      gap: var(--city-space-4);
+    }
+
+    .overseer-instance-settings-header > [data-city-dialog-trigger],
+    .overseer-instance-settings-header > .city-button {
       width: 100%;
     }
 

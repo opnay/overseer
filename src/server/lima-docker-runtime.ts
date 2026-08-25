@@ -18,6 +18,7 @@ import type {
   ContainerSpecInput,
   ContainerSummary,
   ContainerVolumeMount,
+  CreateRuntimeInstanceInput,
   CreateNamedResourceInput,
   DashboardSnapshot,
   DockerDaemonConfigurationSnapshot,
@@ -32,6 +33,8 @@ import type {
   PullImageInput,
   RegisterRemoteComposeInput,
   RunContainerInput,
+  RuntimeInstancesSnapshot,
+  RuntimeInstanceSummary,
   RuntimeSnapshot,
   UpdateDockerDaemonConfigurationInput,
   UpdateDockerDaemonConfigurationSectionInput,
@@ -50,6 +53,7 @@ import { ExpectedError } from "./errors.ts";
 import type { OperationProgress } from "./operations.ts";
 import { CommandError, parseJsonLines, runCommand } from "./process.ts";
 import { RemoteComposeService, type RemoteComposeRegistry } from "./remote-compose.ts";
+import { MemoryRuntimeInstanceStore, type RuntimeInstanceStore } from "./runtime-instance-store.ts";
 
 export interface RuntimeController {
   applyDockerDaemonConfiguration(
@@ -74,6 +78,10 @@ export interface RuntimeController {
     progress?: OperationProgress,
   ): Promise<void>;
   createNetwork(input: CreateNamedResourceInput, progress?: OperationProgress): Promise<void>;
+  createRuntimeInstance(
+    input: CreateRuntimeInstanceInput,
+    progress?: OperationProgress,
+  ): Promise<void>;
   createVolume(input: CreateNamedResourceInput, progress?: OperationProgress): Promise<void>;
   getContainer(id: string): Promise<ContainerDetail>;
   getContainerInspection(id: string): Promise<ContainerInspection>;
@@ -91,8 +99,10 @@ export interface RuntimeController {
   getImageRepositoryTags(id: string, page: number): Promise<ImageRepositoryTags>;
   getImages(): Promise<ImageSummary[]>;
   getNetworks(): Promise<NetworkSummary[]>;
+  getRuntimeInstances(): Promise<RuntimeInstancesSnapshot>;
   getVolumes(): Promise<VolumeSummary[]>;
   pullImage(input: PullImageInput, progress?: OperationProgress): Promise<void>;
+  prepareRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   registerBuilderCompose(spec: ComposeBuilderSpec, progress?: OperationProgress): Promise<void>;
   registerRemoteCompose(
     input: RegisterRemoteComposeInput,
@@ -109,11 +119,14 @@ export interface RuntimeController {
     progress?: OperationProgress,
   ): Promise<RuntimeSnapshot>;
   runContainer(input: RunContainerInput, progress?: OperationProgress): Promise<void>;
+  selectRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   startRuntime(
     progress?: OperationProgress,
     configuration?: DockerEngineConfiguration,
   ): Promise<RuntimeSnapshot>;
+  startRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   stopRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot>;
+  stopRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   updateContainer(
     id: string,
     input: UpdateContainerInput,
@@ -134,12 +147,17 @@ interface LimaInstance {
 }
 
 interface LimaInstanceDetails {
+  arch?: string;
   cpus: number;
   config?: {
     mounts?: Array<{
       location?: string;
       mountPoint?: string;
       writable?: boolean;
+    }>;
+    portForwards?: Array<{
+      guestSocket?: string;
+      hostSocket?: string;
     }>;
   };
   dir: string;
@@ -293,7 +311,27 @@ interface DockerInspectContainer {
   };
 }
 
-const LIMA_INSTANCE = process.env.OVERSEER_LIMA_INSTANCE ?? "overseer";
+function parseLimaInstanceDetails(value: unknown): LimaInstanceDetails {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("invalid Lima instance data");
+  }
+  const instance = value as Partial<LimaInstanceDetails>;
+  if (
+    typeof instance.name !== "string" ||
+    typeof instance.status !== "string" ||
+    typeof instance.dir !== "string" ||
+    typeof instance.vmType !== "string" ||
+    typeof instance.cpus !== "number" ||
+    typeof instance.memory !== "number" ||
+    typeof instance.disk !== "number"
+  ) {
+    throw new Error("invalid Lima instance data");
+  }
+  return instance as LimaInstanceDetails;
+}
+
+const DEFAULT_LIMA_INSTANCE = "overseer";
+const CONFIGURED_LIMA_INSTANCE = process.env.OVERSEER_LIMA_INSTANCE;
 const DOCKER_CONTEXT = "overseer";
 const DOCKER_CONTEXT_DESCRIPTION = "Overseer Lima Docker Engine";
 const LIMA_ROW_FORMAT = "{{.Name}}\t{{.Status}}\t{{.Dir}}";
@@ -477,6 +515,7 @@ export class LimaDockerRuntime implements RuntimeController {
   private readonly builderCompose: BuilderComposeRegistry;
   private readonly command: CommandRunner;
   private readonly fetcher: typeof fetch;
+  private readonly instanceStore: RuntimeInstanceStore;
   private readonly remoteCompose: RemoteComposeRegistry;
   private daemonTransition?: Promise<void>;
   private transition?: Promise<RuntimeSnapshot>;
@@ -486,11 +525,21 @@ export class LimaDockerRuntime implements RuntimeController {
     remoteCompose?: RemoteComposeRegistry,
     builderCompose?: BuilderComposeRegistry,
     fetcher: typeof fetch = fetch,
+    instanceStore: RuntimeInstanceStore = new MemoryRuntimeInstanceStore(),
   ) {
     this.command = command;
     this.fetcher = fetcher;
+    this.instanceStore = instanceStore;
     this.remoteCompose = remoteCompose ?? new RemoteComposeService(command);
     this.builderCompose = builderCompose ?? new BuilderComposeService(command);
+  }
+
+  private get instanceName(): string {
+    return (
+      CONFIGURED_LIMA_INSTANCE ??
+      this.instanceStore.getActiveInstanceName() ??
+      DEFAULT_LIMA_INSTANCE
+    );
   }
 
   async getDashboard(): Promise<DashboardSnapshot> {
@@ -538,13 +587,21 @@ export class LimaDockerRuntime implements RuntimeController {
       this.getInstanceDetails(),
       this.isQemuAvailable(),
     ]);
+    let configuration = { ...DEFAULT_DOCKER_ENGINE_CONFIGURATION };
+    let source: DockerEngineConfigurationSnapshot["source"] = "default";
+    if (instance) {
+      try {
+        configuration = this.configurationFromInstance(instance);
+        source = "instance";
+      } catch {
+        // Keep settings reachable so another compatible instance can be selected.
+      }
+    }
     return {
-      configuration: instance
-        ? this.configurationFromInstance(instance)
-        : { ...DEFAULT_DOCKER_ENGINE_CONFIGURATION },
+      configuration,
       dockerCli: await this.getDockerCliIntegration(instance),
       providers: [{ available: true, label: "Lima VM", value: "lima" }],
-      source: instance ? "instance" : "default",
+      source,
       vmTypes: [
         { available: true, label: "Apple Virtualization (VZ)", value: "vz" },
         {
@@ -557,6 +614,157 @@ export class LimaDockerRuntime implements RuntimeController {
         },
       ],
     };
+  }
+
+  async getRuntimeInstances(): Promise<RuntimeInstancesSnapshot> {
+    const instances = await this.listInstanceDetails();
+    const summaries = await Promise.all(
+      instances.map((instance) => this.runtimeInstanceSummary(instance)),
+    );
+    return {
+      activeInstanceName: this.instanceName,
+      instances: summaries.sort(
+        (left, right) =>
+          Number(right.active) - Number(left.active) || left.name.localeCompare(right.name),
+      ),
+      selectionLocked: Boolean(CONFIGURED_LIMA_INSTANCE),
+    };
+  }
+
+  async createRuntimeInstance(
+    input: CreateRuntimeInstanceInput,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    this.requireRuntimeIdle();
+    if (CONFIGURED_LIMA_INSTANCE && input.name !== CONFIGURED_LIMA_INSTANCE) {
+      throw new ExpectedError(
+        "runtime_instance_selection_locked",
+        `OVERSEER_LIMA_INSTANCE=${CONFIGURED_LIMA_INSTANCE} 설정으로 인스턴스 선택이 고정되어 있습니다.`,
+        409,
+      );
+    }
+    if (await this.getInstance(input.name)) {
+      throw new ExpectedError(
+        "runtime_instance_exists",
+        "같은 이름의 Lima 인스턴스가 이미 있습니다.",
+        409,
+      );
+    }
+    await this.requireAvailableVmType(input.configuration);
+    progress?.step("Lima 인스턴스 만드는 중");
+    await this.startNewInstance(input.name, input.configuration, progress);
+    this.instanceStore.markManaged(input.name);
+    if (!CONFIGURED_LIMA_INSTANCE) this.instanceStore.setActiveInstanceName(input.name);
+    await this.waitForDockerReady(progress, input.name);
+    const instance = await this.requireInstanceDetails(input.name);
+    await this.configureDockerContext(instance, progress);
+  }
+
+  async selectRuntimeInstance(name: string, progress?: OperationProgress): Promise<void> {
+    this.requireRuntimeIdle();
+    this.requireSelectableInstance(name);
+    const instance = await this.requireInstanceDetails(name);
+    if (!this.dockerSocketConfigured(instance)) {
+      throw new ExpectedError(
+        "runtime_instance_incompatible",
+        "Docker socket을 호스트로 전달하는 Lima 인스턴스만 사용할 수 있습니다.",
+        409,
+      );
+    }
+    if (!this.homeMountWritable(instance)) {
+      throw new ExpectedError(
+        "runtime_instance_not_prepared",
+        "먼저 Overseer 사용 준비를 실행해 macOS 홈 공유를 쓰기 가능하게 설정하십시오.",
+        409,
+      );
+    }
+    await this.configureDockerContext(instance, progress);
+    if (!CONFIGURED_LIMA_INSTANCE) this.instanceStore.setActiveInstanceName(name);
+  }
+
+  async prepareRuntimeInstance(name: string, progress?: OperationProgress): Promise<void> {
+    this.requireRuntimeIdle();
+    this.requireSelectableInstance(name);
+    let instance = await this.requireInstanceDetails(name);
+    if (!this.dockerSocketConfigured(instance)) {
+      throw new ExpectedError(
+        "runtime_instance_incompatible",
+        "Docker template으로 생성되어 socket forwarding이 구성된 Lima 인스턴스만 준비할 수 있습니다.",
+        409,
+      );
+    }
+    if (this.homeMountWritable(instance)) {
+      if (name === this.instanceName) {
+        await this.configureDockerContext(instance, progress);
+      }
+      return;
+    }
+    const wasRunning = instance.status.toLowerCase() === "running";
+    if (wasRunning) {
+      progress?.step("Lima 인스턴스 중지 중");
+      await this.command("limactl", ["stop", name], {
+        onOutput: progress?.output,
+        timeoutMs: 120_000,
+      });
+    }
+    if (!this.homeMountWritable(instance)) {
+      progress?.step("macOS 홈 공유를 쓰기 가능하게 설정 중");
+      await this.command("limactl", ["edit", name, "--mount-writable", "--tty=false"], {
+        onOutput: progress?.output,
+        timeoutMs: 120_000,
+      });
+    }
+    if (wasRunning) {
+      progress?.step("Lima 인스턴스 시작 중");
+      await this.command("limactl", ["start", name, "--tty=false", "--progress"], {
+        onOutput: progress?.output,
+        timeoutMs: 10 * 60_000,
+      });
+      await this.waitForDockerReady(progress, name);
+    }
+    instance = await this.requireInstanceDetails(name);
+    if (!this.homeMountWritable(instance)) {
+      throw new ExpectedError(
+        "host_mount_not_writable",
+        "Lima의 macOS 홈 공유를 쓰기 가능하게 설정하지 못했습니다.",
+        503,
+      );
+    }
+    if (name === this.instanceName) await this.configureDockerContext(instance, progress);
+  }
+
+  async startRuntimeInstance(name: string, progress?: OperationProgress): Promise<void> {
+    this.requireRuntimeIdle();
+    const instance = await this.requireInstanceDetails(name);
+    if (!this.dockerSocketConfigured(instance)) {
+      throw new ExpectedError(
+        "runtime_instance_incompatible",
+        "Docker 호환 Lima 인스턴스만 시작할 수 있습니다.",
+        409,
+      );
+    }
+    if (instance.status.toLowerCase() !== "running") {
+      progress?.step("Lima 인스턴스 시작 중");
+      await this.command("limactl", ["start", name, "--tty=false", "--progress"], {
+        onOutput: progress?.output,
+        timeoutMs: 10 * 60_000,
+      });
+    }
+    await this.waitForDockerReady(progress, name);
+    if (name === this.instanceName) {
+      await this.configureDockerContext(await this.requireInstanceDetails(name), progress);
+    }
+  }
+
+  async stopRuntimeInstance(name: string, progress?: OperationProgress): Promise<void> {
+    this.requireRuntimeIdle();
+    const instance = await this.requireInstanceDetails(name);
+    if (instance.status.toLowerCase() !== "running") return;
+    progress?.step("Lima 인스턴스 중지 중");
+    await this.command("limactl", ["stop", name], {
+      onOutput: progress?.output,
+      timeoutMs: 120_000,
+    });
   }
 
   async getDockerDaemonConfiguration(): Promise<DockerDaemonConfigurationSnapshot> {
@@ -626,18 +834,22 @@ export class LimaDockerRuntime implements RuntimeController {
     if (!this.homeMountWritable(instance)) {
       if (instance.status.toLowerCase() === "running") {
         progress?.step("Lima 런타임 중지 중");
-        await this.command("limactl", ["stop", LIMA_INSTANCE], {
+        await this.command("limactl", ["stop", this.instanceName], {
           onOutput: progress?.output,
           timeoutMs: 120_000,
         });
       }
       progress?.step("macOS 홈 공유를 쓰기 가능하게 설정 중");
-      await this.command("limactl", ["edit", LIMA_INSTANCE, "--mount-writable", "--tty=false"], {
-        onOutput: progress?.output,
-        timeoutMs: 120_000,
-      });
+      await this.command(
+        "limactl",
+        ["edit", this.instanceName, "--mount-writable", "--tty=false"],
+        {
+          onOutput: progress?.output,
+          timeoutMs: 120_000,
+        },
+      );
       progress?.step("Lima 런타임 시작 중");
-      await this.command("limactl", ["start", LIMA_INSTANCE, "--tty=false", "--progress"], {
+      await this.command("limactl", ["start", this.instanceName, "--tty=false", "--progress"], {
         onOutput: progress?.output,
         timeoutMs: 10 * 60_000,
       });
@@ -684,7 +896,7 @@ export class LimaDockerRuntime implements RuntimeController {
     if (!instance) return this.missingSnapshot();
     if (instance.status.toLowerCase() === "stopped") return this.stoppedSnapshot();
     progress?.step("Lima 런타임 중지 중");
-    await this.command("limactl", ["stop", LIMA_INSTANCE], {
+    await this.command("limactl", ["stop", this.instanceName], {
       onOutput: progress?.output,
       timeoutMs: 120_000,
     });
@@ -1540,7 +1752,7 @@ export class LimaDockerRuntime implements RuntimeController {
     }
     if (instance.status.toLowerCase() !== "running") {
       progress?.step("Lima 런타임 시작 중");
-      await this.command("limactl", ["start", LIMA_INSTANCE, "--tty=false", "--progress"], {
+      await this.command("limactl", ["start", this.instanceName, "--tty=false", "--progress"], {
         onOutput: progress?.output,
         timeoutMs: 10 * 60_000,
       });
@@ -1643,7 +1855,7 @@ export class LimaDockerRuntime implements RuntimeController {
   private async readDockerDaemonConfiguration(): Promise<{ exists: boolean; source: string }> {
     const result = await this.command("limactl", [
       "shell",
-      LIMA_INSTANCE,
+      this.instanceName,
       "sh",
       "-lc",
       READ_DOCKER_DAEMON_CONFIGURATION,
@@ -1667,7 +1879,7 @@ export class LimaDockerRuntime implements RuntimeController {
   ): Promise<void> {
     await this.command(
       "limactl",
-      ["shell", LIMA_INSTANCE, "sh", "-lc", WRITE_DOCKER_DAEMON_CONFIGURATION],
+      ["shell", this.instanceName, "sh", "-lc", WRITE_DOCKER_DAEMON_CONFIGURATION],
       {
         input: source,
         onOutput: progress?.output,
@@ -1679,7 +1891,7 @@ export class LimaDockerRuntime implements RuntimeController {
   private async removeDockerDaemonConfiguration(progress?: OperationProgress): Promise<void> {
     await this.command(
       "limactl",
-      ["shell", LIMA_INSTANCE, "sh", "-lc", REMOVE_DOCKER_DAEMON_CONFIGURATION],
+      ["shell", this.instanceName, "sh", "-lc", REMOVE_DOCKER_DAEMON_CONFIGURATION],
       { onOutput: progress?.output, timeoutMs: 30_000 },
     );
   }
@@ -1688,7 +1900,7 @@ export class LimaDockerRuntime implements RuntimeController {
     progress?.step("Docker daemon 다시 시작 중");
     await this.command(
       "limactl",
-      ["shell", LIMA_INSTANCE, "systemctl", "--user", "restart", "docker"],
+      ["shell", this.instanceName, "systemctl", "--user", "restart", "docker"],
       { onOutput: progress?.output, timeoutMs: 120_000 },
     );
   }
@@ -1706,15 +1918,25 @@ export class LimaDockerRuntime implements RuntimeController {
         409,
       );
     }
+    if (
+      this.instanceName !== DEFAULT_LIMA_INSTANCE &&
+      !this.instanceStore.isManaged(this.instanceName)
+    ) {
+      throw new ExpectedError(
+        "runtime_instance_external",
+        "외부에서 만든 Lima 인스턴스는 Overseer에서 재생성할 수 없습니다.",
+        409,
+      );
+    }
     if (instance.status.toLowerCase() === "running") {
       progress?.step("Lima 런타임 중지 중");
-      await this.command("limactl", ["stop", LIMA_INSTANCE], {
+      await this.command("limactl", ["stop", this.instanceName], {
         onOutput: progress?.output,
         timeoutMs: 120_000,
       });
     }
     progress?.step("Lima 환경 삭제 중");
-    await this.command("limactl", ["delete", "--force", LIMA_INSTANCE], {
+    await this.command("limactl", ["delete", "--force", this.instanceName], {
       onOutput: progress?.output,
       timeoutMs: 120_000,
     });
@@ -1727,34 +1949,21 @@ export class LimaDockerRuntime implements RuntimeController {
   ): Promise<RuntimeSnapshot> {
     await this.requireAvailableVmType(configuration);
     progress?.step("Lima 환경 만드는 중");
-    await this.command(
-      "limactl",
-      [
-        "start",
-        `--name=${LIMA_INSTANCE}`,
-        `--vm-type=${configuration.vmType}`,
-        `--cpus=${configuration.cpus}`,
-        `--memory=${configuration.memoryGiB}`,
-        `--disk=${configuration.diskGiB}`,
-        "--mount-writable",
-        "template:docker",
-        "--tty=false",
-        "--progress",
-      ],
-      {
-        onOutput: progress?.output,
-        timeoutMs: 20 * 60_000,
-      },
-    );
+    await this.startNewInstance(this.instanceName, configuration, progress);
+    this.instanceStore.markManaged(this.instanceName);
+    if (!CONFIGURED_LIMA_INSTANCE) this.instanceStore.setActiveInstanceName(this.instanceName);
     await this.waitForDockerReady(progress);
     await this.connectDockerCli(progress);
     return this.getRuntimeSnapshot();
   }
 
-  private async waitForDockerReady(progress?: OperationProgress): Promise<RuntimeSnapshot> {
+  private async waitForDockerReady(
+    progress?: OperationProgress,
+    instanceName = this.instanceName,
+  ): Promise<RuntimeSnapshot> {
     progress?.step("Docker 준비 확인 중");
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      const runtime = await this.getRuntimeSnapshot();
+      const runtime = await this.getRuntimeSnapshot(instanceName);
       if (runtime.phase === "running") return runtime;
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
@@ -1791,43 +2000,183 @@ export class LimaDockerRuntime implements RuntimeController {
     }
   }
 
-  private async getRuntimeSnapshot(): Promise<RuntimeSnapshot> {
+  private requireRuntimeIdle(): void {
+    if (this.transition || this.daemonTransition) {
+      throw new ExpectedError("runtime_busy", "다른 런타임 작업이 진행 중입니다.", 409);
+    }
+  }
+
+  private requireSelectableInstance(name: string): void {
+    if (CONFIGURED_LIMA_INSTANCE && name !== CONFIGURED_LIMA_INSTANCE) {
+      throw new ExpectedError(
+        "runtime_instance_selection_locked",
+        `OVERSEER_LIMA_INSTANCE=${CONFIGURED_LIMA_INSTANCE} 설정으로 인스턴스 선택이 고정되어 있습니다.`,
+        409,
+      );
+    }
+  }
+
+  private async listInstanceDetails(): Promise<LimaInstanceDetails[]> {
+    try {
+      const result = await this.command("limactl", ["list", "--json"]);
+      return parseJsonLines<unknown>(result.stdout).map(parseLimaInstanceDetails);
+    } catch (error) {
+      if (error instanceof ExpectedError) throw error;
+      if (error instanceof CommandError && error.message.includes("ENOENT")) {
+        throw new ExpectedError("lima_unavailable", "Lima 실행 파일을 찾을 수 없습니다.", 503);
+      }
+      throw new ExpectedError(
+        "invalid_lima_output",
+        "Lima 인스턴스 목록을 해석하지 못했습니다.",
+        503,
+      );
+    }
+  }
+
+  private async runtimeInstanceSummary(
+    instance: LimaInstanceDetails,
+  ): Promise<RuntimeInstanceSummary> {
+    let configuration: DockerEngineConfiguration | undefined;
+    try {
+      configuration = this.configurationFromInstance(instance);
+    } catch {
+      configuration = undefined;
+    }
+    const socketConfigured = this.dockerSocketConfigured(instance);
+    let dockerVersion: string | undefined;
+    if (socketConfigured && instance.status.toLowerCase() === "running") {
+      try {
+        const result = await this.command(
+          "docker",
+          [
+            "--host",
+            `unix://${instance.dir}/sock/docker.sock`,
+            "version",
+            "--format",
+            "{{.Server.Version}}",
+          ],
+          { timeoutMs: 5_000 },
+        );
+        dockerVersion = result.stdout.trim() || undefined;
+      } catch {
+        dockerVersion = undefined;
+      }
+    }
+    const compatible = Boolean(configuration && socketConfigured);
+    const homeMountWritable = this.homeMountWritable(instance);
+    const prepared = compatible && homeMountWritable;
+    const message = !compatible
+      ? "Docker socket forwarding을 확인할 수 없습니다."
+      : !homeMountWritable
+        ? "macOS 홈 공유 준비가 필요합니다."
+        : instance.status.toLowerCase() === "running" && !dockerVersion
+          ? "Docker daemon을 확인할 수 없습니다."
+          : "Overseer에서 사용할 수 있습니다.";
+    return {
+      active: instance.name === this.instanceName,
+      architecture: instance.arch ?? "-",
+      compatible,
+      ...(configuration ? { configuration } : {}),
+      ...(dockerVersion ? { dockerVersion } : {}),
+      homeMountWritable,
+      managed:
+        this.instanceStore.isManaged(instance.name) || instance.name === DEFAULT_LIMA_INSTANCE,
+      message,
+      name: instance.name,
+      prepared,
+      status: instance.status,
+    };
+  }
+
+  private dockerSocketConfigured(instance: LimaInstanceDetails): boolean {
+    const expectedHostSocket = `${instance.dir}/sock/docker.sock`;
+    return Boolean(
+      instance.config?.portForwards?.some(
+        ({ guestSocket, hostSocket }) =>
+          hostSocket === expectedHostSocket && guestSocket?.endsWith("/docker.sock"),
+      ),
+    );
+  }
+
+  private async requireInstanceDetails(name: string): Promise<LimaInstanceDetails> {
+    const instance = await this.getInstanceDetails(name);
+    if (!instance) {
+      throw new ExpectedError(
+        "runtime_instance_not_found",
+        "Lima 인스턴스를 찾을 수 없습니다.",
+        404,
+      );
+    }
+    return instance;
+  }
+
+  private async startNewInstance(
+    name: string,
+    configuration: DockerEngineConfiguration,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    await this.command(
+      "limactl",
+      [
+        "start",
+        `--name=${name}`,
+        `--vm-type=${configuration.vmType}`,
+        `--cpus=${configuration.cpus}`,
+        `--memory=${configuration.memoryGiB}`,
+        `--disk=${configuration.diskGiB}`,
+        "--mount-writable",
+        "template:docker",
+        "--tty=false",
+        "--progress",
+      ],
+      {
+        onOutput: progress?.output,
+        timeoutMs: 20 * 60_000,
+      },
+    );
+  }
+
+  private async getRuntimeSnapshot(instanceName = this.instanceName): Promise<RuntimeSnapshot> {
     let instance: LimaInstance | undefined;
     try {
-      instance = await this.getInstance();
+      instance = await this.getInstance(instanceName);
     } catch (error) {
       if (error instanceof CommandError && error.message.includes("ENOENT")) {
         return {
-          instance: LIMA_INSTANCE,
+          instance: instanceName,
           message: "Lima 실행 파일을 찾을 수 없습니다.",
           phase: "error",
         };
       }
       throw error;
     }
-    if (!instance) return this.missingSnapshot();
-    if (instance.status.toLowerCase() !== "running") return this.stoppedSnapshot();
+    if (!instance) return this.missingSnapshot(instanceName);
+    if (instance.status.toLowerCase() !== "running") return this.stoppedSnapshot(instanceName);
     try {
-      const result = await this.docker(["version", "--format", "{{.Server.Version}}"]);
+      const result = await this.dockerForInstance(instanceName, [
+        "version",
+        "--format",
+        "{{.Server.Version}}",
+      ]);
       return {
         dockerVersion: result.stdout.trim(),
-        instance: LIMA_INSTANCE,
+        instance: instanceName,
         message: "Lima와 Docker가 정상적으로 실행 중입니다.",
         phase: "running",
       };
     } catch {
       return {
-        instance: LIMA_INSTANCE,
+        instance: instanceName,
         message: "Lima는 실행 중이며 Docker socket을 준비하고 있습니다.",
         phase: "starting",
       };
     }
   }
 
-  private async getInstance(): Promise<LimaInstance | undefined> {
+  private async getInstance(instanceName = this.instanceName): Promise<LimaInstance | undefined> {
     let result;
     try {
-      result = await this.command("limactl", ["list", LIMA_INSTANCE, "--format", LIMA_ROW_FORMAT]);
+      result = await this.command("limactl", ["list", instanceName, "--format", LIMA_ROW_FORMAT]);
     } catch (error) {
       if (
         error instanceof CommandError &&
@@ -1841,14 +2190,16 @@ export class LimaDockerRuntime implements RuntimeController {
     const row = result.stdout.trim();
     if (!row) return undefined;
     const [name, status, directory] = row.split("\t");
-    if (name !== LIMA_INSTANCE || !status || !directory) return undefined;
+    if (name !== instanceName || !status || !directory) return undefined;
     return { directory, status };
   }
 
-  private async getInstanceDetails(): Promise<LimaInstanceDetails | undefined> {
+  private async getInstanceDetails(
+    instanceName = this.instanceName,
+  ): Promise<LimaInstanceDetails | undefined> {
     let result;
     try {
-      result = await this.command("limactl", ["list", LIMA_INSTANCE, "--json"]);
+      result = await this.command("limactl", ["list", instanceName, "--json"]);
     } catch (error) {
       if (
         error instanceof CommandError &&
@@ -1860,19 +2211,9 @@ export class LimaDockerRuntime implements RuntimeController {
       throw error;
     }
     try {
-      const instance = JSON.parse(result.stdout) as Partial<LimaInstanceDetails>;
-      if (
-        instance.name !== LIMA_INSTANCE ||
-        typeof instance.status !== "string" ||
-        typeof instance.dir !== "string" ||
-        typeof instance.vmType !== "string" ||
-        typeof instance.cpus !== "number" ||
-        typeof instance.memory !== "number" ||
-        typeof instance.disk !== "number"
-      ) {
-        throw new Error("invalid Lima instance data");
-      }
-      return instance as LimaInstanceDetails;
+      const instance = parseLimaInstanceDetails(JSON.parse(result.stdout));
+      if (instance.name !== instanceName) throw new Error("unexpected Lima instance");
+      return instance;
     } catch {
       throw new ExpectedError(
         "invalid_lima_output",
@@ -2072,7 +2413,16 @@ export class LimaDockerRuntime implements RuntimeController {
   }
 
   private async docker(args: readonly string[], timeoutMs?: number, progress?: OperationProgress) {
-    const instance = await this.getInstance();
+    return this.dockerForInstance(this.instanceName, args, timeoutMs, progress);
+  }
+
+  private async dockerForInstance(
+    instanceName: string,
+    args: readonly string[],
+    timeoutMs?: number,
+    progress?: OperationProgress,
+  ) {
+    const instance = await this.getInstance(instanceName);
     if (!instance || instance.status.toLowerCase() !== "running") {
       throw new ExpectedError("runtime_unavailable", "Lima 런타임이 실행 중이 아닙니다.", 503);
     }
@@ -2113,17 +2463,17 @@ export class LimaDockerRuntime implements RuntimeController {
     return lastLine?.slice(0, 2_000) || "Docker 명령을 완료하지 못했습니다.";
   }
 
-  private missingSnapshot(): RuntimeSnapshot {
+  private missingSnapshot(instanceName = this.instanceName): RuntimeSnapshot {
     return {
-      instance: LIMA_INSTANCE,
+      instance: instanceName,
       message: "전용 Lima 인스턴스가 아직 없습니다.",
       phase: "missing",
     };
   }
 
-  private stoppedSnapshot(): RuntimeSnapshot {
+  private stoppedSnapshot(instanceName = this.instanceName): RuntimeSnapshot {
     return {
-      instance: LIMA_INSTANCE,
+      instance: instanceName,
       message: "Lima 인스턴스가 중지되어 있습니다.",
       phase: "stopped",
     };

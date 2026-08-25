@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
 import { LimaDockerRuntime, type CommandRunner } from "../src/server/lima-docker-runtime.ts";
 import { CommandError } from "../src/server/process.ts";
+import { MemoryRuntimeInstanceStore } from "../src/server/runtime-instance-store.ts";
 import type { BuilderComposeRegistry } from "../src/server/builder-compose.ts";
 import type { RemoteComposeRegistry } from "../src/server/remote-compose.ts";
 
@@ -14,6 +15,7 @@ function limaDetails(
     dir: string;
     disk: number;
     memory: number;
+    name: string;
     status: string;
     vmType: string;
     writable: boolean;
@@ -24,6 +26,7 @@ function limaDetails(
     dir: "/tmp/overseer",
     disk: 100 * 1024 ** 3,
     memory: 4 * 1024 ** 3,
+    name: "overseer",
     status: "Running",
     vmType: "vz",
     writable: true,
@@ -39,8 +42,14 @@ function limaDetails(
           writable: values.writable,
         },
       ],
+      portForwards: [
+        {
+          guestSocket: "/run/user/501/docker.sock",
+          hostSocket: `${values.dir}/sock/docker.sock`,
+        },
+      ],
     },
-    name: "overseer",
+    name: values.name,
   });
 }
 
@@ -845,6 +854,108 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
       source: "instance",
       vmTypes: [{ value: "vz" }, { available: true, value: "qemu" }],
     });
+  });
+
+  it("keeps settings reachable when the active instance uses an unsupported driver", async () => {
+    const docker = dockerContextResponder("unix:///tmp/overseer/sock/docker.sock");
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "docker") return docker(args);
+      if (executable.startsWith("qemu-system-")) {
+        throw commandFailure(executable, "command not found");
+      }
+      return { stderr: "", stdout: limaDetails({ vmType: "unsupported" }) };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getDockerEngineConfiguration()).resolves.toMatchObject({
+      configuration: dockerEngineConfiguration,
+      source: "default",
+    });
+  });
+
+  it("discovers Lima instances and marks exactly one as active", async () => {
+    const store = new MemoryRuntimeInstanceStore();
+    store.setActiveInstanceName("dev");
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list") {
+        return {
+          stderr: "",
+          stdout: `${limaDetails()}\n${limaDetails({ dir: "/tmp/dev", name: "dev" })}\n`,
+        };
+      }
+      if (executable === "docker" && args.includes("version")) {
+        return { stderr: "", stdout: "29.7.2\n" };
+      }
+      throw new Error(`unexpected command: ${executable} ${args.join(" ")}`);
+    });
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+
+    await expect(runtime.getRuntimeInstances()).resolves.toMatchObject({
+      activeInstanceName: "dev",
+      instances: [
+        { active: true, dockerVersion: "29.7.2", name: "dev", prepared: true },
+        { active: false, dockerVersion: "29.7.2", name: "overseer", prepared: true },
+      ],
+      selectionLocked: false,
+    });
+  });
+
+  it("selects a prepared external instance and updates the stable Docker context", async () => {
+    const store = new MemoryRuntimeInstanceStore();
+    const docker = dockerContextResponder();
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl") {
+        return { stderr: "", stdout: limaDetails({ dir: "/tmp/dev", name: "dev" }) };
+      }
+      if (executable === "docker") return docker(args);
+      throw new Error(`unexpected command: ${executable} ${args.join(" ")}`);
+    });
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+
+    await runtime.selectRuntimeInstance("dev");
+
+    expect(store.getActiveInstanceName()).toBe("dev");
+    expect(command).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["host=unix:///tmp/dev/sock/docker.sock"]),
+      expect.any(Object),
+    );
+  });
+
+  it("prepares an instance without changing the active selection", async () => {
+    const store = new MemoryRuntimeInstanceStore();
+    store.setActiveInstanceName("overseer");
+    const command: CommandRunner = vi.fn(async () => ({
+      stderr: "",
+      stdout: limaDetails({ dir: "/tmp/dev", name: "dev" }),
+    }));
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+
+    await runtime.prepareRuntimeInstance("dev");
+
+    expect(store.getActiveInstanceName()).toBe("overseer");
+    expect(command).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not recreate an external active instance", async () => {
+    const store = new MemoryRuntimeInstanceStore();
+    store.setActiveInstanceName("external");
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list") {
+        return { stderr: "", stdout: "external\tRunning\t/tmp/external\n" };
+      }
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+
+    await expect(runtime.recreateRuntime(dockerEngineConfiguration)).rejects.toThrow(
+      "외부에서 만든 Lima 인스턴스",
+    );
+    expect(command).not.toHaveBeenCalledWith(
+      "limactl",
+      expect.arrayContaining(["delete"]),
+      expect.anything(),
+    );
   });
 
   it("reads managed and additional settings from the rootless daemon file", async () => {

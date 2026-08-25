@@ -21,6 +21,7 @@ function createController(): RuntimeController {
     composeProjectAction: vi.fn(async () => undefined),
     containerAction: vi.fn(async () => undefined),
     createNetwork: vi.fn(async () => undefined),
+    createRuntimeInstance: vi.fn(async () => undefined),
     createVolume: vi.fn(async () => undefined),
     getBuilderComposeProject: vi.fn(async (name) => ({
       configHash: "a".repeat(64),
@@ -147,8 +148,14 @@ function createController(): RuntimeController {
     })),
     getImages: vi.fn(async () => []),
     getNetworks: vi.fn(async () => []),
+    getRuntimeInstances: vi.fn(async () => ({
+      activeInstanceName: "overseer",
+      instances: [],
+      selectionLocked: false,
+    })),
     getVolumes: vi.fn(async () => []),
     pullImage: vi.fn(async () => undefined),
+    prepareRuntimeInstance: vi.fn(async () => undefined),
     registerBuilderCompose: vi.fn(async () => undefined),
     registerRemoteCompose: vi.fn(async () => undefined),
     recreateRuntime: vi.fn(async () => ({
@@ -163,16 +170,19 @@ function createController(): RuntimeController {
     removeRemoteCompose: vi.fn(async () => undefined),
     removeVolume: vi.fn(async () => undefined),
     runContainer: vi.fn(async () => undefined),
+    selectRuntimeInstance: vi.fn(async () => undefined),
     startRuntime: vi.fn(async () => ({
       instance: "overseer",
       message: "정상 실행 중",
       phase: "running" as const,
     })),
+    startRuntimeInstance: vi.fn(async () => undefined),
     stopRuntime: vi.fn(async () => ({
       instance: "overseer",
       message: "중지됨",
       phase: "stopped" as const,
     })),
+    stopRuntimeInstance: vi.fn(async () => undefined),
     updateContainer: vi.fn(async () => undefined),
     updateBuilderCompose: vi.fn(async () => undefined),
   };
@@ -341,6 +351,77 @@ describe("API boundary", () => {
       source: "default",
       vmTypes: [{ value: "vz" }, { available: false, value: "qemu" }],
     });
+  });
+
+  it("returns discovered Lima instances and the active selection", async () => {
+    const controller = createController();
+    vi.mocked(controller.getRuntimeInstances).mockResolvedValueOnce({
+      activeInstanceName: "dev",
+      instances: [],
+      selectionLocked: false,
+    });
+    const app = createApi(controller);
+    const response = await app.request("/runtime/instances", { headers: localHeaders });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      activeInstanceName: "dev",
+      instances: [],
+      selectionLocked: false,
+    });
+  });
+
+  it("validates and creates a named Lima instance without retry", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const input = { configuration: dockerEngineConfiguration, name: "dev-engine" };
+    const response = await app.request("/runtime/instances", {
+      body: JSON.stringify(input),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.createRuntimeInstance).toHaveBeenCalledWith(input, expect.any(Object)),
+    );
+    await vi.waitFor(async () => {
+      const operations = await app.request("/operations", { headers: localHeaders });
+      const body = (await operations.json()) as {
+        operations: Array<{ retryable: boolean; target: { name: string } }>;
+      };
+      expect(body.operations[0]).toMatchObject({
+        retryable: false,
+        target: { name: "dev-engine" },
+      });
+    });
+  });
+
+  it("rejects an invalid Lima instance name before enqueueing", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/instances", {
+      body: JSON.stringify({ configuration: dockerEngineConfiguration, name: "Invalid Name" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(controller.createRuntimeInstance).not.toHaveBeenCalled();
+  });
+
+  it("selects a Lima instance through an exclusive operation", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/instances/dev/select", {
+      headers: localHeaders,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.selectRuntimeInstance).toHaveBeenCalledWith("dev", expect.any(Object)),
+    );
   });
 
   it("returns the rootless Docker daemon configuration", async () => {

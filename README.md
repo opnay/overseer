@@ -34,7 +34,7 @@ pnpm dev
 
 도구를 제거하지 않고 각 미설치 화면을 확인하려면 `/startup?startup-preview=homebrew`, `/startup?startup-preview=docker`, `/startup?startup-preview=lima`를 사용하십시오. 미리보기는 대상보다 앞선 단계를 완료 상태로 구성하며 실제 도구 감지 결과와 호스트 패키지를 변경하지 않습니다. 다른 페이지에서 필수 설치가 감지되면 `/startup`으로 이동하고, 완료 후 원래 페이지로 돌아갑니다.
 
-도구 준비가 끝나면 **설정 > 일반**에서 Homebrew로 설치된 Docker CLI·Compose·Lima의 업데이트를 한 번에 확인하고, 새 버전이 있는 항목만 개별 업데이트할 수 있습니다. 외부 설치본은 현재 버전과 수동 관리 사유만 표시합니다. 업데이트는 호스트 명령 도구만 교체하며 실행 중인 Lima VM과 컨테이너를 재생성하지 않습니다. **설정 > Docker Engine**의 **엔진 설정**에서 daemon 동작을, **네트워크 설정**에서 DNS·주소 풀·Registry·Proxy를, **실행 환경**에서 VM 드라이버를 구성하십시오. daemon 설정은 섹션별로 저장·초기화할 수 있고 VM의 `~/.config/docker/daemon.json`을 직접 검증·적용하며 VM을 재생성하지 않습니다. 기본 VM 값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB입니다. QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
+도구 준비가 끝나면 **설정 > 일반**에서 Homebrew로 설치된 Docker CLI·Compose·Lima의 업데이트를 한 번에 확인하고, 새 버전이 있는 항목만 개별 업데이트할 수 있습니다. 외부 설치본은 현재 버전과 수동 관리 사유만 표시합니다. 업데이트는 호스트 명령 도구만 교체하며 실행 중인 Lima VM과 컨테이너를 재생성하지 않습니다. **설정 > Docker Engine**의 **엔진 설정**에서 활성 Engine의 daemon 동작을, **네트워크 설정**에서 DNS·주소 풀·Registry·Proxy를 관리합니다. **인스턴스 설정**에서는 로컬 Lima 인스턴스를 발견하고 하나를 활성 Engine으로 선택하거나 새 인스턴스를 만들 수 있습니다. 가상화 설정의 실행 환경은 현재 Lima VM으로 고정하며 VM 드라이버는 VZ 또는 QEMU입니다. 기본 VM 값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB이고 QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
 
 리소스는 독립 URL에서 관리합니다.
 
@@ -46,7 +46,7 @@ pnpm dev
 - `/networks`: 생성·삭제, 기본 네트워크 보호
 - `/operations`: Overseer에서 요청한 전체 작업 기록·상세 출력·실패 작업 재시도
 
-**Docker Engine 만들기**를 실행하면 선택한 설정과 공식 `template:docker`로 `overseer` 인스턴스를 생성합니다. macOS 홈 디렉터리는 컨테이너 bind mount를 위해 Lima에 쓰기 가능하게 공유하고, Lima socket을 가리키는 `overseer` Docker context를 생성·선택합니다. 기존 인스턴스 설정을 바꾸려면 화면에서 `overseer`를 입력하고 재생성해야 합니다. 재생성하면 VM의 컨테이너·이미지·볼륨·사용자 네트워크와 VM 내부 데이터가 삭제되며, 호스트 SQLite의 Compose 등록 정보와 작업 기록은 유지됩니다.
+시작 준비의 **Docker Engine 만들기**는 기본 `overseer` 인스턴스를 생성합니다. 이후 **인스턴스 설정**에서는 이름과 자원을 지정해 추가 Lima 인스턴스를 만들거나, Docker socket forwarding이 구성된 기존 인스턴스를 선택할 수 있습니다. macOS 홈 공유가 읽기 전용인 기존 인스턴스는 **준비** 작업으로 writable mount를 적용합니다. Overseer가 만든 인스턴스 여부와 무관하게 한 번에 하나만 활성 Engine이며 선택값은 호스트 SQLite에 저장됩니다. `OVERSEER_LIMA_INSTANCE`가 있으면 그 인스턴스로 선택이 고정됩니다.
 
 별도 환경 변수 없이 일반 Docker CLI가 같은 런타임을 사용합니다.
 
@@ -56,7 +56,7 @@ docker ps
 docker compose version
 ```
 
-다른 context를 선택했거나 기존 Lima 홈 공유가 읽기 전용이면 **설정 > Docker Engine > 엔진 설정**에서 **Docker CLI 연결**을 실행하십시오. 쓰기 가능 공유로 바꾸는 경우 Docker Engine을 한 번 다시 시작합니다.
+활성 인스턴스를 선택하면 Lima socket을 가리키는 `overseer` Docker context를 생성·갱신합니다. 기존 Lima 홈 공유가 읽기 전용이면 **설정 > Docker Engine > 인스턴스 설정**에서 해당 인스턴스의 **준비**를 실행하십시오. 쓰기 가능 공유로 바꾸는 경우 실행 중인 인스턴스를 한 번 다시 시작합니다.
 
 ## 검증
 
@@ -82,6 +82,12 @@ pnpm check
 - `GET /api/containers/:id/inspect`: 전체 Docker inspect JSON과 Health Check 이력
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
 - `GET /api/runtime/configuration`: 실제 VM 설정 또는 기본 설정과 드라이버 가용성
+- `GET /api/runtime/instances`: 로컬 Lima 인스턴스와 호환성·준비·활성 상태
+- `POST /api/runtime/instances`: 이름과 VM 설정으로 관리 인스턴스 생성
+- `POST /api/runtime/instances/:name/select`: 준비된 인스턴스를 활성 Engine으로 선택
+- `POST /api/runtime/instances/:name/prepare`: writable 홈 공유와 Docker context 준비
+- `POST /api/runtime/instances/:name/start`: 선택한 Lima 인스턴스 시작
+- `POST /api/runtime/instances/:name/stop`: 선택한 Lima 인스턴스 중지
 - `GET /api/runtime/engine/configuration`: rootless Docker daemon 설정과 적용 가능 상태
 - `PATCH /api/runtime/engine/configuration`: daemon 설정 검증·적용 및 실패 시 이전 파일 복구 작업 접수
 - `PATCH /api/runtime/engine/configuration/:section`: 최신 daemon 설정에 선택 섹션만 병합하는 작업 접수

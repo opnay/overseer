@@ -33,6 +33,31 @@ export interface DockerEngineConfigurationSnapshot {
   vmTypes: DockerEngineConfigurationOption<LimaVmType>[];
 }
 
+export interface RuntimeInstanceSummary {
+  active: boolean;
+  architecture: string;
+  compatible: boolean;
+  configuration?: DockerEngineConfiguration;
+  dockerVersion?: string;
+  homeMountWritable: boolean;
+  managed: boolean;
+  message: string;
+  name: string;
+  prepared: boolean;
+  status: string;
+}
+
+export interface RuntimeInstancesSnapshot {
+  activeInstanceName: string;
+  instances: RuntimeInstanceSummary[];
+  selectionLocked: boolean;
+}
+
+export interface CreateRuntimeInstanceInput {
+  configuration: DockerEngineConfiguration;
+  name: string;
+}
+
 export interface DockerCliIntegrationSnapshot {
   activeContext?: string;
   contextEndpoint?: string;

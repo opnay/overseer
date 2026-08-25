@@ -12,6 +12,7 @@ import type {
   DockerDaemonConfigurationSnapshot,
   DockerEngineConfigurationSnapshot,
   OperationSnapshot,
+  RuntimeInstancesSnapshot,
   StartupSnapshot,
   ToolUpdateSnapshot,
 } from "../src/shared/contracts.ts";
@@ -119,6 +120,35 @@ function dockerDaemonSnapshot(available = true): DockerDaemonConfigurationSnapsh
       : "Docker Engine을 시작한 뒤 daemon 설정을 변경할 수 있습니다.",
     path: "~/.config/docker/daemon.json",
     source: available ? "file" : "default",
+  };
+}
+
+function runtimeInstancesSnapshot(
+  instances: RuntimeInstancesSnapshot["instances"] = [],
+): RuntimeInstancesSnapshot {
+  return {
+    activeInstanceName: instances.find(({ active }) => active)?.name ?? "overseer",
+    instances,
+    selectionLocked: false,
+  };
+}
+
+function runtimeInstance(
+  overrides: Partial<RuntimeInstancesSnapshot["instances"][number]> = {},
+): RuntimeInstancesSnapshot["instances"][number] {
+  return {
+    active: true,
+    architecture: "aarch64",
+    compatible: true,
+    configuration: dockerEngineSnapshot("instance", true).configuration,
+    dockerVersion: "29.7.2",
+    homeMountWritable: true,
+    managed: true,
+    message: "Overseer에서 사용할 수 있습니다.",
+    name: "overseer",
+    prepared: true,
+    status: "Running",
+    ...overrides,
   };
 }
 
@@ -990,7 +1020,7 @@ describe("App", () => {
     expect(screen.getByRole("progressbar", { name: "런타임 시작 진행 중" })).toBeInTheDocument();
   });
 
-  it("configures the first Docker Engine from the settings subnavigation", async () => {
+  it("creates a Lima instance from Instance settings", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -1006,22 +1036,23 @@ describe("App", () => {
     };
     const accepted = operation("queued", {
       kind: "runtime.start",
-      successMessage: "Docker Engine을 만들었습니다.",
-      target: { name: "overseer", resource: "runtime" },
-      title: "Docker Engine 만들기",
+      successMessage: "dev Lima 인스턴스를 만들었습니다.",
+      target: { name: "dev", resource: "runtime" },
+      title: "Lima 인스턴스 만들기",
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) return jsonResponse(dockerEngineSnapshot());
+      if (url.endsWith("/api/runtime/instances")) {
+        if (init?.method === "POST") return jsonResponse({ operation: accepted }, 202);
+        return jsonResponse(runtimeInstancesSnapshot());
+      }
       if (url.endsWith("/api/runtime/engine/configuration")) {
         return jsonResponse(dockerDaemonSnapshot(false));
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
-      if (url.endsWith("/api/runtime/start") && init?.method === "POST") {
-        return jsonResponse({ operation: accepted }, 202);
-      }
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -1039,7 +1070,6 @@ describe("App", () => {
       "page",
     );
     expect(screen.getByRole("heading", { name: "엔진 설정", level: 2 })).toBeInTheDocument();
-    expect(await screen.findByLabelText("CPU")).toHaveValue("4");
 
     await user.click(within(overseer).getByRole("button", { name: "일반" }));
     expect(within(overseer).getByRole("button", { name: "일반" })).toHaveAttribute(
@@ -1059,16 +1089,15 @@ describe("App", () => {
       "aria-current",
       "page",
     );
-    expect(screen.getByLabelText("CPU")).toHaveValue("4");
-    expect(screen.getByLabelText("메모리")).toHaveValue("4");
-    expect(screen.getByLabelText("디스크")).toHaveValue("100");
+    expect(screen.queryByLabelText("CPU")).not.toBeInTheDocument();
 
-    await user.click(within(dockerEngine).getByRole("button", { name: "실행 환경" }));
-    expect(screen.getByRole("heading", { name: "실행 환경", level: 2 })).toBeInTheDocument();
-    expect(within(dockerEngine).getByRole("button", { name: "실행 환경" })).toHaveAttribute(
+    await user.click(within(dockerEngine).getByRole("button", { name: "인스턴스 설정" }));
+    expect(screen.getByRole("heading", { name: "인스턴스 설정", level: 2 })).toBeInTheDocument();
+    expect(within(dockerEngine).getByRole("button", { name: "인스턴스 설정" })).toHaveAttribute(
       "aria-current",
       "page",
     );
+    expect(screen.getByRole("combobox", { name: "실행 환경" })).toBeDisabled();
     expect(screen.getByText("QEMU가 설치되지 않았습니다. brew install qemu")).toBeInTheDocument();
 
     await user.click(screen.getByRole("combobox", { name: "VM 드라이버" }));
@@ -1083,23 +1112,30 @@ describe("App", () => {
       "aria-current",
       "page",
     );
-    await user.click(within(dockerEngine).getByRole("button", { name: "실행 환경" }));
-    await user.click(screen.getByRole("button", { name: "엔진 설정에서 적용" }));
-    await user.click(screen.getByRole("button", { name: "Docker Engine 만들기" }));
+    await user.click(within(dockerEngine).getByRole("button", { name: "인스턴스 설정" }));
+    await user.click(screen.getByRole("button", { name: "인스턴스 만들기" }));
+    const dialog = await screen.findByRole("dialog", { name: "Lima 인스턴스 만들기" });
+    expect(within(dialog).getByLabelText("CPU")).toHaveValue("4");
+    expect(within(dialog).getByLabelText("메모리")).toHaveValue("4");
+    expect(within(dialog).getByLabelText("디스크")).toHaveValue("100");
+    await user.type(within(dialog).getByLabelText("인스턴스 이름"), "dev");
+    await user.click(within(dialog).getByRole("button", { name: "만들기" }));
 
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
           ([input, init]) =>
-            String(input).endsWith("/api/runtime/start") && init?.method === "POST",
+            String(input).endsWith("/api/runtime/instances") && init?.method === "POST",
         ),
       ).toBe(true),
     );
-    const createCall = fetchMock.mock.calls.find(([input]) =>
-      String(input).endsWith("/api/runtime/start"),
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith("/api/runtime/instances") && init?.method === "POST",
     );
     expect(JSON.parse(String(createCall?.[1]?.body))).toEqual({
       configuration: dockerEngineSnapshot().configuration,
+      name: "dev",
     });
   });
 
@@ -1260,7 +1296,7 @@ describe("App", () => {
     });
   });
 
-  it("connects the Docker CLI from Engine settings after confirming the runtime restart", async () => {
+  it("prepares a compatible Lima instance from Instance settings", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -1277,22 +1313,35 @@ describe("App", () => {
     };
     const accepted = operation("queued", {
       kind: "runtime.connect",
-      successMessage: "Docker CLI를 overseer context에 연결했습니다.",
-      target: { name: "overseer", resource: "runtime" },
-      title: "Docker CLI 연결",
+      successMessage: "dev 인스턴스를 Overseer에서 사용할 수 있게 준비했습니다.",
+      target: { name: "dev", resource: "runtime" },
+      title: "Lima 인스턴스 사용 준비",
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) {
-        return jsonResponse(dockerEngineSnapshot("instance", true, false));
+        return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/runtime/instances")) {
+        return jsonResponse(
+          runtimeInstancesSnapshot([
+            runtimeInstance({
+              active: false,
+              homeMountWritable: false,
+              managed: false,
+              name: "dev",
+              prepared: false,
+            }),
+          ]),
+        );
       }
       if (url.endsWith("/api/runtime/engine/configuration")) {
         return jsonResponse(dockerDaemonSnapshot());
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
-      if (url.endsWith("/api/runtime/cli/connect") && init?.method === "POST") {
+      if (url.endsWith("/api/runtime/instances/dev/prepare") && init?.method === "POST") {
         return jsonResponse({ operation: accepted }, 202);
       }
       return jsonResponse(dashboard);
@@ -1302,31 +1351,20 @@ describe("App", () => {
     render(<App />);
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
-
-    expect(
-      await screen.findByRole("heading", { name: "Docker CLI", level: 3 }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("context: overseer")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Docker CLI 연결" }));
-
-    const dialog = await screen.findByRole("alertdialog", {
-      name: "Docker CLI 연결을 준비하시겠습니까?",
-    });
-    expect(dialog).toHaveTextContent("Docker Engine을 잠시 다시 시작합니다");
-    await user.click(within(dialog).getByRole("button", { name: "Docker CLI 연결" }));
+    await user.click(within(navigation).getByRole("button", { name: "인스턴스 설정" }));
+    await user.click(await screen.findByRole("button", { name: "dev Overseer 사용 준비" }));
 
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
           ([input, init]) =>
-            String(input).endsWith("/api/runtime/cli/connect") && init?.method === "POST",
+            String(input).endsWith("/api/runtime/instances/dev/prepare") && init?.method === "POST",
         ),
       ).toBe(true),
     );
   });
 
-  it("keeps runtime stop out of resource pages and owns it in Docker Engine settings", async () => {
+  it("keeps instance stop out of resource pages and owns it in Instance settings", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -1354,11 +1392,14 @@ describe("App", () => {
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
       }
+      if (url.endsWith("/api/runtime/instances")) {
+        return jsonResponse(runtimeInstancesSnapshot([runtimeInstance()]));
+      }
       if (url.endsWith("/api/runtime/engine/configuration")) {
         return jsonResponse(dockerDaemonSnapshot());
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
-      if (url.endsWith("/api/runtime/stop") && init?.method === "POST") {
+      if (url.endsWith("/api/runtime/instances/overseer/stop") && init?.method === "POST") {
         return jsonResponse({ operation: accepted }, 202);
       }
       return jsonResponse(dashboard);
@@ -1376,25 +1417,20 @@ describe("App", () => {
 
     await user.click(screen.getByRole("link", { name: "설정" }));
     const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
-    await user.click(within(settingsNavigation).getByRole("button", { name: "엔진 설정" }));
-    await user.click(await screen.findByRole("button", { name: "런타임 중지" }));
-
-    const dialog = await screen.findByRole("alertdialog", {
-      name: "Docker Engine을 중지하시겠습니까?",
-    });
-    expect(dialog).toHaveTextContent("컨테이너, 이미지, Volume 데이터는 유지됩니다.");
-    await user.click(within(dialog).getByRole("button", { name: "런타임 중지" }));
+    await user.click(within(settingsNavigation).getByRole("button", { name: "인스턴스 설정" }));
+    await user.click(await screen.findByRole("button", { name: "overseer 인스턴스 중지" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
-          ([input, init]) => String(input).endsWith("/api/runtime/stop") && init?.method === "POST",
+          ([input, init]) =>
+            String(input).endsWith("/api/runtime/instances/overseer/stop") &&
+            init?.method === "POST",
         ),
       ).toBe(true),
     );
   });
 
-  it("starts a stopped runtime only from Docker Engine settings", async () => {
+  it("starts a stopped Lima instance from Instance settings", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -1421,11 +1457,18 @@ describe("App", () => {
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
       }
+      if (url.endsWith("/api/runtime/instances")) {
+        return jsonResponse(
+          runtimeInstancesSnapshot([
+            runtimeInstance({ dockerVersion: undefined, status: "Stopped" }),
+          ]),
+        );
+      }
       if (url.endsWith("/api/runtime/engine/configuration")) {
         return jsonResponse(dockerDaemonSnapshot(false));
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
-      if (url.endsWith("/api/runtime/start") && init?.method === "POST") {
+      if (url.endsWith("/api/runtime/instances/overseer/start") && init?.method === "POST") {
         return jsonResponse({ operation: accepted }, 202);
       }
       return jsonResponse(dashboard);
@@ -1434,14 +1477,15 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings");
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "엔진 설정", level: 2 })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "런타임 시작" }));
+    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(within(navigation).getByRole("button", { name: "인스턴스 설정" }));
+    await user.click(await screen.findByRole("button", { name: "overseer 인스턴스 시작" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
           ([input, init]) =>
-            String(input).endsWith("/api/runtime/start") && init?.method === "POST",
+            String(input).endsWith("/api/runtime/instances/overseer/start") &&
+            init?.method === "POST",
         ),
       ).toBe(true),
     );
@@ -1541,7 +1585,7 @@ describe("App", () => {
     ).toBe(true);
   });
 
-  it("requires typing overseer before recreating the single VM", async () => {
+  it("selects one prepared instance as the active Docker Engine", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [
@@ -1592,10 +1636,10 @@ describe("App", () => {
       volumes: [{ driver: "local", labels: "", name: "app-data", scope: "local" }],
     };
     const accepted = operation("queued", {
-      kind: "runtime.recreate",
-      successMessage: "Docker Engine을 재생성했습니다.",
-      target: { name: "overseer", resource: "runtime" },
-      title: "Docker Engine 재생성",
+      kind: "runtime.connect",
+      successMessage: "dev 인스턴스를 활성 Docker Engine으로 선택했습니다.",
+      target: { name: "dev", resource: "runtime" },
+      title: "활성 인스턴스 선택",
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -1603,11 +1647,19 @@ describe("App", () => {
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
       }
+      if (url.endsWith("/api/runtime/instances")) {
+        return jsonResponse(
+          runtimeInstancesSnapshot([
+            runtimeInstance(),
+            runtimeInstance({ active: false, managed: false, name: "dev" }),
+          ]),
+        );
+      }
       if (url.endsWith("/api/runtime/engine/configuration")) {
         return jsonResponse(dockerDaemonSnapshot());
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
-      if (url.endsWith("/api/runtime/recreate") && init?.method === "POST") {
+      if (url.endsWith("/api/runtime/instances/dev/select") && init?.method === "POST") {
         return jsonResponse({ operation: accepted }, 202);
       }
       return jsonResponse(dashboard);
@@ -1616,40 +1668,17 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings");
     render(<App />);
     const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(settingsNavigation).getByRole("button", { name: "엔진 설정" }));
-    await screen.findByRole("button", { name: "Docker Engine 재생성" });
-
-    await user.click(screen.getByRole("button", { name: "Docker Engine 재생성" }));
-    const dialog = await screen.findByRole("alertdialog", {
-      name: "Docker Engine을 재생성하시겠습니까?",
-    });
-    expect(dialog).toHaveTextContent("컨테이너 1개");
-    expect(dialog).toHaveTextContent("이미지 1개");
-    expect(dialog).toHaveTextContent("볼륨 1개");
-    expect(dialog).toHaveTextContent("사용자 네트워크 1개");
-    expect(dialog).toHaveTextContent("호스트 SQLite의 Compose 등록 정보와 작업 기록은 유지됩니다.");
-    const destructive = within(dialog).getByRole("button", { name: "Docker Engine 재생성" });
-    expect(destructive).toBeDisabled();
-
-    await user.type(within(dialog).getByLabelText("확인을 위해 overseer 입력"), "overseer");
-    expect(destructive).toBeEnabled();
-    await user.click(destructive);
+    await user.click(within(settingsNavigation).getByRole("button", { name: "인스턴스 설정" }));
+    await user.click(await screen.findByRole("button", { name: "dev 인스턴스 사용" }));
 
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
           ([input, init]) =>
-            String(input).endsWith("/api/runtime/recreate") && init?.method === "POST",
+            String(input).endsWith("/api/runtime/instances/dev/select") && init?.method === "POST",
         ),
       ).toBe(true),
     );
-    const recreateCall = fetchMock.mock.calls.find(([input]) =>
-      String(input).endsWith("/api/runtime/recreate"),
-    );
-    expect(JSON.parse(String(recreateCall?.[1]?.body))).toEqual({
-      configuration: dockerEngineSnapshot("instance", true).configuration,
-      confirmation: "overseer",
-    });
   });
 
   it("shows the running empty state and primary actions", async () => {

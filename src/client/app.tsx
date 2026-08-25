@@ -61,6 +61,7 @@ import type {
   ContainerDetail,
   ContainerSpecInput,
   ContainerSummary,
+  CreateRuntimeInstanceInput,
   DashboardSnapshot,
   DockerEngineConfiguration,
   ImageSummary,
@@ -69,7 +70,6 @@ import type {
   OperationSnapshot,
   OperationResource,
   RegisterRemoteComposeInput,
-  RecreateDockerEngineInput,
   RuntimePhase,
   StartupInstallTarget,
   StartupPrerequisiteId,
@@ -1395,16 +1395,6 @@ function AppContent() {
         }),
     });
 
-  const createDockerEngine = (configuration: DockerEngineConfiguration) =>
-    mutate({
-      key: "runtime-create",
-      request: () =>
-        apiRequest<OperationAccepted>("/runtime/start", {
-          body: JSON.stringify({ configuration }),
-          method: "POST",
-        }),
-    });
-
   const startDockerEngineForStartup = (configuration?: DockerEngineConfiguration) =>
     mutate({
       key: "runtime-start",
@@ -1416,21 +1406,21 @@ function AppContent() {
         }),
     });
 
-  const recreateDockerEngine = (input: RecreateDockerEngineInput) =>
+  const createRuntimeInstance = (input: CreateRuntimeInstanceInput) =>
     mutate({
-      key: "runtime-recreate",
+      key: `runtime-instance-create-${input.name}`,
       request: () =>
-        apiRequest<OperationAccepted>("/runtime/recreate", {
+        apiRequest<OperationAccepted>("/runtime/instances", {
           body: JSON.stringify(input),
           method: "POST",
         }),
     });
 
-  const connectDockerCli = () =>
+  const mutateRuntimeInstance = (name: string, action: "prepare" | "select" | "start" | "stop") =>
     mutate({
-      key: "runtime-connect",
+      key: `runtime-instance-${action}-${name}`,
       request: () =>
-        apiRequest<OperationAccepted>("/runtime/cli/connect", {
+        apiRequest<OperationAccepted>(`/runtime/instances/${encodeURIComponent(name)}/${action}`, {
           method: "POST",
         }),
     });
@@ -1446,18 +1436,6 @@ function AppContent() {
         }),
     });
   };
-
-  const startRuntime = () =>
-    mutate({
-      key: "runtime-start",
-      request: () => apiRequest<OperationAccepted>("/runtime/start", { method: "POST" }),
-    });
-
-  const stopRuntime = () =>
-    mutate({
-      key: "runtime-stop",
-      request: () => apiRequest<OperationAccepted>("/runtime/stop", { method: "POST" }),
-    });
 
   if ((!dashboard && !loadError) || startupCheckPending) return <LoadingScreen />;
 
@@ -1988,8 +1966,8 @@ function AppContent() {
                 </EmptyState.Title>
                 <EmptyState.Description>
                   {runtime?.phase === "missing"
-                    ? "설정에서 VM 드라이버와 자원을 선택해 overseer 전용 인스턴스를 만드십시오."
-                    : "설정의 엔진 설정에서 런타임을 다시 시작할 수 있습니다."}
+                    ? "인스턴스 설정에서 Docker Engine으로 사용할 Lima 인스턴스를 만드십시오."
+                    : "인스턴스 설정에서 활성 인스턴스를 다시 시작할 수 있습니다."}
                 </EmptyState.Description>
                 <EmptyState.Actions>
                   <Button onClick={() => selectResourcePath("/settings")} size="sm">
@@ -2008,19 +1986,13 @@ function AppContent() {
                 dashboard={dashboard}
                 onApplyDaemonConfiguration={applyDockerDaemonConfiguration}
                 onCheckToolUpdates={checkToolUpdates}
-                onConnectDockerCli={connectDockerCli}
-                onCreate={createDockerEngine}
-                onRecreate={recreateDockerEngine}
-                onStart={startRuntime}
-                onStop={stopRuntime}
+                onCreateInstance={createRuntimeInstance}
+                onPrepareInstance={(name) => mutateRuntimeInstance(name, "prepare")}
+                onSelectInstance={(name) => mutateRuntimeInstance(name, "select")}
+                onStartInstance={(name) => mutateRuntimeInstance(name, "start")}
+                onStopInstance={(name) => mutateRuntimeInstance(name, "stop")}
                 onUpdateTool={updateTool}
                 refreshToken={settingsRefreshToken}
-                runtimeBusy={
-                  runtimeBusy ||
-                  submitting === "runtime-connect" ||
-                  submitting === "runtime-start" ||
-                  submitting === "runtime-stop"
-                }
                 toolOperation={latestToolUpdateOperation}
                 toolRequestPending={Boolean(submitting?.startsWith("startup-update"))}
               />
