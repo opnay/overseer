@@ -76,6 +76,7 @@ import type {
   StartupSnapshot,
   StartupStepId,
   ToolUpdateId,
+  UpdateDockerDaemonConfigurationInput,
   VolumeSummary,
 } from "../shared/contracts.ts";
 import { isImageReference, isResourceName } from "../shared/validation.ts";
@@ -1434,6 +1435,16 @@ function AppContent() {
         }),
     });
 
+  const applyDockerDaemonConfiguration = (input: UpdateDockerDaemonConfigurationInput) =>
+    mutate({
+      key: "runtime-daemon-configure",
+      request: () =>
+        apiRequest<OperationAccepted>("/runtime/engine/configuration", {
+          body: JSON.stringify(input),
+          method: "PATCH",
+        }),
+    });
+
   const startRuntime = () =>
     mutate({
       key: "runtime-start",
@@ -1993,6 +2004,7 @@ function AppContent() {
               <SettingsPage
                 busy={runtimeBusy || Boolean(submitting)}
                 dashboard={dashboard}
+                onApplyDaemonConfiguration={applyDockerDaemonConfiguration}
                 onCheckToolUpdates={checkToolUpdates}
                 onConnectDockerCli={connectDockerCli}
                 onCreate={createDockerEngine}

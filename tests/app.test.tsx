@@ -9,6 +9,7 @@ import {
 } from "../src/shared/compose-builder.ts";
 import type {
   DashboardSnapshot,
+  DockerDaemonConfigurationSnapshot,
   DockerEngineConfigurationSnapshot,
   OperationSnapshot,
   StartupSnapshot,
@@ -94,6 +95,30 @@ function dockerEngineSnapshot(
         value: "qemu",
       },
     ],
+  };
+}
+
+function dockerDaemonSnapshot(available = true): DockerDaemonConfigurationSnapshot {
+  return {
+    additionalJson: '{\n  "features": {\n    "containerd-snapshotter": true\n  }\n}\n',
+    available,
+    configuration: {
+      debug: false,
+      defaultAddressPools: [],
+      dns: [],
+      insecureRegistries: [],
+      liveRestore: false,
+      logDriver: "json-file",
+      maxConcurrentDownloads: 3,
+      maxConcurrentUploads: 5,
+      proxies: { noProxy: [] },
+      registryMirrors: [],
+    },
+    message: available
+      ? "저장하면 Docker daemon만 다시 시작합니다."
+      : "Docker Engine을 시작한 뒤 daemon 설정을 변경할 수 있습니다.",
+    path: "~/.config/docker/daemon.json",
+    source: available ? "file" : "default",
   };
 }
 
@@ -990,6 +1015,9 @@ describe("App", () => {
       if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) return jsonResponse(dockerEngineSnapshot());
+      if (url.endsWith("/api/runtime/engine/configuration")) {
+        return jsonResponse(dockerDaemonSnapshot(false));
+      }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/runtime/start") && init?.method === "POST") {
         return jsonResponse({ operation: accepted }, 202);
@@ -1068,6 +1096,83 @@ describe("App", () => {
     });
   });
 
+  it("edits Docker daemon settings from Engine settings", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "runtime.daemon.configure",
+      successMessage: "Docker daemon 설정을 적용했습니다.",
+      target: { name: "overseer", resource: "runtime" },
+      title: "Docker daemon 설정 적용",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+      if (url.endsWith("/api/runtime/configuration")) {
+        return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      if (url.endsWith("/api/runtime/engine/configuration")) {
+        return jsonResponse(dockerDaemonSnapshot());
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/settings");
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
+    expect(
+      await screen.findByRole("heading", { name: "Docker daemon", level: 3 }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Live restore" })).not.toBeChecked();
+    await user.click(screen.getByRole("switch", { name: "Live restore" }));
+    await user.click(screen.getByRole("combobox", { name: "로그 드라이버" }));
+    await user.click(await screen.findByRole("option", { name: "Local" }));
+    await user.type(screen.getByLabelText("DNS 서버"), "1.1.1.1");
+    await user.type(screen.getByLabelText("기본 주소 풀"), "172.30.0.0/16,24");
+    await user.click(screen.getByRole("button", { name: "Daemon 설정 저장" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH",
+        ),
+      ).toBe(true),
+    );
+    const request = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith("/api/runtime/engine/configuration") && init?.method === "PATCH",
+    );
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+      additionalJson: expect.stringContaining("containerd-snapshotter"),
+      configuration: {
+        defaultAddressPools: [{ base: "172.30.0.0/16", size: 24 }],
+        dns: ["1.1.1.1"],
+        liveRestore: true,
+        logDriver: "local",
+      },
+    });
+  });
+
   it("connects the Docker CLI from Engine settings after confirming the runtime restart", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
@@ -1095,6 +1200,9 @@ describe("App", () => {
       if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true, false));
+      }
+      if (url.endsWith("/api/runtime/engine/configuration")) {
+        return jsonResponse(dockerDaemonSnapshot());
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/runtime/cli/connect") && init?.method === "POST") {
@@ -1159,6 +1267,9 @@ describe("App", () => {
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
       }
+      if (url.endsWith("/api/runtime/engine/configuration")) {
+        return jsonResponse(dockerDaemonSnapshot());
+      }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/runtime/stop") && init?.method === "POST") {
         return jsonResponse({ operation: accepted }, 202);
@@ -1222,6 +1333,9 @@ describe("App", () => {
       if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/runtime/engine/configuration")) {
+        return jsonResponse(dockerDaemonSnapshot(false));
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/runtime/start") && init?.method === "POST") {
@@ -1401,6 +1515,9 @@ describe("App", () => {
       if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/runtime/engine/configuration")) {
+        return jsonResponse(dockerDaemonSnapshot());
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/runtime/recreate") && init?.method === "POST") {

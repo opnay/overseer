@@ -13,6 +13,7 @@ import type { StartupSnapshot } from "../src/shared/contracts.ts";
 
 function createController(): RuntimeController {
   return {
+    applyDockerDaemonConfiguration: vi.fn(async () => undefined),
     applyRemoteComposeUpdate: vi.fn(async () => undefined),
     checkRemoteComposeUpdate: vi.fn(async () => undefined),
     connectDockerCli: vi.fn(async () => undefined),
@@ -63,6 +64,25 @@ function createController(): RuntimeController {
         phase: "missing" as const,
       },
       volumes: [],
+    })),
+    getDockerDaemonConfiguration: vi.fn(async () => ({
+      additionalJson: '{\n  "features": {\n    "containerd-snapshotter": true\n  }\n}\n',
+      available: true,
+      configuration: {
+        debug: false,
+        defaultAddressPools: [],
+        dns: [],
+        insecureRegistries: [],
+        liveRestore: false,
+        logDriver: "json-file" as const,
+        maxConcurrentDownloads: 3,
+        maxConcurrentUploads: 5,
+        proxies: { noProxy: [] },
+        registryMirrors: [],
+      },
+      message: "저장하면 Docker daemon만 다시 시작합니다.",
+      path: "~/.config/docker/daemon.json",
+      source: "file" as const,
     })),
     getDockerEngineConfiguration: vi.fn(async () => ({
       configuration: {
@@ -164,6 +184,20 @@ const dockerEngineConfiguration = {
   memoryGiB: 4,
   provider: "lima" as const,
   vmType: "vz" as const,
+};
+const dockerDaemonConfiguration = {
+  debug: false,
+  defaultAddressPools: [{ base: "172.30.0.0/16", size: 24 }],
+  dns: ["1.1.1.1"],
+  insecureRegistries: [],
+  liveRestore: true,
+  logDriver: "local" as const,
+  logMaxFile: 3,
+  logMaxSize: "10m",
+  maxConcurrentDownloads: 3,
+  maxConcurrentUploads: 5,
+  proxies: { noProxy: ["localhost"] },
+  registryMirrors: ["https://mirror.gcr.io/"],
 };
 
 describe("API boundary", () => {
@@ -306,6 +340,70 @@ describe("API boundary", () => {
       source: "default",
       vmTypes: [{ value: "vz" }, { available: false, value: "qemu" }],
     });
+  });
+
+  it("returns the rootless Docker daemon configuration", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/engine/configuration", {
+      headers: localHeaders,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      available: true,
+      configuration: { logDriver: "json-file" },
+      path: "~/.config/docker/daemon.json",
+      source: "file",
+    });
+  });
+
+  it("validates and applies Docker daemon settings without a retry body", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const input = {
+      additionalJson: '{"features":{"containerd-snapshotter":true}}',
+      configuration: dockerDaemonConfiguration,
+    };
+    const response = await app.request("/runtime/engine/configuration", {
+      body: JSON.stringify(input),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.applyDockerDaemonConfiguration).toHaveBeenCalledWith(
+        input,
+        expect.any(Object),
+      ),
+    );
+    await vi.waitFor(async () => {
+      const operations = await app.request("/operations", { headers: localHeaders });
+      const body = (await operations.json()) as {
+        operations: Array<{ kind: string; retryable: boolean }>;
+      };
+      expect(body.operations[0]).toMatchObject({
+        kind: "runtime.daemon.configure",
+        retryable: false,
+      });
+    });
+  });
+
+  it("rejects invalid Docker daemon settings before enqueueing", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/engine/configuration", {
+      body: JSON.stringify({
+        additionalJson: "{}",
+        configuration: { ...dockerDaemonConfiguration, dns: ["not-an-ip"] },
+      }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+
+    expect(response.status).toBe(400);
+    expect(controller.applyDockerDaemonConfiguration).not.toHaveBeenCalled();
   });
 
   it("connects the macOS Docker CLI through an exclusive async operation", async () => {

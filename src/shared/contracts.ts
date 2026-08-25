@@ -43,6 +43,48 @@ export interface DockerCliIntegrationSnapshot {
   ready: boolean;
 }
 
+export interface DockerDaemonAddressPool {
+  base: string;
+  size: number;
+}
+
+export type DockerDaemonLogDriver = "json-file" | "local";
+
+export interface DockerDaemonProxyConfiguration {
+  httpProxy?: string;
+  httpsProxy?: string;
+  noProxy: string[];
+}
+
+export interface DockerDaemonConfiguration {
+  debug: boolean;
+  defaultAddressPools: DockerDaemonAddressPool[];
+  dns: string[];
+  insecureRegistries: string[];
+  liveRestore: boolean;
+  logDriver: DockerDaemonLogDriver;
+  logMaxFile?: number;
+  logMaxSize?: string;
+  maxConcurrentDownloads: number;
+  maxConcurrentUploads: number;
+  proxies: DockerDaemonProxyConfiguration;
+  registryMirrors: string[];
+}
+
+export interface DockerDaemonConfigurationSnapshot {
+  additionalJson: string;
+  available: boolean;
+  configuration: DockerDaemonConfiguration;
+  message: string;
+  path: string;
+  source: "default" | "file";
+}
+
+export interface UpdateDockerDaemonConfigurationInput {
+  additionalJson: string;
+  configuration: DockerDaemonConfiguration;
+}
+
 export interface RecreateDockerEngineInput {
   configuration: DockerEngineConfiguration;
   confirmation: string;
@@ -422,6 +464,7 @@ export type OperationKind =
   | "image.remove"
   | "network.create"
   | "network.remove"
+  | "runtime.daemon.configure"
   | "runtime.start"
   | "runtime.connect"
   | "runtime.recreate"

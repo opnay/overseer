@@ -847,6 +847,125 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
     });
   });
 
+  it("reads managed and additional settings from the rootless daemon file", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      expect(executable).toBe("limactl");
+      if (args[0] === "list") return { stderr: "", stdout: limaRow };
+      return {
+        stderr: "",
+        stdout:
+          'file\n{"features":{"containerd-snapshotter":true},"live-restore":true,"log-driver":"local","log-opts":{"max-size":"10m","max-file":"3","mode":"non-blocking"},"dns":["1.1.1.1"]}\n',
+      };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getDockerDaemonConfiguration()).resolves.toMatchObject({
+      additionalJson: expect.stringMatching(/containerd-snapshotter[\s\S]+non-blocking/),
+      available: true,
+      configuration: {
+        dns: ["1.1.1.1"],
+        liveRestore: true,
+        logDriver: "local",
+        logMaxFile: 3,
+        logMaxSize: "10m",
+      },
+      source: "file",
+    });
+  });
+
+  it("validates, writes, and restarts only the Docker daemon", async () => {
+    const written: string[] = [];
+    const commands: Array<{ args: readonly string[]; executable: string }> = [];
+    const command: CommandRunner = vi.fn(async (executable, args, options) => {
+      commands.push({ args, executable });
+      if (executable === "docker") return { stderr: "", stdout: "29.7.2\n" };
+      if (args[0] === "list") return { stderr: "", stdout: limaRow };
+      if (args.includes("systemctl")) return { stderr: "", stdout: "" };
+      if (args[0] === "shell" && args.at(-1)?.includes("dockerd --validate")) {
+        written.push(options.input ?? "");
+        return { stderr: "", stdout: "configuration OK\n" };
+      }
+      return {
+        stderr: "",
+        stdout: 'file\n{"features":{"containerd-snapshotter":true}}\n',
+      };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await runtime.applyDockerDaemonConfiguration({
+      additionalJson:
+        '{"features":{"containerd-snapshotter":true},"log-opts":{"mode":"non-blocking"}}',
+      configuration: {
+        debug: false,
+        defaultAddressPools: [{ base: "172.30.0.0/16", size: 24 }],
+        dns: ["1.1.1.1"],
+        insecureRegistries: [],
+        liveRestore: true,
+        logDriver: "local",
+        logMaxFile: 3,
+        logMaxSize: "10m",
+        maxConcurrentDownloads: 3,
+        maxConcurrentUploads: 5,
+        proxies: { noProxy: [] },
+        registryMirrors: [],
+      },
+    });
+
+    expect(JSON.parse(written[0] ?? "{}")).toMatchObject({
+      features: { "containerd-snapshotter": true },
+      "live-restore": true,
+      "log-driver": "local",
+      "log-opts": { "max-file": "3", "max-size": "10m", mode: "non-blocking" },
+    });
+    expect(commands).toContainEqual({
+      args: ["shell", "overseer", "systemctl", "--user", "restart", "docker"],
+      executable: "limactl",
+    });
+    expect(commands.some(({ args }) => args[0] === "delete" || args[0] === "stop")).toBe(false);
+  });
+
+  it("restores the previous daemon file when restart fails", async () => {
+    const original = '{"features":{"containerd-snapshotter":true}}\n';
+    const written: string[] = [];
+    let restarts = 0;
+    const command: CommandRunner = vi.fn(async (executable, args, options) => {
+      if (executable === "docker") return { stderr: "", stdout: "29.7.2\n" };
+      if (args[0] === "list") return { stderr: "", stdout: limaRow };
+      if (args.includes("systemctl")) {
+        restarts += 1;
+        if (restarts === 1) throw commandFailure("systemctl restart docker", "restart failed");
+        return { stderr: "", stdout: "" };
+      }
+      if (args[0] === "shell" && args.at(-1)?.includes("dockerd --validate")) {
+        written.push(options.input ?? "");
+        return { stderr: "", stdout: "configuration OK\n" };
+      }
+      return { stderr: "", stdout: `file\n${original}` };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(
+      runtime.applyDockerDaemonConfiguration({
+        additionalJson: "{}",
+        configuration: {
+          debug: false,
+          defaultAddressPools: [],
+          dns: [],
+          insecureRegistries: [],
+          liveRestore: true,
+          logDriver: "local",
+          maxConcurrentDownloads: 3,
+          maxConcurrentUploads: 5,
+          proxies: { noProxy: [] },
+          registryMirrors: [],
+        },
+      }),
+    ).rejects.toThrow("이전 설정으로 복구했습니다");
+    expect(written).toHaveLength(2);
+    expect(written[1]).toBe(original);
+    expect(restarts).toBe(2);
+  });
+
   it("makes the macOS home mount writable and selects the overseer Docker context", async () => {
     let status = "Running";
     let writable = false;

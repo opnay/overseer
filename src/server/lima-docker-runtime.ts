@@ -20,6 +20,7 @@ import type {
   ContainerVolumeMount,
   CreateNamedResourceInput,
   DashboardSnapshot,
+  DockerDaemonConfigurationSnapshot,
   DockerEngineConfiguration,
   DockerEngineConfigurationSnapshot,
   DockerCliIntegrationSnapshot,
@@ -32,18 +33,24 @@ import type {
   RegisterRemoteComposeInput,
   RunContainerInput,
   RuntimeSnapshot,
+  UpdateDockerDaemonConfigurationInput,
   UpdateContainerInput,
   UpdateComposeBuilderInput,
   VolumeSummary,
 } from "../shared/contracts.ts";
 import { containerSpecNeedsReplacement } from "../shared/container-spec.ts";
 import { BuilderComposeService, type BuilderComposeRegistry } from "./builder-compose.ts";
+import { dockerDaemonJson, dockerDaemonSnapshot } from "./docker-daemon-configuration.ts";
 import { ExpectedError } from "./errors.ts";
 import type { OperationProgress } from "./operations.ts";
 import { CommandError, parseJsonLines, runCommand } from "./process.ts";
 import { RemoteComposeService, type RemoteComposeRegistry } from "./remote-compose.ts";
 
 export interface RuntimeController {
+  applyDockerDaemonConfiguration(
+    input: UpdateDockerDaemonConfigurationInput,
+    progress?: OperationProgress,
+  ): Promise<void>;
   applyRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void>;
   checkRemoteComposeUpdate(name: string, progress?: OperationProgress): Promise<void>;
   connectDockerCli(progress?: OperationProgress): Promise<void>;
@@ -68,6 +75,7 @@ export interface RuntimeController {
   getComposeProjectLogs(name: string): Promise<string>;
   getComposeProjects(): Promise<ComposeProjectSummary[]>;
   getDashboard(): Promise<DashboardSnapshot>;
+  getDockerDaemonConfiguration(): Promise<DockerDaemonConfigurationSnapshot>;
   getDockerEngineConfiguration(): Promise<DockerEngineConfigurationSnapshot>;
   getImage(id: string): Promise<ImageDetail>;
   getImageHistory(id: string): Promise<ImageHistoryEntry[]>;
@@ -296,6 +304,12 @@ const BUILT_IN_NETWORKS = new Set(["bridge", "host", "none"]);
 const MANAGED_LABEL = "com.opnay.overseer.managed";
 const SPEC_VERSION_LABEL = "com.opnay.overseer.spec-version";
 const RESERVED_LABEL_PREFIXES = ["com.opnay.overseer.", "com.docker.compose."];
+const READ_DOCKER_DAEMON_CONFIGURATION =
+  'target="$HOME/.config/docker/daemon.json"; if [ -f "$target" ]; then printf "file\\n"; cat "$target"; else printf "default\\n{}\\n"; fi';
+const WRITE_DOCKER_DAEMON_CONFIGURATION =
+  'set -eu; target="$HOME/.config/docker/daemon.json"; temp="$target.overseer.tmp"; mkdir -p "$(dirname "$target")"; trap \'rm -f "$temp"\' EXIT; cat > "$temp"; dockerd --validate --config-file="$temp"; mv "$temp" "$target"; trap - EXIT';
+const REMOVE_DOCKER_DAEMON_CONFIGURATION =
+  'rm -f "$HOME/.config/docker/daemon.json" "$HOME/.config/docker/daemon.json.overseer.tmp"';
 
 function composeProjectRows(stdout: string): DockerComposeProjectRow[] {
   try {
@@ -455,6 +469,7 @@ export class LimaDockerRuntime implements RuntimeController {
   private readonly command: CommandRunner;
   private readonly fetcher: typeof fetch;
   private readonly remoteCompose: RemoteComposeRegistry;
+  private daemonTransition?: Promise<void>;
   private transition?: Promise<RuntimeSnapshot>;
 
   constructor(
@@ -533,6 +548,47 @@ export class LimaDockerRuntime implements RuntimeController {
         },
       ],
     };
+  }
+
+  async getDockerDaemonConfiguration(): Promise<DockerDaemonConfigurationSnapshot> {
+    const instance = await this.getInstance();
+    if (!instance) {
+      return dockerDaemonSnapshot(
+        "{}",
+        false,
+        false,
+        "Docker Engine을 만든 뒤 daemon 설정을 변경할 수 있습니다.",
+      );
+    }
+    if (instance.status.toLowerCase() !== "running") {
+      return dockerDaemonSnapshot(
+        "{}",
+        false,
+        false,
+        "Docker Engine을 시작한 뒤 daemon 설정을 변경할 수 있습니다.",
+      );
+    }
+    const current = await this.readDockerDaemonConfiguration();
+    return dockerDaemonSnapshot(
+      current.source,
+      current.exists,
+      true,
+      "저장하면 Docker daemon만 다시 시작하며 Lima VM은 유지됩니다.",
+    );
+  }
+
+  applyDockerDaemonConfiguration(
+    input: UpdateDockerDaemonConfigurationInput,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    if (this.transition || this.daemonTransition) {
+      throw new ExpectedError("runtime_busy", "다른 런타임 작업이 진행 중입니다.", 409);
+    }
+    const applying = this.applyDockerDaemonConfigurationOnce(input, progress);
+    this.daemonTransition = applying.finally(() => {
+      this.daemonTransition = undefined;
+    });
+    return this.daemonTransition;
   }
 
   async connectDockerCli(progress?: OperationProgress): Promise<void> {
@@ -1469,6 +1525,125 @@ export class LimaDockerRuntime implements RuntimeController {
     await this.waitForDockerReady(progress);
     await this.connectDockerCli(progress);
     return this.getRuntimeSnapshot();
+  }
+
+  private async applyDockerDaemonConfigurationOnce(
+    input: UpdateDockerDaemonConfigurationInput,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    const instance = await this.getInstance();
+    if (!instance) {
+      throw new ExpectedError(
+        "runtime_missing",
+        "Docker daemon 설정을 적용하려면 Docker Engine을 먼저 만드십시오.",
+        409,
+      );
+    }
+    if (instance.status.toLowerCase() !== "running") {
+      throw new ExpectedError(
+        "runtime_not_running",
+        "Docker daemon 설정을 적용하려면 Docker Engine을 먼저 시작하십시오.",
+        409,
+      );
+    }
+
+    const original = await this.readDockerDaemonConfiguration();
+    const next = dockerDaemonJson(input);
+    progress?.step("daemon.json 검증 중");
+    try {
+      await this.writeDockerDaemonConfiguration(next, progress);
+    } catch (error) {
+      progress?.output(error instanceof Error ? error.message : String(error));
+      throw new ExpectedError(
+        "daemon_configuration_invalid",
+        "Docker가 daemon.json 설정을 거부했습니다. 입력값을 확인하십시오.",
+        400,
+      );
+    }
+
+    try {
+      await this.restartDockerDaemon(progress);
+      await this.waitForDockerReady(progress);
+    } catch (error) {
+      progress?.output(error instanceof Error ? error.message : String(error));
+      progress?.step("이전 daemon.json 복구 중");
+      try {
+        if (original.exists) {
+          await this.writeDockerDaemonConfiguration(original.source, progress);
+        } else {
+          await this.removeDockerDaemonConfiguration(progress);
+        }
+        await this.restartDockerDaemon(progress);
+        await this.waitForDockerReady(progress);
+      } catch (rollbackError) {
+        progress?.output(
+          rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        );
+        throw new ExpectedError(
+          "daemon_configuration_rollback_failed",
+          "daemon 설정 적용에 실패했고 이전 설정도 자동 복구하지 못했습니다.",
+          503,
+        );
+      }
+      throw new ExpectedError(
+        "daemon_configuration_apply_failed",
+        "daemon 설정을 적용하지 못해 이전 설정으로 복구했습니다.",
+        503,
+      );
+    }
+  }
+
+  private async readDockerDaemonConfiguration(): Promise<{ exists: boolean; source: string }> {
+    const result = await this.command("limactl", [
+      "shell",
+      LIMA_INSTANCE,
+      "sh",
+      "-lc",
+      READ_DOCKER_DAEMON_CONFIGURATION,
+    ]);
+    const separator = result.stdout.indexOf("\n");
+    const marker = separator >= 0 ? result.stdout.slice(0, separator).trim() : "";
+    const source = separator >= 0 ? result.stdout.slice(separator + 1) : "{}\n";
+    if (marker !== "file" && marker !== "default") {
+      throw new ExpectedError(
+        "daemon_configuration_unreadable",
+        "VM의 daemon.json 상태를 확인하지 못했습니다.",
+        503,
+      );
+    }
+    return { exists: marker === "file", source };
+  }
+
+  private async writeDockerDaemonConfiguration(
+    source: string,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    await this.command(
+      "limactl",
+      ["shell", LIMA_INSTANCE, "sh", "-lc", WRITE_DOCKER_DAEMON_CONFIGURATION],
+      {
+        input: source,
+        onOutput: progress?.output,
+        timeoutMs: 30_000,
+      },
+    );
+  }
+
+  private async removeDockerDaemonConfiguration(progress?: OperationProgress): Promise<void> {
+    await this.command(
+      "limactl",
+      ["shell", LIMA_INSTANCE, "sh", "-lc", REMOVE_DOCKER_DAEMON_CONFIGURATION],
+      { onOutput: progress?.output, timeoutMs: 30_000 },
+    );
+  }
+
+  private async restartDockerDaemon(progress?: OperationProgress): Promise<void> {
+    progress?.step("Docker daemon 다시 시작 중");
+    await this.command(
+      "limactl",
+      ["shell", LIMA_INSTANCE, "systemctl", "--user", "restart", "docker"],
+      { onOutput: progress?.output, timeoutMs: 120_000 },
+    );
   }
 
   private async recreateRuntimeOnce(

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 interface RunCommandOptions {
+  input?: string;
   onOutput?: (value: string) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -35,7 +36,7 @@ export function runCommand(
   return new Promise((resolve, reject) => {
     const command = [executable, ...args].join(" ");
     const child = spawn(executable, [...args], {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
     const maxBuffer = 10 * 1024 * 1024;
@@ -72,6 +73,9 @@ export function runCommand(
 
     child.stdout.on("data", (chunk: Buffer) => collect("stdout", chunk));
     child.stderr.on("data", (chunk: Buffer) => collect("stderr", chunk));
+    child.stdin.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code !== "EPIPE" && !terminalError) terminalError = error;
+    });
     child.on("error", (error) => finish(() => reject(new CommandError(command, error, stderr))));
     child.on("close", (code) => {
       if (terminalError) {
@@ -88,6 +92,7 @@ export function runCommand(
 
     if (options.signal?.aborted) abort();
     else options.signal?.addEventListener("abort", abort, { once: true });
+    child.stdin.end(options.input);
   });
 }
 

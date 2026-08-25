@@ -16,7 +16,7 @@ import {
   ServerCog,
   Terminal,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type {
   DashboardSnapshot,
   DockerEngineConfiguration,
@@ -26,8 +26,10 @@ import type {
   RecreateDockerEngineInput,
   RuntimePhase,
   ToolUpdateId,
+  UpdateDockerDaemonConfigurationInput,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
+import { DockerDaemonSettings } from "./docker-daemon-settings.tsx";
 import {
   configurationToForm,
   validateDockerEngineConfiguration,
@@ -40,6 +42,7 @@ import { ToolUpdatesSection } from "./tool-updates-section.tsx";
 interface SettingsPageProps {
   busy: boolean;
   dashboard: DashboardSnapshot;
+  onApplyDaemonConfiguration(input: UpdateDockerDaemonConfigurationInput): Promise<void>;
   onCheckToolUpdates(): Promise<void>;
   onConnectDockerCli(): Promise<void>;
   onCreate(configuration: DockerEngineConfiguration): Promise<void>;
@@ -61,7 +64,7 @@ const sectionPresentation: Record<
 > = {
   engine: {
     category: "Docker Engine",
-    description: "Docker Engine 상태와 단일 overseer VM의 자원을 관리합니다.",
+    description: "Docker Engine 상태와 daemon 설정, 단일 overseer VM 자원을 관리합니다.",
     title: "엔진 설정",
   },
   environment: {
@@ -100,6 +103,7 @@ const runtimeControlDescription: Record<RuntimePhase, string> = {
 export function SettingsPage({
   busy,
   dashboard,
+  onApplyDaemonConfiguration,
   onCheckToolUpdates,
   onConnectDockerCli,
   onCreate,
@@ -148,8 +152,7 @@ export function SettingsPage({
     return result.configuration;
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submit = async () => {
     const next = configuration();
     if (!next || !snapshot) return;
     setErrors({});
@@ -302,7 +305,7 @@ export function SettingsPage({
             ) : null}
 
             {section !== "general" && snapshot && form ? (
-              <form className="overseer-settings-form" onSubmit={submit}>
+              <div className="overseer-settings-form">
                 {section === "engine" ? (
                   <>
                     <section aria-label="Docker Engine 상태" className="overseer-settings-status">
@@ -459,6 +462,12 @@ export function SettingsPage({
                       ) : null}
                     </section>
 
+                    <DockerDaemonSettings
+                      busy={busy}
+                      onApply={onApplyDaemonConfiguration}
+                      refreshToken={refreshToken}
+                    />
+
                     <Fieldset.Root appearance="plain">
                       <Fieldset.Legend>VM 리소스</Fieldset.Legend>
                       <Fieldset.Description>
@@ -520,7 +529,8 @@ export function SettingsPage({
                       </Button>
                       <Button
                         disabled={busy || selectedVmType?.available !== true}
-                        type="submit"
+                        onClick={() => void submit()}
+                        type="button"
                         variant="primary"
                       >
                         <ServerCog aria-hidden="true" size={15} />
@@ -640,7 +650,7 @@ export function SettingsPage({
                     </div>
                   </>
                 )}
-              </form>
+              </div>
             ) : null}
           </div>
         </div>

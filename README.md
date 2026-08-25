@@ -34,7 +34,7 @@ pnpm dev
 
 도구를 제거하지 않고 각 미설치 화면을 확인하려면 `/startup?startup-preview=homebrew`, `/startup?startup-preview=docker`, `/startup?startup-preview=lima`를 사용하십시오. 미리보기는 대상보다 앞선 단계를 완료 상태로 구성하며 실제 도구 감지 결과와 호스트 패키지를 변경하지 않습니다. 다른 페이지에서 필수 설치가 감지되면 `/startup`으로 이동하고, 완료 후 원래 페이지로 돌아갑니다.
 
-도구 준비가 끝나면 **설정 > 일반**에서 Homebrew로 설치된 Docker CLI·Compose·Lima의 업데이트를 한 번에 확인하고, 새 버전이 있는 항목만 개별 업데이트할 수 있습니다. 외부 설치본은 현재 버전과 수동 관리 사유만 표시합니다. 업데이트는 호스트 명령 도구만 교체하며 실행 중인 Lima VM과 컨테이너를 재생성하지 않습니다. **설정 > Docker Engine**의 **실행 환경**에서 VM 드라이버를 선택하고, **엔진 설정**에서 단일 `overseer` VM의 자원을 구성하십시오. 기본값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB입니다. QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
+도구 준비가 끝나면 **설정 > 일반**에서 Homebrew로 설치된 Docker CLI·Compose·Lima의 업데이트를 한 번에 확인하고, 새 버전이 있는 항목만 개별 업데이트할 수 있습니다. 외부 설치본은 현재 버전과 수동 관리 사유만 표시합니다. 업데이트는 호스트 명령 도구만 교체하며 실행 중인 Lima VM과 컨테이너를 재생성하지 않습니다. **설정 > Docker Engine**의 **실행 환경**에서 VM 드라이버를 선택하고, **엔진 설정**에서 rootless Docker daemon과 단일 `overseer` VM의 자원을 구성하십시오. daemon 설정은 VM의 `~/.config/docker/daemon.json`을 직접 검증·적용하며 VM을 재생성하지 않습니다. 기본 VM 값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB입니다. QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
 
 리소스는 독립 URL에서 관리합니다.
 
@@ -82,6 +82,8 @@ pnpm check
 - `GET /api/containers/:id/inspect`: 전체 Docker inspect JSON과 Health Check 이력
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
 - `GET /api/runtime/configuration`: 실제 VM 설정 또는 기본 설정과 드라이버 가용성
+- `GET /api/runtime/engine/configuration`: rootless Docker daemon 설정과 적용 가능 상태
+- `PATCH /api/runtime/engine/configuration`: daemon 설정 검증·적용 및 실패 시 이전 파일 복구 작업 접수
 - `POST /api/runtime/start`: 중지된 VM 시작 또는 선택 설정으로 첫 VM 생성
 - `POST /api/runtime/cli/connect`: writable 홈 공유와 `overseer` Docker context 연결 작업 접수
 - `POST /api/runtime/recreate`: 확인 문자열과 선택 설정으로 단일 VM 재생성

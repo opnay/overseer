@@ -8,6 +8,7 @@ import type {
   ToolUpdateId,
 } from "../shared/contracts.ts";
 import { parseContainerSpec, parseUpdateContainerInput } from "./container-spec.ts";
+import { parseUpdateDockerDaemonConfigurationInput } from "./docker-daemon-configuration.ts";
 import {
   parseComposeBuilderSpec,
   parseUpdateComposeBuilderInput,
@@ -201,6 +202,27 @@ export function createApi(
   app.get("/runtime/configuration", async (context) =>
     context.json(await controller.getDockerEngineConfiguration()),
   );
+  app.get("/runtime/engine/configuration", async (context) =>
+    context.json(await controller.getDockerDaemonConfiguration()),
+  );
+  app.patch("/runtime/engine/configuration", async (context) => {
+    const input = parseUpdateDockerDaemonConfigurationInput(await readObject(context));
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.daemon.configure",
+        locks: [],
+        run: (progress) => controller.applyDockerDaemonConfiguration(input, progress),
+        successMessage: "Docker daemon 설정을 적용했습니다.",
+        target: { name: "overseer", resource: "runtime" },
+        title: "Docker daemon 설정 적용",
+      },
+      undefined,
+      false,
+    );
+    return context.json({ operation }, 202);
+  });
 
   app.get("/operations", (context) => context.json({ operations: operations.list() }));
   app.get("/operations/:id", (context) => {
