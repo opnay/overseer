@@ -85,6 +85,10 @@ docker compose version
 pnpm check
 ```
 
+## 클라이언트 구조
+
+`src/client`는 FSD-lite의 `app`, `pages`, `shared` 3개 레이어로 구성합니다. 의존 방향은 `app → pages → shared`만 허용하고, page slice 간 직접 import를 금지하며, 다른 slice와 shared module은 `index.ts` public API로만 접근합니다. `tests/client-architecture.test.ts`가 이 경계를 검증합니다. 서버와 함께 사용하는 `src/shared`는 전송 계약 원본이므로 클라이언트 레이어 밖에 유지합니다.
+
 ## 컨테이너 설정
 
 컨테이너 실행 시 복수 포트, 환경 변수, 명령 인수, named volume, 네트워크, 재시작 정책, CPU·메모리, hostname과 label을 지정할 수 있습니다. 자동 호스트 포트는 `127.0.0.1`에만 바인딩합니다.

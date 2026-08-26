@@ -3,7 +3,7 @@ import { Dialog } from "@opnay/city-ds-react/dialog";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { LogViewer } from "../src/client/log-display-options.tsx";
+import { LogViewer } from "../src/client/shared/ui/log-viewer/index.ts";
 
 describe("LogViewer", () => {
   it("keeps the complete compact value and follows appended output", async () => {

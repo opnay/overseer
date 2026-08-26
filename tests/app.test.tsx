@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { App } from "../src/client/app.tsx";
+import { App } from "../src/client/app/index.ts";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
 import {
   emptyComposeBuilderService,

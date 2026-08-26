@@ -1,0 +1,17 @@
+export {
+  APP_ROUTES,
+  APP_ROUTE_GROUPS,
+  composeProjectDetailPath,
+  containerDetailPath,
+  getAppDetailLocation,
+  getAppLocation,
+  getAppRoute,
+  imageDetailPath,
+  networkDetailPath,
+  runtimeInstanceDetailPath,
+  type AppDetailLocation,
+  type AppLocationPath,
+  type AppPath,
+  type AppRouteGroup,
+  volumeDetailPath,
+} from "./routes.ts";

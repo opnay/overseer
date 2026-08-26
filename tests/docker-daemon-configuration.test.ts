@@ -3,7 +3,7 @@ import {
   dockerDaemonConfigurationToForm,
   preserveDockerDaemonConfigurationDrafts,
   resetDockerDaemonConfigurationSection,
-} from "../src/client/docker-daemon-configuration.ts";
+} from "../src/client/pages/settings/index.ts";
 import type { DockerDaemonConfigurationSnapshot } from "../src/shared/contracts.ts";
 
 function snapshot(): DockerDaemonConfigurationSnapshot {

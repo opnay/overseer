@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reconstructDockerfileLayers } from "../src/client/image-history-presentation.ts";
+import { reconstructDockerfileLayers } from "../src/client/pages/images/index.ts";
 import type { ImageHistoryEntry } from "../src/shared/contracts.ts";
 
 function history(createdBy: string, size = "0B"): ImageHistoryEntry {

@@ -6,7 +6,7 @@ describe("City DS source contract", () => {
   it("pins the audited City DS main artifact", async () => {
     const [agents, appStyles, design, packageJson, styles] = await Promise.all([
       readFile("AGENTS.md", "utf8"),
-      readFile("src/client/app.css", "utf8"),
+      readFile("src/client/app/styles/app.css", "utf8"),
       readFile("DESIGN.md", "utf8"),
       readFile("package.json", "utf8"),
       readFile("node_modules/@opnay/city-ds-react/dist/styles.css", "utf8"),

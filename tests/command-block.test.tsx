@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { CommandBlock } from "../src/client/command-block.tsx";
+import { CommandBlock } from "../src/client/shared/ui/command-block/index.ts";
 
 describe("CommandBlock", () => {
   it("copies the exact command and reports completion", async () => {

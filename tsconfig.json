@@ -9,6 +9,10 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@/*": ["./src/client/*"],
+      "@contracts/*": ["./src/shared/*"]
+    },
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2024",

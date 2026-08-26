@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime } from "../src/client/date-time.ts";
+import { formatDateTime } from "../src/client/shared/lib/date-time/index.ts";
 
 describe("date time presentation", () => {
   it("formats local date values with the shared numeric pattern", () => {

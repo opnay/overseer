@@ -9,7 +9,7 @@ import {
   runtimeInstanceDetailPath,
   networkDetailPath,
   volumeDetailPath,
-} from "../src/client/routes.ts";
+} from "../src/client/shared/routes/index.ts";
 
 describe("application routes", () => {
   it("recognizes direct resource detail URLs", () => {
