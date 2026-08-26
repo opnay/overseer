@@ -153,6 +153,15 @@ function createController(): RuntimeController {
       ],
     })),
     getImages: vi.fn(async () => []),
+    getMenuBarSnapshot: vi.fn(async () => ({
+      composeProjects: [],
+      containers: [],
+      runtime: {
+        instance: "overseer",
+        message: "정상 실행 중",
+        phase: "running" as const,
+      },
+    })),
     getNetwork: vi.fn(async (name) => ({
       attachable: false,
       builtIn: name === "bridge",
@@ -196,6 +205,11 @@ function createController(): RuntimeController {
     registerBuilderCompose: vi.fn(async () => undefined),
     registerRemoteCompose: vi.fn(async () => undefined),
     recreateRuntime: vi.fn(async () => ({
+      instance: "overseer",
+      message: "정상 실행 중",
+      phase: "running" as const,
+    })),
+    restartRuntime: vi.fn(async () => ({
       instance: "overseer",
       message: "정상 실행 중",
       phase: "running" as const,
@@ -255,6 +269,17 @@ describe("API boundary", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ runtime: { phase: "missing" } });
+  });
+
+  it("returns the lightweight menu bar snapshot", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/menu-bar", { headers: localHeaders });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ runtime: { phase: "running" } });
+    expect(controller.getMenuBarSnapshot).toHaveBeenCalledOnce();
+    expect(controller.getDashboard).not.toHaveBeenCalled();
   });
 
   it("reports prerequisites and enqueues supported automatic installs", async () => {
@@ -675,6 +700,20 @@ describe("API boundary", () => {
       const body = (await operations.json()) as { operations: Array<{ retryable: boolean }> };
       expect(body.operations[0]?.retryable).toBe(false);
     });
+  });
+
+  it("restarts the active Docker Engine through one exclusive operation", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/restart", {
+      headers: localHeaders,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.restartRuntime).toHaveBeenCalledWith(expect.any(Object)),
+    );
   });
 
   it("rejects a non-local Host header", async () => {

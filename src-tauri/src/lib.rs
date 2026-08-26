@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
@@ -23,10 +23,41 @@ const HELPER_ARGUMENT: &str = "--helper";
 const HELPER_EXECUTABLE_NAME: &str = "overseer-helper";
 const HELPER_SOCKET: &str = "helper.sock";
 const LAUNCHER_SOCKET: &str = "launcher.sock";
+const LAUNCHER_ROUTE_ARGUMENT: &str = "--route";
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAX_PROCESS_MESSAGE_BYTES: u64 = 10 * 1024 * 1024;
+const TRAY_MENU_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
+const TRAY_COMPOSE_ACTION_PREFIX: &str = "tray-compose-action:";
 const TRAY_OPEN_ID: &str = "tray-open";
+const TRAY_RESTART_ID: &str = "tray-restart";
+const TRAY_ROUTE_PREFIX: &str = "tray-route:";
 const TRAY_QUIT_ID: &str = "tray-quit";
+
+#[derive(Debug, PartialEq)]
+struct TrayComposeProject {
+    containers: Vec<TrayContainer>,
+    name: String,
+    state: TrayComposeState,
+}
+
+#[derive(Debug, PartialEq)]
+enum TrayComposeState {
+    Running,
+    Stopped,
+    Unknown,
+}
+
+#[derive(Debug, PartialEq)]
+struct TrayContainer {
+    id: String,
+    name: String,
+}
+
+#[derive(Debug, PartialEq)]
+struct TraySnapshot {
+    projects: Vec<TrayComposeProject>,
+    restart_available: bool,
+}
 
 struct DesktopApiProcess {
     child: Child,
@@ -135,11 +166,19 @@ impl Drop for DesktopApiProcess {
     }
 }
 
-fn show_main_window(app: &tauri::AppHandle) {
+fn show_main_window(app: &tauri::AppHandle, path: Option<&str>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         eprintln!("main window를 찾지 못했습니다.");
         return;
     };
+    if let Some(path) = path.filter(|path| valid_launcher_path(path)) {
+        let path = serde_json::to_string(path).expect("launcher 경로는 JSON 문자열로 변환됩니다.");
+        if let Err(error) = window.eval(format!(
+            "window.history.pushState(null, '', {path}); window.dispatchEvent(new PopStateEvent('popstate'));"
+        )) {
+            eprintln!("launcher 화면을 이동하지 못했습니다: {error}");
+        }
+    }
     if let Err(error) = window
         .show()
         .and_then(|_| window.unminimize())
@@ -149,28 +188,268 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, TRAY_OPEN_ID, "Overseer 열기", true, None::<&str>)?;
-    let separator = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Overseer 종료", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &separator, &quit])?;
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+fn tray_snapshot_from_json(body: &str) -> Result<TraySnapshot, String> {
+    let value: serde_json::Value = serde_json::from_str(body)
+        .map_err(|error| format!("메뉴바 상태 응답이 잘못됐습니다: {error}"))?;
+    let phase = value
+        .pointer("/runtime/phase")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("메뉴바 런타임 상태가 없습니다.")?;
+    let project_values = value
+        .get("composeProjects")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("메뉴바 Compose 목록이 없습니다.")?;
+    let container_values = value
+        .get("containers")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("메뉴바 컨테이너 목록이 없습니다.")?;
 
-    TrayIconBuilder::with_id("overseer")
+    let mut projects = Vec::with_capacity(project_values.len());
+    for project in project_values {
+        let Some(name) = project.get("name").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let state = project
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .map(compose_state)
+            .unwrap_or(TrayComposeState::Unknown);
+        let containers = container_values
+            .iter()
+            .filter(|container| {
+                container
+                    .get("composeProject")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(name)
+            })
+            .filter_map(|container| {
+                Some(TrayContainer {
+                    id: container.get("id")?.as_str()?.to_owned(),
+                    name: container.get("name")?.as_str()?.to_owned(),
+                })
+            })
+            .collect();
+        projects.push(TrayComposeProject {
+            containers,
+            name: name.to_owned(),
+            state,
+        });
+    }
+
+    Ok(TraySnapshot {
+        projects,
+        restart_available: phase != "missing" && phase != "starting" && phase != "stopping",
+    })
+}
+
+fn compose_state(status: &str) -> TrayComposeState {
+    let status = status.to_ascii_lowercase();
+    if status.starts_with("running(") {
+        TrayComposeState::Running
+    } else if status.starts_with("created(")
+        || status.starts_with("exited(")
+        || status == "registered"
+    {
+        TrayComposeState::Stopped
+    } else {
+        TrayComposeState::Unknown
+    }
+}
+
+fn compose_actions(state: &TrayComposeState) -> &'static [(&'static str, &'static str)] {
+    match state {
+        TrayComposeState::Running => &[("stop", "중지"), ("restart", "재시작")],
+        TrayComposeState::Stopped => &[("up", "시작")],
+        TrayComposeState::Unknown => &[],
+    }
+}
+
+fn detail_path(resource: &str, identifier: &str) -> String {
+    let mut url =
+        tauri::Url::parse("http://localhost").expect("고정된 launcher 기본 URL은 유효합니다.");
+    url.path_segments_mut()
+        .expect("고정된 launcher 기본 URL은 경로를 지원합니다.")
+        .push(resource)
+        .push(identifier);
+    url.path().to_owned()
+}
+
+fn route_menu_id(path: &str) -> String {
+    format!("{TRAY_ROUTE_PREFIX}{path}")
+}
+
+fn compose_action_menu_id(action: &str, name: &str) -> String {
+    let encoded_name = detail_path("compose", name)
+        .strip_prefix("/compose/")
+        .expect("Compose 상세 경로에는 인코딩된 이름이 포함됩니다.")
+        .to_owned();
+    format!("{TRAY_COMPOSE_ACTION_PREFIX}{action}:{encoded_name}")
+}
+
+fn compose_action_path(menu_id: &str) -> Option<String> {
+    let (action, encoded_name) = menu_id
+        .strip_prefix(TRAY_COMPOSE_ACTION_PREFIX)?
+        .split_once(':')?;
+    if !matches!(action, "restart" | "stop" | "up")
+        || encoded_name.is_empty()
+        || encoded_name.contains('/')
+    {
+        return None;
+    }
+    Some(format!("/compose/projects/{encoded_name}/actions/{action}"))
+}
+
+fn build_tray_menu(
+    app: &tauri::AppHandle,
+    snapshot: Option<&TraySnapshot>,
+) -> tauri::Result<Menu<tauri::Wry>> {
+    let open = MenuItem::with_id(app, TRAY_OPEN_ID, "Overseer 열기", true, None::<&str>)?;
+    let restart = MenuItem::with_id(
+        app,
+        TRAY_RESTART_ID,
+        "VM 재시작",
+        snapshot.is_some_and(|snapshot| snapshot.restart_available),
+        None::<&str>,
+    )?;
+    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Overseer 종료", true, None::<&str>)?;
+    let menu = Menu::new(app)?;
+    menu.append(&open)?;
+    menu.append(&restart)?;
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+
+    if let Some(snapshot) = snapshot.filter(|snapshot| !snapshot.projects.is_empty()) {
+        for project in &snapshot.projects {
+            let submenu = Submenu::new(app, &project.name, true)?;
+            let path = detail_path("compose", &project.name);
+            let project_open = MenuItem::with_id(
+                app,
+                route_menu_id(&path),
+                format!("{} 열기", project.name),
+                true,
+                None::<&str>,
+            )?;
+            submenu.append(&project_open)?;
+            for (action, label) in compose_actions(&project.state) {
+                submenu.append(&MenuItem::with_id(
+                    app,
+                    compose_action_menu_id(action, &project.name),
+                    label,
+                    true,
+                    None::<&str>,
+                )?)?;
+            }
+            if compose_actions(&project.state).is_empty() {
+                submenu.append(&MenuItem::new(app, "상태 확인 필요", false, None::<&str>)?)?;
+            }
+            if !project.containers.is_empty() {
+                submenu.append(&PredefinedMenuItem::separator(app)?)?;
+                for container in &project.containers {
+                    let path = detail_path("containers", &container.id);
+                    let item = MenuItem::with_id(
+                        app,
+                        route_menu_id(&path),
+                        &container.name,
+                        true,
+                        None::<&str>,
+                    )?;
+                    submenu.append(&item)?;
+                }
+            }
+            menu.append(&submenu)?;
+        }
+    } else {
+        menu.append(&MenuItem::new(
+            app,
+            "Compose 프로젝트 없음",
+            false,
+            None::<&str>,
+        )?)?;
+    }
+
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&quit)?;
+    Ok(menu)
+}
+
+fn request_operation(
+    api: Arc<Mutex<DesktopApiProcess>>,
+    path: String,
+    failure_context: &'static str,
+) {
+    thread::spawn(move || {
+        let result = api
+            .lock()
+            .map_err(|_| "API sidecar 잠금이 손상됐습니다.".to_owned())
+            .and_then(|mut api| api.request(path, "POST".into(), None));
+        match result {
+            Ok((202, _)) => {}
+            Ok((status, body)) => {
+                eprintln!("{failure_context}을 요청하지 못했습니다: HTTP {status} {body}")
+            }
+            Err(error) => eprintln!("{failure_context}을 요청하지 못했습니다: {error}"),
+        }
+    });
+}
+
+fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri::Result<()> {
+    let menu = build_tray_menu(app.handle(), None)?;
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+    let event_api = Arc::clone(&api);
+
+    let tray = TrayIconBuilder::with_id("overseer")
         .icon(icon)
         .icon_as_template(true)
         .menu(&menu)
-        .on_menu_event(|app, event| {
+        .on_menu_event(move |app, event| {
             if event.id() == TRAY_OPEN_ID {
-                if let Err(error) = open_launcher() {
+                if let Err(error) = open_launcher(None) {
                     eprintln!("launcher를 열지 못했습니다: {error}");
                 }
+            } else if event.id() == TRAY_RESTART_ID {
+                request_operation(
+                    Arc::clone(&event_api),
+                    "/runtime/restart".into(),
+                    "VM 재시작",
+                );
             } else if event.id() == TRAY_QUIT_ID {
                 app.exit(0);
+            } else if let Some(path) = compose_action_path(event.id().as_ref()) {
+                request_operation(Arc::clone(&event_api), path, "Compose 작업");
+            } else if let Some(path) = event.id().as_ref().strip_prefix(TRAY_ROUTE_PREFIX) {
+                if let Err(error) = open_launcher(Some(path)) {
+                    eprintln!("launcher 화면을 열지 못했습니다: {error}");
+                }
             }
         })
         .tooltip("Overseer")
         .build(app)?;
+
+    let app_handle = app.handle().clone();
+    thread::spawn(move || loop {
+        let snapshot = api
+            .lock()
+            .map_err(|_| "API sidecar 잠금이 손상됐습니다.".to_owned())
+            .and_then(|mut api| api.request("/menu-bar".into(), "GET".into(), None))
+            .and_then(|(status, body)| {
+                if status == 200 {
+                    tray_snapshot_from_json(&body)
+                } else {
+                    Err(format!("메뉴바 상태를 불러오지 못했습니다: HTTP {status}"))
+                }
+            });
+        match snapshot {
+            Ok(snapshot) => match build_tray_menu(&app_handle, Some(&snapshot)) {
+                Ok(menu) => {
+                    if tray.set_menu(Some(menu)).is_err() {
+                        break;
+                    }
+                }
+                Err(error) => eprintln!("메뉴바 목록을 만들지 못했습니다: {error}"),
+            },
+            Err(error) => eprintln!("메뉴바 목록을 갱신하지 못했습니다: {error}"),
+        }
+        thread::sleep(TRAY_MENU_REFRESH_INTERVAL);
+    });
     Ok(())
 }
 
@@ -374,12 +653,18 @@ fn start_launcher_listener(listener: UnixListener, app: tauri::AppHandle) {
     thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
-            let mut command = [0; 16];
-            let Ok(length) = stream.read(&mut command) else {
+            let Ok(command) = read_process_message(&mut stream) else {
                 continue;
             };
-            if command[..length].starts_with(b"show") {
-                show_main_window(&app);
+            let Ok(command) = serde_json::from_str::<serde_json::Value>(&command) else {
+                continue;
+            };
+            if command.get("action").and_then(serde_json::Value::as_str) == Some("show") {
+                let path = command
+                    .get("path")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|path| valid_launcher_path(path));
+                show_main_window(&app, path);
             }
         }
     });
@@ -398,11 +683,14 @@ fn spawn_current_process(arguments: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn spawn_launcher_process() -> Result<(), String> {
+fn spawn_launcher_process(path: Option<&str>) -> Result<(), String> {
     let bundle = outer_app_bundle_path()?;
-    Command::new("open")
-        .arg("-n")
-        .arg(&bundle)
+    let mut command = Command::new("open");
+    command.arg("-n").arg(&bundle);
+    if let Some(path) = path.filter(|path| valid_launcher_path(path)) {
+        command.arg("--args").arg(LAUNCHER_ROUTE_ARGUMENT).arg(path);
+    }
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -485,16 +773,50 @@ fn configure_helper_autostart() -> Result<(), String> {
     Ok(())
 }
 
-fn open_launcher() -> Result<(), String> {
-    let path = process_socket_path(LAUNCHER_SOCKET)?;
-    if send_process_command(&path, "show\n") {
-        return Ok(());
-    }
-    spawn_launcher_process()
+fn valid_launcher_path(path: &str) -> bool {
+    let identifier = path
+        .strip_prefix("/compose/")
+        .or_else(|| path.strip_prefix("/containers/"));
+    identifier.is_some_and(|identifier| {
+        !identifier.is_empty() && !identifier.contains('/') && !identifier.contains(['\n', '\r'])
+    })
 }
 
-fn create_main_window(app: &mut tauri::App) -> tauri::Result<()> {
-    WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+fn launcher_command(path: Option<&str>) -> String {
+    let command = serde_json::json!({
+        "action": "show",
+        "path": path.filter(|path| valid_launcher_path(path)),
+    });
+    format!("{command}\n")
+}
+
+fn launcher_route_argument() -> Option<String> {
+    let mut arguments = env::args();
+    while let Some(argument) = arguments.next() {
+        if argument == LAUNCHER_ROUTE_ARGUMENT {
+            return arguments.next().filter(|path| valid_launcher_path(path));
+        }
+    }
+    None
+}
+
+fn open_launcher(path: Option<&str>) -> Result<(), String> {
+    let socket_path = process_socket_path(LAUNCHER_SOCKET)?;
+    if send_process_command(&socket_path, &launcher_command(path)) {
+        return Ok(());
+    }
+    spawn_launcher_process(path)
+}
+
+fn create_main_window(app: &mut tauri::App, path: Option<&str>) -> tauri::Result<()> {
+    let mut window =
+        WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::App("index.html".into()));
+    if let Some(path) = path.filter(|path| valid_launcher_path(path)) {
+        let path = serde_json::to_string(path).expect("launcher 경로는 JSON 문자열로 변환됩니다.");
+        window =
+            window.initialization_script(format!("window.history.replaceState(null, '', {path});"));
+    }
+    window
         .center()
         .inner_size(1_200.0, 800.0)
         .min_inner_size(760.0, 560.0)
@@ -580,7 +902,7 @@ fn run_helper(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
     let cleanup_path = socket_path.clone();
     let app = tauri::Builder::default()
         .setup(move |app| {
-            setup_tray(app)?;
+            setup_tray(app, Arc::clone(&api))?;
             app.handle()
                 .set_activation_policy(tauri::ActivationPolicy::Accessory)?;
             app.handle().set_dock_visibility(false)?;
@@ -592,7 +914,7 @@ fn run_helper(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
 
     app.run(move |_app, event| match event {
         tauri::RunEvent::Reopen { .. } => {
-            if let Err(error) = open_launcher() {
+            if let Err(error) = open_launcher(None) {
                 eprintln!("launcher를 열지 못했습니다: {error}");
             }
         }
@@ -606,11 +928,12 @@ fn run_helper(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
 
 fn run_launcher(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
     let socket_path = process_socket_path(LAUNCHER_SOCKET)?;
-    if send_process_command(&socket_path, "show\n") {
+    let route = launcher_route_argument();
+    if send_process_command(&socket_path, &launcher_command(route.as_deref())) {
         return Ok(());
     }
     let Some(listener) = claim_process_socket(&socket_path)? else {
-        let _ = send_process_command(&socket_path, "show\n");
+        let _ = send_process_command(&socket_path, &launcher_command(route.as_deref()));
         return Ok(());
     };
     ensure_helper_process()?;
@@ -620,8 +943,8 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
         .setup(move |app| {
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
             configure_helper_autostart()?;
-            create_main_window(app)?;
-            show_main_window(app.handle());
+            create_main_window(app, route.as_deref())?;
+            show_main_window(app.handle(), None);
             start_launcher_listener(listener, app.handle().clone());
             Ok(())
         })
@@ -642,4 +965,88 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
         }
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_menu_bar_projects_to_their_containers() {
+        let snapshot = tray_snapshot_from_json(
+            r#"{
+                "runtime":{"phase":"running"},
+                "composeProjects":[
+                    {"name":"alpha","status":"running(2)"},
+                    {"name":"beta","status":"registered"}
+                ],
+                "containers":[
+                    {"composeProject":"alpha","id":"one","name":"web"},
+                    {"composeProject":"alpha","id":"two","name":"worker"},
+                    {"id":"standalone","name":"standalone"}
+                ]
+            }"#,
+        )
+        .expect("dashboard snapshot should parse");
+
+        assert_eq!(
+            snapshot,
+            TraySnapshot {
+                projects: vec![
+                    TrayComposeProject {
+                        containers: vec![
+                            TrayContainer {
+                                id: "one".into(),
+                                name: "web".into(),
+                            },
+                            TrayContainer {
+                                id: "two".into(),
+                                name: "worker".into(),
+                            },
+                        ],
+                        name: "alpha".into(),
+                        state: TrayComposeState::Running,
+                    },
+                    TrayComposeProject {
+                        containers: vec![],
+                        name: "beta".into(),
+                        state: TrayComposeState::Stopped,
+                    },
+                ],
+                restart_available: true,
+            }
+        );
+    }
+
+    #[test]
+    fn builds_encoded_detail_routes_and_rejects_unscoped_paths() {
+        assert_eq!(
+            detail_path("compose", "내 프로젝트/a"),
+            "/compose/%EB%82%B4%20%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8%2Fa"
+        );
+        assert!(valid_launcher_path("/compose/my%20project"));
+        assert!(valid_launcher_path("/containers/abc123"));
+        assert!(!valid_launcher_path("/settings"));
+        assert!(!valid_launcher_path("/containers/abc/extra"));
+        assert_eq!(
+            compose_action_path(&compose_action_menu_id("restart", "내 프로젝트/a")),
+            Some(
+                "/compose/projects/%EB%82%B4%20%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8%2Fa/actions/restart"
+                    .into()
+            )
+        );
+        assert_eq!(
+            compose_action_path("tray-compose-action:down:project"),
+            None
+        );
+        assert_eq!(
+            compose_actions(&TrayComposeState::Running),
+            &[("stop", "중지"), ("restart", "재시작")]
+        );
+        assert_eq!(
+            compose_actions(&TrayComposeState::Stopped),
+            &[("up", "시작")]
+        );
+        assert!(compose_actions(&TrayComposeState::Unknown).is_empty());
+    }
 }

@@ -1426,6 +1426,44 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
     expect(lifecycle).toEqual(["stop", "delete", "start"]);
   });
 
+  it("restarts the active engine without deleting its VM", async () => {
+    let status = "Running";
+    const docker = dockerContextResponder();
+    const lifecycle: string[] = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list") {
+        return {
+          stderr: "",
+          stdout: args.includes("--json")
+            ? limaDetails({ status })
+            : `overseer\t${status}\t/tmp/overseer\n`,
+        };
+      }
+      if (executable === "limactl" && args[0] === "stop") {
+        lifecycle.push("stop");
+        status = "Stopped";
+      }
+      if (executable === "limactl" && args[0] === "start") {
+        lifecycle.push("start");
+        status = "Running";
+      }
+      if (executable === "docker") return docker(args);
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.restartRuntime()).resolves.toMatchObject({
+      dockerVersion: "29.7.2",
+      phase: "running",
+    });
+    expect(lifecycle).toEqual(["stop", "start"]);
+    expect(
+      vi
+        .mocked(command)
+        .mock.calls.some(([executable, args]) => executable === "limactl" && args[0] === "delete"),
+    ).toBe(false);
+  });
+
   it("rejects unavailable QEMU before stopping the existing VM", async () => {
     const command: CommandRunner = vi.fn(async (executable) => {
       if (executable.startsWith("qemu-system-")) {

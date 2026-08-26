@@ -31,6 +31,7 @@ import type {
   ImageHistoryEntry,
   ImageRepositoryTags,
   ImageSummary,
+  MenuBarSnapshot,
   NetworkDetail,
   NetworkSummary,
   PullImageInput,
@@ -103,6 +104,7 @@ export interface RuntimeController {
   getImageHistory(id: string): Promise<ImageHistoryEntry[]>;
   getImageRepositoryTags(id: string, page: number): Promise<ImageRepositoryTags>;
   getImages(): Promise<ImageSummary[]>;
+  getMenuBarSnapshot(): Promise<MenuBarSnapshot>;
   getNetwork(name: string): Promise<NetworkDetail>;
   getNetworks(): Promise<NetworkSummary[]>;
   getRuntimeInstances(): Promise<RuntimeInstancesSnapshot>;
@@ -125,6 +127,7 @@ export interface RuntimeController {
     configuration: DockerEngineConfiguration,
     progress?: OperationProgress,
   ): Promise<RuntimeSnapshot>;
+  restartRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot>;
   runContainer(input: RunContainerInput, progress?: OperationProgress): Promise<void>;
   selectRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   startRuntime(
@@ -676,6 +679,18 @@ export class LimaDockerRuntime implements RuntimeController {
     };
   }
 
+  async getMenuBarSnapshot(): Promise<MenuBarSnapshot> {
+    const runtime = await this.getRuntimeSnapshot();
+    if (runtime.phase !== "running") return { composeProjects: [], containers: [], runtime };
+    const [composeProjects, containers] = await Promise.all([
+      this.isHostDockerComposeAvailable().then((available) =>
+        available ? this.getComposeProjects() : [],
+      ),
+      this.getContainers(),
+    ]);
+    return { composeProjects, containers, runtime };
+  }
+
   private async isHostDockerComposeAvailable(): Promise<boolean> {
     try {
       await this.command("docker", ["compose", "version"], { timeoutMs: 5_000 });
@@ -1004,6 +1019,20 @@ export class LimaDockerRuntime implements RuntimeController {
       timeoutMs: 120_000,
     });
     return this.stoppedSnapshot();
+  }
+
+  async restartRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot> {
+    if (this.transition)
+      throw new ExpectedError("runtime_busy", "다른 런타임 작업이 진행 중입니다.", 409);
+    if (!(await this.getInstance())) {
+      throw new ExpectedError(
+        "runtime_missing",
+        "재시작할 Docker Engine 인스턴스가 없습니다.",
+        409,
+      );
+    }
+    await this.stopRuntime(progress);
+    return this.startRuntime(progress);
   }
 
   async runContainer(input: RunContainerInput, progress?: OperationProgress): Promise<void> {

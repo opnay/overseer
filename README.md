@@ -39,7 +39,7 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
-macOS 앱은 `src-tauri/target/release/bundle/macos/Overseer.app`에 생성되며 내부 `OverseerHelper.app`과 Bun으로 컴파일한 API sidecar를 포함합니다. 로그인 자동 시작되는 Helper가 메뉴바·sidecar·Docker 작업을 소유하고, launcher 창은 Tauri IPC로 같은 API를 사용합니다.
+macOS 앱은 `src-tauri/target/release/bundle/macos/Overseer.app`에 생성되며 내부 `OverseerHelper.app`과 Bun으로 컴파일한 API sidecar를 포함합니다. 로그인 자동 시작되는 Helper가 메뉴바·sidecar·Docker 작업을 소유하고, launcher 창은 Tauri IPC로 같은 API를 사용합니다. 메뉴바에서는 활성 VM을 재시작하고 Compose별 시작·중지·재시작과 컨테이너 목록을 확인할 수 있으며, Compose나 컨테이너를 선택하면 launcher의 해당 상세 화면을 엽니다.
 
 배포 인증서 없이 로컬 설치할 때는 bundle 전체를 ad-hoc 서명한 뒤 `/Applications`로 복사하십시오.
 
@@ -116,6 +116,7 @@ pnpm check
 - `POST /api/runtime/start`: 중지된 VM 시작 또는 선택 설정으로 첫 VM 생성
 - `POST /api/runtime/cli/connect`: writable 홈 공유와 `overseer` Docker context 연결 작업 접수
 - `POST /api/runtime/recreate`: 확인 문자열과 선택 설정으로 단일 VM 재생성
+- `POST /api/runtime/restart`: 활성 VM을 삭제 없이 중지한 뒤 다시 시작
 - `GET /api/startup`: Homebrew·Docker CLI와 Compose·Lima 설치 상태
 - `POST /api/startup/prerequisites/:id/install`: Docker·Compose·Lima Homebrew 설치 작업 접수
 - `GET /api/startup/updates`: Docker CLI·Compose·Lima의 현재·최신 버전과 관리 방식

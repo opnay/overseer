@@ -549,6 +549,12 @@ export interface DashboardSnapshot {
   volumes: VolumeSummary[];
 }
 
+export interface MenuBarSnapshot {
+  composeProjects: ComposeProjectSummary[];
+  containers: ContainerSummary[];
+  runtime: RuntimeSnapshot;
+}
+
 export type RunContainerInput = ContainerSpecInput;
 
 export interface PullImageInput {
@@ -594,6 +600,7 @@ export type OperationKind =
   | "runtime.start"
   | "runtime.connect"
   | "runtime.recreate"
+  | "runtime.restart"
   | "runtime.stop"
   | "startup.install"
   | "startup.update"

@@ -219,6 +219,7 @@ export function createApi(
     return context.json({ operation }, 202);
   });
   app.get("/dashboard", async (context) => context.json(await controller.getDashboard()));
+  app.get("/menu-bar", async (context) => context.json(await controller.getMenuBarSnapshot()));
   app.get("/runtime/configuration", async (context) =>
     context.json(await controller.getDockerEngineConfiguration()),
   );
@@ -420,6 +421,19 @@ export function createApi(
       undefined,
       false,
     );
+    return context.json({ operation }, 202);
+  });
+
+  app.post("/runtime/restart", (context) => {
+    const operation = enqueue(context, {
+      exclusive: true,
+      kind: "runtime.restart",
+      locks: [],
+      run: async (progress) => void (await controller.restartRuntime(progress)),
+      successMessage: "활성 VM을 재시작했습니다.",
+      target: { name: "Docker Engine", resource: "runtime" },
+      title: "VM 재시작",
+    });
     return context.json({ operation }, 202);
   });
 
