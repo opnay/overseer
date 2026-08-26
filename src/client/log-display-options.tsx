@@ -3,7 +3,7 @@ import { Dialog } from "@opnay/city-ds-react/dialog";
 import { Menu } from "@opnay/city-ds-react/menu";
 import { Tooltip } from "@opnay/city-ds-react/tooltip";
 import { Maximize2, SlidersHorizontal } from "lucide-react";
-import { Fragment, useState, type ReactNode, type Ref } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 
 export type LogFontSize = "large" | "medium" | "small";
 
@@ -85,6 +85,7 @@ export function LogViewer({
   ariaLabel,
   context,
   emptyMessage = "기록된 출력이 없습니다.",
+  followOutput = false,
   height = "default",
   loading = false,
   loadingMessage = "출력을 불러오는 중…",
@@ -96,6 +97,7 @@ export function LogViewer({
   ariaLabel: string;
   context?: ReactNode;
   emptyMessage?: string;
+  followOutput?: boolean;
   height?: LogViewerHeight;
   loading?: boolean;
   loadingMessage?: string;
@@ -107,6 +109,12 @@ export function LogViewer({
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
   const [wrapped, setWrapped] = useState(false);
+  const followScrollRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    if (!followOutput || !followScrollRef.current) return;
+    followScrollRef.current.scrollTop = followScrollRef.current.scrollHeight;
+  }, [followOutput, fullscreenOpen, value]);
 
   const renderViewer = (fullscreen = false) => (
     <section
@@ -159,7 +167,9 @@ export function LogViewer({
           data-font-size={fontSize}
           data-line-numbers={showLineNumbers}
           data-wrap={wrapped}
-          ref={fullscreen === fullscreenOpen ? scrollRef : undefined}
+          ref={
+            followOutput ? followScrollRef : fullscreen === fullscreenOpen ? scrollRef : undefined
+          }
           tabIndex={0}
         >
           <LogCodeContent showLineNumbers={showLineNumbers} value={value} />

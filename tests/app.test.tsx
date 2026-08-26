@@ -2031,6 +2031,7 @@ describe("App", () => {
       },
       volumes: [],
     };
+    const operationOutputLines = Array.from({ length: 20 }, (_, index) => `docker output ${index}`);
     const history = [
       operation("queued", { id: "queued-id", title: "대기 작업" }),
       operation("running", { id: "running-id", step: "실행 중", title: "진행 작업" }),
@@ -2038,7 +2039,7 @@ describe("App", () => {
         error: { code: "docker_command_failed", message: "포트 충돌" },
         finishedAt: "2026-08-23T10:00:03.000Z",
         id: "failed-id",
-        output: ["docker output"],
+        output: operationOutputLines,
         retryable: true,
         step: "실패함",
         title: "실패 작업",
@@ -2092,7 +2093,23 @@ describe("App", () => {
       "data-tone",
       "info",
     );
-    const drawerOutput = within(drawer).getByRole("region", { name: "실패 작업 최근 출력" });
+    const drawerOutput = within(drawer).getByRole("region", { name: "실패 작업 출력" });
+    const drawerCode = drawerOutput.querySelector(".overseer-log-viewer-code");
+    expect(drawerOutput).toHaveAttribute("data-height", "compact");
+    expect(drawerCode?.querySelector("code")?.textContent).toBe(operationOutputLines.join("\n"));
+    await user.click(within(drawerOutput).getByRole("button", { name: "크게 보기" }));
+    const fullscreenOutput = await screen.findByRole("region", {
+      name: "실패 작업 출력 전체 화면",
+    });
+    expect(fullscreenOutput.querySelector("code")?.textContent).toBe(
+      operationOutputLines.join("\n"),
+    );
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: "실패 작업 출력 전체 화면" }),
+      ).not.toBeInTheDocument(),
+    );
     await user.click(within(drawerOutput).getByRole("button", { name: "로그 옵션" }));
     const drawerLogOptions = await screen.findByRole("menu");
     expect(
@@ -2130,14 +2147,17 @@ describe("App", () => {
     await user.click(within(failedRow).getByRole("button", { name: "상세" }));
     const detail = await screen.findByRole("dialog", { name: "실패 작업" });
     expect(detail).toHaveTextContent("포트 충돌");
-    expect(detail).toHaveTextContent("docker output");
+    expect(detail).toHaveTextContent("docker output 0");
+    expect(detail).toHaveTextContent("docker output 19");
     expect(within(detail).getByText("실패", { selector: "[data-city-badge]" })).toHaveAttribute(
       "data-appearance",
       "subtle",
     );
     const operationOutput = detail.querySelector(".overseer-log-viewer-code");
     expect(operationOutput?.tagName).toBe("PRE");
-    expect(operationOutput?.querySelector("code")?.textContent).toBe("docker output");
+    expect(operationOutput?.querySelector("code")?.textContent).toBe(
+      operationOutputLines.join("\n"),
+    );
     expect(operationOutput).toHaveAttribute("data-wrap", "false");
     expect(operationOutput).toHaveAttribute("data-line-numbers", "false");
     expect(operationOutput).toHaveAttribute("data-font-size", "medium");
@@ -2163,7 +2183,7 @@ describe("App", () => {
     await user.click(operationLineNumbers);
     expect(operationLineNumbers).toHaveAttribute("aria-checked", "true");
     expect(operationOutput).toHaveAttribute("data-line-numbers", "true");
-    expect(operationOutput?.querySelectorAll(".overseer-log-code-line")).toHaveLength(1);
+    expect(operationOutput?.querySelectorAll(".overseer-log-code-line")).toHaveLength(20);
     await user.click(within(operationOptions).getByRole("menuitemradio", { name: "크게" }));
     expect(operationOutput).toHaveAttribute("data-font-size", "large");
     await user.keyboard("{Escape}");

@@ -102,7 +102,7 @@ describe("OperationQueue", () => {
     later.resolve();
   });
 
-  it("retains bounded sanitized output and an expected failure", async () => {
+  it("retains complete sanitized output and an expected failure", async () => {
     const queue = new OperationQueue();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const snapshot = queue.enqueue(
@@ -115,9 +115,22 @@ describe("OperationQueue", () => {
 
     await vi.waitFor(() => expect(queue.get(snapshot.id)?.status).toBe("failed"));
     const failed = queue.get(snapshot.id);
-    expect(failed?.output).toHaveLength(100);
-    expect(failed?.output[0]).toBe("line 20");
+    expect(failed?.output).toHaveLength(120);
+    expect(failed?.output[0]).toBe("line 0");
     expect(failed?.error?.code).toBe("operation_failed");
+  });
+
+  it("preserves partial and blank output lines across chunks", async () => {
+    const queue = new OperationQueue();
+    const snapshot = queue.enqueue(
+      operation(async (progress) => {
+        progress.output("\u001b[31mpar");
+        progress.output("tial\u001b[0m\n\nlast");
+      }),
+    );
+
+    await vi.waitFor(() => expect(queue.get(snapshot.id)?.status).toBe("succeeded"));
+    expect(queue.get(snapshot.id)?.output).toEqual(["partial", "", "last"]);
   });
 
   it("keeps all completed history instead of trimming old records", async () => {
@@ -136,7 +149,10 @@ describe("OperationQueue", () => {
     const queue = new OperationQueue(3, store);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const accepted = queue.enqueue({
-      ...operation(async () => {
+      ...operation(async (progress) => {
+        for (let index = 0; index < 120; index += 1) {
+          progress.output(`persisted ${index}\n`);
+        }
         throw new Error("failed");
       }),
       retryRequest: { method: "POST", path: "/containers/web/actions/start" },
@@ -151,6 +167,7 @@ describe("OperationQueue", () => {
     const reopenedQueue = new OperationQueue(3, reopenedStore);
     expect(reopenedQueue.get(accepted.id)).toMatchObject({
       id: accepted.id,
+      output: Array.from({ length: 120 }, (_, index) => `persisted ${index}`),
       retryable: true,
       status: "failed",
     });

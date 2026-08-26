@@ -130,10 +130,10 @@ export function OperationsDrawer({
                         ) : null}
                         {operation.output.length > 0 ? (
                           <LogViewer
-                            ariaLabel={`${operation.title} 최근 출력`}
+                            ariaLabel={`${operation.title} 출력`}
+                            followOutput
                             height="compact"
-                            key={operation.id}
-                            value={operation.output.slice(-12).join("\n")}
+                            value={operation.output.join("\n")}
                           />
                         ) : null}
                         {operation.status === "queued" ? (

@@ -8,8 +8,6 @@ import type {
   PersistedOperation,
 } from "./operation-history.ts";
 
-const MAX_OUTPUT_LINES = 100;
-
 export interface OperationProgress {
   output(value: string): void;
   step(value: string): void;
@@ -195,18 +193,24 @@ export class OperationQueue {
     this.exclusiveRunning = operation.exclusive;
     operation.locks.forEach((lock) => this.runningLocks.add(lock));
 
+    let pendingOutput = "";
+    const appendOutput = (lines: string[]) => {
+      operation.output.push(...lines.map((line) => stripVTControlCharacters(line).trimEnd()));
+    };
+    const flushOutput = () => {
+      if (!pendingOutput) return;
+      appendOutput([pendingOutput]);
+      pendingOutput = "";
+    };
     const progress: OperationProgress = {
       output: (value) => {
-        const lines = stripVTControlCharacters(value)
-          .split(/\r?\n/)
-          .map((line) => line.trimEnd().slice(0, 2_000))
-          .filter(Boolean);
-        operation.output.push(...lines);
-        if (operation.output.length > MAX_OUTPUT_LINES) {
-          operation.output.splice(0, operation.output.length - MAX_OUTPUT_LINES);
-        }
+        pendingOutput += value;
+        const lines = pendingOutput.split(/\r?\n/);
+        pendingOutput = lines.pop() ?? "";
+        appendOutput(lines);
       },
       step: (value) => {
+        flushOutput();
         operation.step = value;
         this.persist(operation);
       },
@@ -241,6 +245,7 @@ export class OperationQueue {
         operation.error = operationError(error);
       })
       .finally(() => {
+        flushOutput();
         operation.finishedAt = new Date().toISOString();
         this.running -= 1;
         this.exclusiveRunning = false;

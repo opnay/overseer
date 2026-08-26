@@ -695,10 +695,11 @@ export function StartupPage({
                       <Accordion.Panel>
                         <LogViewer
                           ariaLabel={`${operation.title} 로그`}
+                          followOutput
                           height="compact"
                           value={
                             operation.output.length > 0
-                              ? operation.output.slice(-12).join("\n")
+                              ? operation.output.join("\n")
                               : operation.step
                           }
                         />
@@ -729,8 +730,9 @@ export function StartupPage({
                 {operation.output.length > 0 ? (
                   <LogViewer
                     ariaLabel={`${operation.title} 진행 출력`}
+                    followOutput
                     height="compact"
-                    value={operation.output.slice(-12).join("\n")}
+                    value={operation.output.join("\n")}
                   />
                 ) : null}
               </section>
@@ -739,8 +741,9 @@ export function StartupPage({
             {failed && operation?.output.length ? (
               <LogViewer
                 ariaLabel={`${operation.title} 실패 출력`}
+                followOutput
                 height="compact"
-                value={operation.output.slice(-12).join("\n")}
+                value={operation.output.join("\n")}
               />
             ) : null}
           </section>

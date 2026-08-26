@@ -1823,7 +1823,7 @@
   }
 
   .overseer-log-viewer[data-height="compact"] .overseer-log-viewer-code {
-    max-height: 10rem;
+    max-height: calc(6lh + var(--city-space-6));
   }
 
   .overseer-log-viewer[data-height="expanded"] .overseer-log-viewer-code {

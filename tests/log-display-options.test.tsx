@@ -6,6 +6,25 @@ import { describe, expect, it } from "vitest";
 import { LogViewer } from "../src/client/log-display-options.tsx";
 
 describe("LogViewer", () => {
+  it("keeps the complete compact value and follows appended output", async () => {
+    const { rerender } = render(
+      <LogViewer ariaLabel="진행 출력" followOutput height="compact" value="line 0" />,
+    );
+    const code = screen.getByRole("region", { name: "진행 출력" }).querySelector("pre");
+    if (!code) throw new Error("compact log code not found");
+    Object.defineProperty(code, "scrollHeight", { configurable: true, value: 240 });
+
+    const value = Array.from({ length: 20 }, (_, index) => `line ${index}`).join("\n");
+    rerender(<LogViewer ariaLabel="진행 출력" followOutput height="compact" value={value} />);
+
+    await waitFor(() => expect(code?.scrollTop).toBe(240));
+    expect(code?.querySelector("code")?.textContent).toBe(value);
+    expect(screen.getByRole("region", { name: "진행 출력" })).toHaveAttribute(
+      "data-height",
+      "compact",
+    );
+  });
+
   it("opens a full-window dialog above an existing dialog and preserves display options", async () => {
     const user = userEvent.setup();
 
