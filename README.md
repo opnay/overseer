@@ -39,7 +39,7 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
-macOS 앱은 `src-tauri/target/release/bundle/macos/Overseer.app`에 생성되며 Bun으로 컴파일한 API sidecar를 포함합니다. 앱을 열면 로그인 자동 시작되는 메뉴바 프로세스가 sidecar와 Docker 작업을 소유하고, launcher 창은 Tauri IPC로 같은 API를 사용합니다.
+macOS 앱은 `src-tauri/target/release/bundle/macos/Overseer.app`에 생성되며 내부 `OverseerHelper.app`과 Bun으로 컴파일한 API sidecar를 포함합니다. 로그인 자동 시작되는 Helper가 메뉴바·sidecar·Docker 작업을 소유하고, launcher 창은 Tauri IPC로 같은 API를 사용합니다.
 
 배포 인증서 없이 로컬 설치할 때는 bundle 전체를 ad-hoc 서명한 뒤 `/Applications`로 복사하십시오.
 

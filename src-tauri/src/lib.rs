@@ -1,3 +1,4 @@
+use auto_launch::AutoLaunch;
 use std::{
     env, fs,
     io::{BufRead, BufReader, Read, Write},
@@ -17,13 +18,13 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 
+const HELPER_ARGUMENT: &str = "--helper";
+const HELPER_EXECUTABLE_NAME: &str = "overseer-helper";
+const HELPER_SOCKET: &str = "helper.sock";
 const LAUNCHER_SOCKET: &str = "launcher.sock";
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAX_PROCESS_MESSAGE_BYTES: u64 = 10 * 1024 * 1024;
-const MENUBAR_ARGUMENT: &str = "--menubar";
-const MENUBAR_SOCKET: &str = "menubar.sock";
 const TRAY_OPEN_ID: &str = "tray-open";
 const TRAY_QUIT_ID: &str = "tray-quit";
 
@@ -196,7 +197,7 @@ fn send_process_command(path: &Path, command: &str) -> bool {
         .is_ok()
 }
 
-fn ping_menubar(path: &Path) -> bool {
+fn ping_helper(path: &Path) -> bool {
     let Ok(mut stream) = UnixStream::connect(path) else {
         return false;
     };
@@ -264,7 +265,7 @@ fn write_process_message(stream: &mut UnixStream, value: &serde_json::Value) -> 
         .map_err(|error| format!("프로세스 응답을 보내지 못했습니다: {error}"))
 }
 
-fn handle_menubar_connection(
+fn handle_helper_connection(
     mut stream: UnixStream,
     api: &Arc<Mutex<DesktopApiProcess>>,
 ) -> Result<(), String> {
@@ -273,28 +274,28 @@ fn handle_menubar_connection(
         stream
             .write_all(b"pong\n")
             .and_then(|_| stream.flush())
-            .map_err(|error| format!("menubar 상태를 보내지 못했습니다: {error}"))?;
+            .map_err(|error| format!("helper 상태를 보내지 못했습니다: {error}"))?;
         return Ok(());
     }
 
     let request = serde_json::from_str::<serde_json::Value>(&message)
-        .map_err(|error| format!("menubar API 요청이 잘못됐습니다: {error}"))?;
+        .map_err(|error| format!("helper API 요청이 잘못됐습니다: {error}"))?;
     let path = request
         .get("path")
         .and_then(serde_json::Value::as_str)
-        .ok_or("menubar API 경로가 없습니다.")?
+        .ok_or("helper API 경로가 없습니다.")?
         .to_owned();
     let method = request
         .get("method")
         .and_then(serde_json::Value::as_str)
-        .ok_or("menubar API 요청 방식이 없습니다.")?
+        .ok_or("helper API 요청 방식이 없습니다.")?
         .to_owned();
     let body = match request.get("body") {
         None | Some(serde_json::Value::Null) => None,
         Some(value) => Some(
             value
                 .as_str()
-                .ok_or("menubar API 요청 본문이 잘못됐습니다.")?
+                .ok_or("helper API 요청 본문이 잘못됐습니다.")?
                 .to_owned(),
         ),
     };
@@ -309,50 +310,50 @@ fn handle_menubar_connection(
     write_process_message(&mut stream, &response)
 }
 
-fn start_menubar_listener(listener: UnixListener, api: Arc<Mutex<DesktopApiProcess>>) {
+fn start_helper_listener(listener: UnixListener, api: Arc<Mutex<DesktopApiProcess>>) {
     thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(stream) = stream else { continue };
             let api = Arc::clone(&api);
             thread::spawn(move || {
-                if let Err(error) = handle_menubar_connection(stream, &api) {
-                    eprintln!("menubar 요청을 처리하지 못했습니다: {error}");
+                if let Err(error) = handle_helper_connection(stream, &api) {
+                    eprintln!("helper 요청을 처리하지 못했습니다: {error}");
                 }
             });
         }
     });
 }
 
-fn request_menubar_api(
+fn request_helper_api(
     path: String,
     method: String,
     body: Option<String>,
 ) -> Result<(u16, String), String> {
-    let socket = process_socket_path(MENUBAR_SOCKET)?;
+    let socket = process_socket_path(HELPER_SOCKET)?;
     let mut stream = match UnixStream::connect(&socket) {
         Ok(stream) => stream,
         Err(_) => {
-            ensure_menubar_process()?;
+            ensure_helper_process()?;
             UnixStream::connect(socket)
-                .map_err(|error| format!("menubar API에 연결하지 못했습니다: {error}"))?
+                .map_err(|error| format!("helper API에 연결하지 못했습니다: {error}"))?
         }
     };
     let timeout = Some(Duration::from_secs(120));
     stream
         .set_read_timeout(timeout)
         .and_then(|_| stream.set_write_timeout(timeout))
-        .map_err(|error| format!("menubar API 제한 시간을 설정하지 못했습니다: {error}"))?;
+        .map_err(|error| format!("helper API 제한 시간을 설정하지 못했습니다: {error}"))?;
     let request = serde_json::json!({ "body": body, "method": method, "path": path });
     serde_json::to_writer(&mut stream, &request)
-        .map_err(|error| format!("menubar API 요청을 만들지 못했습니다: {error}"))?;
+        .map_err(|error| format!("helper API 요청을 만들지 못했습니다: {error}"))?;
     stream
         .write_all(b"\n")
         .and_then(|_| stream.flush())
         .and_then(|_| stream.shutdown(Shutdown::Write))
-        .map_err(|error| format!("menubar API 요청을 보내지 못했습니다: {error}"))?;
+        .map_err(|error| format!("helper API 요청을 보내지 못했습니다: {error}"))?;
     let response = read_process_message(&mut stream)?;
     let value = serde_json::from_str::<serde_json::Value>(&response)
-        .map_err(|error| format!("menubar API 응답이 잘못됐습니다: {error}"))?;
+        .map_err(|error| format!("helper API 응답이 잘못됐습니다: {error}"))?;
     if let Some(error) = value.get("error").and_then(serde_json::Value::as_str) {
         return Err(error.to_owned());
     }
@@ -360,11 +361,11 @@ fn request_menubar_api(
         .get("status")
         .and_then(serde_json::Value::as_u64)
         .and_then(|status| u16::try_from(status).ok())
-        .ok_or("menubar API 응답 상태가 잘못됐습니다.")?;
+        .ok_or("helper API 응답 상태가 잘못됐습니다.")?;
     let body = value
         .get("body")
         .and_then(serde_json::Value::as_str)
-        .ok_or("menubar API 응답 본문이 잘못됐습니다.")?
+        .ok_or("helper API 응답 본문이 잘못됐습니다.")?
         .to_owned();
     Ok((status, body))
 }
@@ -398,17 +399,10 @@ fn spawn_current_process(arguments: &[&str]) -> Result<(), String> {
 }
 
 fn spawn_launcher_process() -> Result<(), String> {
-    let executable = env::current_exe()
-        .map_err(|error| format!("애플리케이션 경로를 확인하지 못했습니다: {error}"))?;
-    let bundle = executable
-        .ancestors()
-        .find(|path| path.extension().is_some_and(|extension| extension == "app"));
-    let Some(bundle) = bundle else {
-        return spawn_current_process(&[]);
-    };
+    let bundle = outer_app_bundle_path()?;
     Command::new("open")
         .arg("-n")
-        .arg(bundle)
+        .arg(&bundle)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -417,19 +411,78 @@ fn spawn_launcher_process() -> Result<(), String> {
     Ok(())
 }
 
-fn ensure_menubar_process() -> Result<(), String> {
-    let path = process_socket_path(MENUBAR_SOCKET)?;
-    if ping_menubar(&path) {
+fn outer_app_bundle_path() -> Result<PathBuf, String> {
+    let executable = env::current_exe()
+        .map_err(|error| format!("애플리케이션 경로를 확인하지 못했습니다: {error}"))?;
+    executable
+        .ancestors()
+        .filter(|path| path.extension().is_some_and(|extension| extension == "app"))
+        .last()
+        .map(Path::to_path_buf)
+        .ok_or("Overseer.app 경로를 찾지 못했습니다.".into())
+}
+
+fn helper_bundle_path() -> Result<PathBuf, String> {
+    Ok(outer_app_bundle_path()?.join("Contents/Library/LoginItems/OverseerHelper.app"))
+}
+
+fn helper_executable_path() -> Result<PathBuf, String> {
+    Ok(helper_bundle_path()?.join("Contents/MacOS/overseer-helper"))
+}
+
+fn spawn_helper_process() -> Result<(), String> {
+    let helper = helper_bundle_path()?;
+    if !helper.is_dir() {
+        return spawn_current_process(&[HELPER_ARGUMENT]);
+    }
+    Command::new("open")
+        .arg("-g")
+        .arg(helper)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("OverseerHelper를 실행하지 못했습니다: {error}"))?;
+    Ok(())
+}
+
+fn ensure_helper_process() -> Result<(), String> {
+    let path = process_socket_path(HELPER_SOCKET)?;
+    if ping_helper(&path) {
         return Ok(());
     }
-    spawn_current_process(&[MENUBAR_ARGUMENT])?;
+    spawn_helper_process()?;
     for _ in 0..100 {
         thread::sleep(Duration::from_millis(100));
-        if ping_menubar(&path) {
+        if ping_helper(&path) {
             return Ok(());
         }
     }
-    Err("menubar API가 준비되지 않았습니다.".into())
+    Err("helper API가 준비되지 않았습니다.".into())
+}
+
+fn configure_helper_autostart() -> Result<(), String> {
+    let executable = helper_executable_path()?;
+    let executable = executable
+        .to_str()
+        .ok_or("OverseerHelper 실행 경로를 해석하지 못했습니다.")?;
+    let arguments: [&str; 0] = [];
+    let autostart = AutoLaunch::new("OverseerHelper", executable, true, &arguments);
+    autostart.enable().map_err(|error| {
+        format!("OverseerHelper 로그인 자동 시작을 등록하지 못했습니다: {error}")
+    })?;
+    if !autostart.is_enabled().map_err(|error| {
+        format!("OverseerHelper 로그인 자동 시작을 확인하지 못했습니다: {error}")
+    })? {
+        return Err("OverseerHelper 로그인 자동 시작을 등록하지 못했습니다.".into());
+    }
+    if let Some(legacy) = env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join("Library/LaunchAgents/Overseer.plist"))
+    {
+        let _ = fs::remove_file(legacy);
+    }
+    Ok(())
 }
 
 fn open_launcher() -> Result<(), String> {
@@ -469,6 +522,12 @@ fn sidecar_path() -> Result<PathBuf, String> {
     if packaged.is_file() {
         return Ok(packaged);
     }
+    if let Ok(bundle) = outer_app_bundle_path() {
+        let packaged = bundle.join("Contents/MacOS/overseer-server");
+        if packaged.is_file() {
+            return Ok(packaged);
+        }
+    }
 
     let target = if cfg!(target_arch = "aarch64") {
         "aarch64-apple-darwin"
@@ -489,7 +548,7 @@ async fn api_request(
     method: String,
     body: Option<String>,
 ) -> Result<(u16, String), String> {
-    tauri::async_runtime::spawn_blocking(move || request_menubar_api(path, method, body))
+    tauri::async_runtime::spawn_blocking(move || request_helper_api(path, method, body))
         .await
         .map_err(|error| format!("API 요청 작업이 중단됐습니다: {error}"))?
 }
@@ -497,8 +556,13 @@ async fn api_request(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
-    let result = if env::args().any(|argument| argument == MENUBAR_ARGUMENT) {
-        run_menubar(context)
+    let helper = env::args().any(|argument| argument == HELPER_ARGUMENT)
+        || env::current_exe()
+            .ok()
+            .and_then(|path| path.file_name().map(|name| name == HELPER_EXECUTABLE_NAME))
+            .unwrap_or(false);
+    let result = if helper {
+        run_helper(context)
     } else {
         run_launcher(context)
     };
@@ -507,8 +571,8 @@ pub fn run() {
     }
 }
 
-fn run_menubar(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
-    let socket_path = process_socket_path(MENUBAR_SOCKET)?;
+fn run_helper(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
+    let socket_path = process_socket_path(HELPER_SOCKET)?;
     let Some(listener) = claim_process_socket(&socket_path)? else {
         return Ok(());
     };
@@ -516,13 +580,15 @@ fn run_menubar(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
     let cleanup_path = socket_path.clone();
     let app = tauri::Builder::default()
         .setup(move |app| {
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             setup_tray(app)?;
-            start_menubar_listener(listener, api);
+            app.handle()
+                .set_activation_policy(tauri::ActivationPolicy::Accessory)?;
+            app.handle().set_dock_visibility(false)?;
+            start_helper_listener(listener, api);
             Ok(())
         })
         .build(context)
-        .map_err(|error| format!("menubar 앱을 만들지 못했습니다: {error}"))?;
+        .map_err(|error| format!("OverseerHelper를 만들지 못했습니다: {error}"))?;
 
     app.run(move |_app, event| match event {
         tauri::RunEvent::Reopen { .. } => {
@@ -547,23 +613,13 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
         let _ = send_process_command(&socket_path, "show\n");
         return Ok(());
     };
-    ensure_menubar_process()?;
+    ensure_helper_process()?;
 
     let cleanup_path = socket_path.clone();
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_autostart::init(
-            MacosLauncher::LaunchAgent,
-            Some(vec![MENUBAR_ARGUMENT]),
-        ))
         .setup(move |app| {
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
-            let autostart = app.autolaunch();
-            autostart.enable()?;
-            if !autostart.is_enabled()? {
-                return Err(
-                    std::io::Error::other("로그인 자동 시작을 등록하지 못했습니다.").into(),
-                );
-            }
+            configure_helper_autostart()?;
             create_main_window(app)?;
             show_main_window(app.handle());
             start_launcher_listener(listener, app.handle().clone());

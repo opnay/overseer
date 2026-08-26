@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "tauri": "tauri",
-    "tauri:build": "tauri build --bundles app",
+    "tauri:build": "tauri build --bundles app && bun scripts/package-macos-helper.ts",
     "tauri:dev": "tauri dev",
     "test:ci": "vitest run",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:ci && pnpm build"
