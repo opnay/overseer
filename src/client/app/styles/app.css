@@ -904,7 +904,7 @@
     gap: var(--city-space-5);
   }
 
-  .overseer-instance-origin {
+  .overseer-instance-meta {
     color: var(--city-color-muted-foreground);
   }
 
@@ -935,7 +935,7 @@
     background: var(--city-color-surface-raised);
   }
 
-  .overseer-instance-origin {
+  .overseer-instance-meta {
     display: block;
     margin-top: var(--city-space-0-5);
     font-size: var(--city-font-size-xs);

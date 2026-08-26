@@ -139,8 +139,8 @@ export function RuntimeInstancesSettings({
                       >
                         <strong>{instance.name}</strong>
                       </a>
-                      {instance.managed ? (
-                        <span className="overseer-instance-origin">Overseer</span>
+                      {instance.active ? (
+                        <span className="overseer-instance-meta">Docker Engine으로 사용 중</span>
                       ) : null}
                     </Table.Cell>
                     <Table.Cell>{instance.status}</Table.Cell>

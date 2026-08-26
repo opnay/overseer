@@ -1827,6 +1827,10 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState(null, "", "/instances");
     render(<App />);
+    const activeLabel = await screen.findByText("Docker Engine으로 사용 중");
+    const activeRow = activeLabel.closest("tr");
+    expect(activeRow).not.toBeNull();
+    expect(within(activeRow!).getByRole("link", { name: "overseer" })).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "dev 인스턴스 메뉴" }));
     await user.click(await screen.findByRole("menuitem", { name: "Docker Engine으로 사용" }));
 
