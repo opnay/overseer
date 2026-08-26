@@ -205,8 +205,6 @@ export function StartupPage({
   const selectedVmType = engineForm
     ? engineConfiguration?.vmTypes.find(({ value }) => value === engineForm.vmType)
     : undefined;
-  const qemu = engineConfiguration?.vmTypes.find(({ value }) => value === "qemu");
-
   const submitEngineConfiguration = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!engineForm || !engineConfiguration) return;
@@ -577,12 +575,6 @@ export function StartupPage({
                             />
                           </Fieldset.Content>
                         </Fieldset.Root>
-
-                        {!qemu?.available ? (
-                          <p className="city-text-supporting overseer-startup-engine-note">
-                            {qemu?.unavailableReason}
-                          </p>
-                        ) : null}
 
                         <div className="overseer-startup-primary-action">
                           <Button

@@ -831,7 +831,9 @@ describe("App", () => {
     expect(screen.getByLabelText("CPU")).toHaveValue("4");
     expect(screen.getByLabelText("메모리")).toHaveValue("4");
     expect(screen.getByLabelText("디스크")).toHaveValue("100");
-    expect(screen.getByText("QEMU가 설치되지 않았습니다. brew install qemu")).toBeInTheDocument();
+    expect(
+      screen.queryByText("QEMU가 설치되지 않았습니다. brew install qemu"),
+    ).not.toBeInTheDocument();
     await user.click(vmType);
     expect(await screen.findByRole("option", { name: /QEMU/ })).toHaveAttribute(
       "aria-disabled",
@@ -1098,7 +1100,9 @@ describe("App", () => {
       "page",
     );
     expect(screen.getByRole("combobox", { name: "실행 환경" })).toBeDisabled();
-    expect(screen.getByText("QEMU가 설치되지 않았습니다. brew install qemu")).toBeInTheDocument();
+    expect(
+      screen.queryByText("QEMU가 설치되지 않았습니다. brew install qemu"),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("combobox", { name: "VM 드라이버" }));
     expect(await screen.findByRole("option", { name: /QEMU/ })).toHaveAttribute(

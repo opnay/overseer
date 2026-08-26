@@ -121,7 +121,6 @@ export function SettingsPage({
     void load();
   }, [load, refreshToken]);
 
-  const qemu = snapshot?.vmTypes.find(({ value }) => value === "qemu");
   const status = runtimeStatus[dashboard.runtime.phase];
   const presentation = sectionPresentation[section];
 
@@ -367,13 +366,6 @@ export function SettingsPage({
                         </Field.Root>
                       </Fieldset.Content>
                     </Fieldset.Root>
-
-                    {!qemu?.available ? (
-                      <Alert.Root appearance="subtle" tone="info">
-                        <Alert.Title level={3}>QEMU 사용 준비가 필요합니다.</Alert.Title>
-                        <Alert.Description>{qemu?.unavailableReason}</Alert.Description>
-                      </Alert.Root>
-                    ) : null}
 
                     <RuntimeInstancesSettings
                       busy={busy}
