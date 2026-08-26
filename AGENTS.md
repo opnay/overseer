@@ -1,1 +1,3 @@
 - city-ds가 적용되어야 합니다. DESIGN.md를 1순위 규칙으로 지켜야합니다.
+- `src/client`의 파일 생성·이동·분리, import 변경, 구조 리팩터링이나 아키텍처 리뷰 전에는 반드시 `.agents/skills/frontend-fsd-architecture/SKILL.md`를 읽고 준수해야 합니다.
+- 프론트엔드 FSD 작업에서는 `app → pages → shared` 의존 방향, page slice 격리, `index.ts` public API 규칙을 예외 없이 지키고 `tests/client-architecture.test.ts`로 검증해야 합니다.
