@@ -53,7 +53,7 @@ open -a /Applications/Overseer.app
 
 도구를 제거하지 않고 각 미설치 화면을 확인하려면 `/startup?startup-preview=homebrew`, `/startup?startup-preview=docker`, `/startup?startup-preview=lima`를 사용하십시오. 미리보기는 대상보다 앞선 단계를 완료 상태로 구성하며 실제 도구 감지 결과와 호스트 패키지를 변경하지 않습니다. 다른 페이지에서 필수 설치가 감지되면 `/startup`으로 이동하고, 완료 후 원래 페이지로 돌아갑니다.
 
-도구 준비가 끝나면 **설정 > 일반**에서 Homebrew로 설치된 Docker CLI·Compose·Lima의 업데이트를 한 번에 확인하고, 새 버전이 있는 항목만 개별 업데이트할 수 있습니다. 외부 설치본은 현재 버전과 수동 관리 사유만 표시합니다. 업데이트는 호스트 명령 도구만 교체하며 실행 중인 Lima VM과 컨테이너를 재생성하지 않습니다. **설정 > Docker Engine**의 **엔진 설정**에서 활성 Engine의 daemon 동작을, **네트워크 설정**에서 DNS·주소 풀·Registry·Proxy를 관리합니다. 메인 메뉴의 **가상화 > 인스턴스**에서는 로컬 Lima 인스턴스를 발견하고 컨테이너 사용량을 확인하며, 사용할 Engine을 선택하거나 새 VM을 만들 수 있습니다. 인스턴스 생성 폼의 실행 환경은 현재 Lima VM으로 고정하며 VM 드라이버는 VZ 또는 QEMU입니다. 기본 VM 값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB이고 QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
+도구 준비가 끝나면 **설정 > 일반**에서 Homebrew로 설치된 Docker CLI·Compose·Lima의 업데이트를 한 번에 확인하고, 새 버전이 있는 항목만 개별 업데이트할 수 있습니다. 외부 설치본은 현재 버전과 수동 관리 사유만 표시합니다. 업데이트는 호스트 명령 도구만 교체하며 실행 중인 Lima VM과 컨테이너를 재생성하지 않습니다. **설정 > Docker Engine**의 **엔진 설정**에서 활성 Engine의 daemon 동작을, **네트워크 설정**에서 DNS·주소 풀·Registry·Proxy를 관리합니다. 메인 메뉴의 **가상화 > 인스턴스**에서는 로컬 Lima 인스턴스의 상태·가상화 방식·할당 자원을 확인하고, 행 메뉴에서 사용할 Docker Engine을 선택하거나 새 VM을 만들 수 있습니다. 인스턴스 생성 폼의 실행 환경은 현재 Lima VM으로 고정하며 VM 드라이버는 VZ 또는 QEMU입니다. 기본 VM 값은 VZ, CPU 4개, 메모리 4GiB, 디스크 100GiB이고 QEMU가 설치되지 않았으면 QEMU 옵션을 선택할 수 없습니다.
 
 리소스는 독립 URL에서 관리합니다.
 
@@ -64,10 +64,10 @@ open -a /Applications/Overseer.app
 - `/volumes`, `/volumes/:name`: 생성·삭제, 드라이버·Mountpoint·옵션·Label·원본 Inspect 상세
 - `/networks`, `/networks/:name`: 생성·삭제, 기본 네트워크 보호, IPAM·연결 컨테이너·옵션·Label·원본 Inspect 상세
 - `/operations`: Overseer에서 요청한 전체 작업 기록·상세 출력·실패 작업 재시도
-- `/instances`, `/instances/:name`: Lima VM 생성·선택·시작·중지, 컨테이너 사용량과 VM 설정·Docker 연결 상세
+- `/instances`, `/instances/:name`: Lima VM 생성·선택·시작·중지, VM 설정·Docker 연결·터미널 상세
 - `/settings`: Overseer 일반 설정과 활성 Docker Engine의 daemon·네트워크 설정
 
-시작 준비의 **Docker Engine 만들기**는 기본 `overseer` 인스턴스를 생성합니다. 이후 **가상화 > 인스턴스**에서는 이름과 VM 자원을 지정해 추가 Lima 인스턴스를 만들거나, Docker socket forwarding이 구성된 기존 인스턴스를 선택할 수 있습니다. 목록은 실행 중인 컨테이너 수를 우선 표시하고, 선택 상태·Docker socket·VM 자원 같은 기술 정보는 인스턴스 상세에서 확인합니다. macOS 홈 공유가 읽기 전용인 기존 인스턴스는 **준비** 작업으로 writable mount를 적용합니다. Overseer가 만든 인스턴스 여부와 무관하게 한 번에 하나만 활성 Engine이며 선택값은 호스트 SQLite에 저장됩니다. `OVERSEER_LIMA_INSTANCE`가 있으면 그 인스턴스로 선택이 고정됩니다.
+시작 준비의 **Docker Engine 만들기**는 기본 `overseer` 인스턴스를 생성합니다. 이후 **가상화 > 인스턴스**에서는 이름과 VM 자원을 지정해 추가 Lima 인스턴스를 만들거나, Docker socket forwarding이 구성된 기존 인스턴스를 선택할 수 있습니다. 목록은 상태·가상화 방식·할당 자원을 표시하고, 컨테이너 수·Docker 연결·선택 상태와 터미널 명령은 인스턴스 상세에서 확인합니다. macOS 홈 공유가 읽기 전용인 기존 인스턴스는 **준비** 작업으로 writable mount를 적용합니다. Overseer가 만든 인스턴스 여부와 무관하게 한 번에 하나만 활성 Engine이며 선택값은 호스트 SQLite에 저장됩니다. `OVERSEER_LIMA_INSTANCE`가 있으면 그 인스턴스로 선택이 고정됩니다.
 
 별도 환경 변수 없이 일반 Docker CLI가 같은 런타임을 사용합니다.
 

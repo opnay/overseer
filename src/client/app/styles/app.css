@@ -341,7 +341,8 @@
     gap: var(--city-space-3);
   }
 
-  .overseer-compose-create-actions {
+  .overseer-compose-create-actions,
+  .overseer-instance-header-actions {
     display: flex;
     align-items: center;
     gap: var(--city-space-2);
@@ -2443,7 +2444,8 @@
       width: 100%;
     }
 
-    .overseer-compose-create-actions {
+    .overseer-compose-create-actions,
+    .overseer-instance-header-actions {
       display: grid;
       width: 100%;
     }

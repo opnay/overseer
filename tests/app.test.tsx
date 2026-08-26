@@ -1063,7 +1063,8 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "인스턴스", level: 1 })).toBeInTheDocument();
-    expect(await screen.findByRole("columnheader", { name: "컨테이너" })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "가상화" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "컨테이너" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "활성" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "VM 인스턴스" })).not.toBeInTheDocument();
     const createButton = screen.getByRole("button", { name: "인스턴스 만들기" });
@@ -1138,11 +1139,31 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "overseer", level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("1개 실행 중 · 전체 2개")).toBeInTheDocument();
 
+    const pageHeader = screen
+      .getByRole("heading", { name: "overseer", level: 1 })
+      .closest(".overseer-page-header");
+    const stopButton = await screen.findByRole("button", { name: "overseer 인스턴스 중지" });
+    const instanceMenu = screen.getByRole("button", { name: "overseer 인스턴스 메뉴" });
+    expect(pageHeader).toContainElement(stopButton);
+    expect(pageHeader).toContainElement(instanceMenu);
+
+    await user.click(instanceMenu);
+    expect(
+      await screen.findByRole("menuitem", { name: "현재 Docker Engine으로 사용 중" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    await user.keyboard("{Escape}");
+
     const navigation = screen.getByRole("navigation", { name: "VM 인스턴스 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "VM 설정" }));
     expect(screen.getByText("Lima VM")).toBeInTheDocument();
     expect(screen.getByText("Apple Virtualization (VZ)")).toBeInTheDocument();
     expect(screen.getByText("100GiB")).toBeInTheDocument();
+
+    await user.click(within(navigation).getByRole("button", { name: "터미널" }));
+    expect(screen.getByLabelText("VM 인스턴스 터미널 명령")).toHaveTextContent(
+      "limactl shell overseer",
+    );
+    expect(screen.getByRole("button", { name: "터미널 명령 복사" })).toBeEnabled();
 
     await user.click(within(navigation).getByRole("button", { name: "Docker 연결" }));
     expect(screen.getByText("현재 사용 중")).toBeInTheDocument();
@@ -1806,7 +1827,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState(null, "", "/instances");
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "dev 인스턴스 사용" }));
+    await user.click(await screen.findByRole("button", { name: "dev 인스턴스 메뉴" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Docker Engine으로 사용" }));
 
     await waitFor(() =>
       expect(

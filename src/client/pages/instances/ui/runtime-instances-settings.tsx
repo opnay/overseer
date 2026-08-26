@@ -104,13 +104,12 @@ export function RuntimeInstancesSettings({
         >
           <Table.Root aria-label="Lima 인스턴스 목록" className="overseer-table" size="sm">
             <Table.Caption className="overseer-table-caption">
-              로컬 Lima VM의 상태와 컨테이너 사용량
+              로컬 Lima VM의 상태, 가상화 방식과 할당 자원
             </Table.Caption>
             <Table.Header>
               <Table.Row>
                 <Table.Head className="overseer-table-column-medium">인스턴스</Table.Head>
                 <Table.Head className="overseer-table-column-state">상태</Table.Head>
-                <Table.Head className="overseer-table-column-state">컨테이너</Table.Head>
                 <Table.Head className="overseer-table-column-state">가상화</Table.Head>
                 <Table.Head className="overseer-table-column-medium">자원</Table.Head>
                 <Table.Head className="overseer-actions-column">작업</Table.Head>
@@ -118,7 +117,7 @@ export function RuntimeInstancesSettings({
             </Table.Header>
             <Table.Body>
               {snapshot.instances.length === 0 ? (
-                <Table.StateRow colSpan={6}>
+                <Table.StateRow colSpan={5}>
                   <EmptyState.Root density="compact">
                     <EmptyState.Icon>
                       <ServerCog aria-hidden="true" />
@@ -146,11 +145,6 @@ export function RuntimeInstancesSettings({
                     </Table.Cell>
                     <Table.Cell>{instance.status}</Table.Cell>
                     <Table.Cell>
-                      {instance.containerCount
-                        ? `${instance.containerCount.running}개 실행 중 · 전체 ${instance.containerCount.total}개`
-                        : "확인 불가"}
-                    </Table.Cell>
-                    <Table.Cell>
                       {instance.configuration?.vmType.toUpperCase() ?? "-"} ·{" "}
                       {instance.architecture}
                     </Table.Cell>
@@ -172,18 +166,6 @@ export function RuntimeInstancesSettings({
                           >
                             <Wrench aria-hidden="true" size={14} />
                             준비
-                          </Button>
-                        ) : null}
-                        {!instance.active && instance.prepared ? (
-                          <Button
-                            aria-label={`${instance.name} 인스턴스 사용`}
-                            disabled={busy || snapshot.selectionLocked}
-                            onClick={() => void onSelect(instance.name).catch(() => undefined)}
-                            size="sm"
-                            type="button"
-                            variant="outline"
-                          >
-                            사용
                           </Button>
                         ) : null}
                         {instance.compatible ? (
@@ -217,6 +199,7 @@ export function RuntimeInstancesSettings({
                           busy={busy}
                           instance={instance}
                           onDelete={onDelete}
+                          onSelect={onSelect}
                           onUpdate={onUpdate}
                           selectionLocked={snapshot.selectionLocked}
                         />

@@ -52,6 +52,7 @@ import type {
   OperationSnapshot,
   OperationResource,
   RegisterRemoteComposeInput,
+  RuntimeInstanceSummary,
   RuntimePhase,
   StartupInstallTarget,
   StartupPrerequisiteId,
@@ -134,6 +135,11 @@ const RuntimeInstanceCreateDialog = lazy(() =>
 const RuntimeInstanceDetailPage = lazy(() =>
   import("@/pages/instances").then((module) => ({
     default: module.RuntimeInstanceDetailPage,
+  })),
+);
+const RuntimeInstanceHeaderActions = lazy(() =>
+  import("@/pages/instances").then((module) => ({
+    default: module.RuntimeInstanceHeaderActions,
   })),
 );
 const StartupPage = lazy(() =>
@@ -688,6 +694,10 @@ function AppContent() {
   const [resourcePath, setResourcePath] = useState<AppLocationPath>(resourcePathFromLocation);
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
+  const [runtimeInstanceHeaderState, setRuntimeInstanceHeaderState] = useState<{
+    instance: RuntimeInstanceSummary;
+    selectionLocked: boolean;
+  }>();
   const notifiedOperations = useRef(new Set<string>());
   const operationsInitialized = useRef(false);
   const startupLoaded = useRef(false);
@@ -706,6 +716,10 @@ function AppContent() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    setRuntimeInstanceHeaderState(undefined);
+  }, [resourcePath]);
 
   const refreshStartup = useCallback(async () => {
     if (startupRefreshInFlight.current) return;
@@ -1440,6 +1454,21 @@ function AppContent() {
           refreshToken={settingsRefreshToken}
         />
       </Suspense>
+    ) : currentDetail?.type === "instance" &&
+      runtimeInstanceHeaderState?.instance.name === currentDetail.identifier ? (
+      <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+        <RuntimeInstanceHeaderActions
+          busy={runtimeBusy || Boolean(submitting)}
+          instance={runtimeInstanceHeaderState.instance}
+          onDelete={deleteRuntimeInstance}
+          onPrepare={(name) => mutateRuntimeInstance(name, "prepare")}
+          onSelect={(name) => mutateRuntimeInstance(name, "select")}
+          onStart={(name) => mutateRuntimeInstance(name, "start")}
+          onStop={(name) => mutateRuntimeInstance(name, "stop")}
+          onUpdate={updateRuntimeInstance}
+          selectionLocked={runtimeInstanceHeaderState.selectionLocked}
+        />
+      </Suspense>
     ) : (
       runtimePagePrimaryAction
     );
@@ -1704,14 +1733,8 @@ function AppContent() {
           {dashboard && currentDetail?.type === "instance" ? (
             <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
               <RuntimeInstanceDetailPage
-                busy={runtimeBusy || Boolean(submitting)}
                 name={currentDetail.identifier}
-                onDelete={deleteRuntimeInstance}
-                onPrepare={(name) => mutateRuntimeInstance(name, "prepare")}
-                onSelect={(name) => mutateRuntimeInstance(name, "select")}
-                onStart={(name) => mutateRuntimeInstance(name, "start")}
-                onStop={(name) => mutateRuntimeInstance(name, "stop")}
-                onUpdate={updateRuntimeInstance}
+                onHeaderStateChange={setRuntimeInstanceHeaderState}
                 refreshToken={detailRefreshToken}
               />
             </Suspense>

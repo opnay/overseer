@@ -1,16 +1,15 @@
 import { Alert } from "@opnay/city-ds-react/alert";
 import { Badge } from "@opnay/city-ds-react/badge";
-import { Button } from "@opnay/city-ds-react/button";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
-import { CircleStop, Play, ServerCog, Wrench } from "lucide-react";
+import { ServerCog, Terminal } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { RuntimeInstanceSummary, RuntimeInstancesSnapshot } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
-import { RuntimeInstanceActions } from "./runtime-instance-actions.tsx";
-import type { RuntimeInstanceMutationProps } from "./runtime-instances-page.tsx";
+import { CommandBlock } from "@/shared/ui/command-block";
+import type { RuntimeInstanceHeaderState } from "./runtime-instance-header-actions.tsx";
 
-type InstanceDetailSection = "connection" | "overview" | "settings";
+type InstanceDetailSection = "connection" | "overview" | "settings" | "terminal";
 
 const sectionPresentation: Record<InstanceDetailSection, { description: string; label: string }> = {
   connection: {
@@ -25,7 +24,13 @@ const sectionPresentation: Record<InstanceDetailSection, { description: string; 
     description: "가상화 드라이버와 할당된 VM 리소스를 확인합니다.",
     label: "VM 설정",
   },
+  terminal: {
+    description: "로컬 터미널에서 Lima VM 셸에 연결합니다.",
+    label: "터미널",
+  },
 };
+
+const sectionOrder: InstanceDetailSection[] = ["overview", "settings", "terminal", "connection"];
 
 function Definition({
   label,
@@ -56,16 +61,14 @@ function vmType(instance: RuntimeInstanceSummary): string {
 }
 
 export function RuntimeInstanceDetailPage({
-  busy,
   name,
-  onDelete,
-  onPrepare,
-  onSelect,
-  onStart,
-  onStop,
-  onUpdate,
+  onHeaderStateChange,
   refreshToken,
-}: Omit<RuntimeInstanceMutationProps, "onCreate"> & { name: string }) {
+}: {
+  name: string;
+  onHeaderStateChange(state?: RuntimeInstanceHeaderState): void;
+  refreshToken: string;
+}) {
   const [snapshot, setSnapshot] = useState<RuntimeInstancesSnapshot>();
   const [error, setError] = useState<string>();
   const [section, setSection] = useState<InstanceDetailSection>("overview");
@@ -90,6 +93,21 @@ export function RuntimeInstanceDetailPage({
     };
   }, [name, refreshToken]);
 
+  const instance = snapshot?.instances.find((candidate) => candidate.name === name);
+
+  useEffect(() => {
+    onHeaderStateChange(
+      instance && snapshot ? { instance, selectionLocked: snapshot.selectionLocked } : undefined,
+    );
+  }, [instance, onHeaderStateChange, snapshot]);
+
+  useEffect(
+    () => () => {
+      onHeaderStateChange(undefined);
+    },
+    [onHeaderStateChange],
+  );
+
   if (error) {
     return (
       <Alert.Root tone="destructive">
@@ -109,7 +127,6 @@ export function RuntimeInstanceDetailPage({
     );
   }
 
-  const instance = snapshot.instances.find((candidate) => candidate.name === name);
   if (!instance) {
     return (
       <EmptyState.Root>
@@ -135,7 +152,7 @@ export function RuntimeInstanceDetailPage({
             <div className="overseer-detail-nav-group" role="group">
               <span className="overseer-detail-nav-label">VM 인스턴스</span>
               <div className="overseer-detail-nav-items">
-                {(["overview", "settings", "connection"] as const).map((value) => (
+                {sectionOrder.map((value) => (
                   <button
                     aria-current={section === value ? "page" : undefined}
                     key={value}
@@ -233,6 +250,30 @@ export function RuntimeInstanceDetailPage({
                 </dl>
               </section>
             </div>
+          ) : section === "terminal" ? (
+            running ? (
+              <section className="overseer-detail-section">
+                <p className="city-text-supporting">
+                  로컬 터미널에서 아래 명령을 실행하면 이 Lima VM 셸에 연결됩니다.
+                </p>
+                <CommandBlock
+                  ariaLabel="VM 인스턴스 터미널 명령"
+                  command={`limactl shell ${instance.name}`}
+                  copyLabel="터미널 명령 복사"
+                  label="로컬 터미널에서 실행"
+                />
+              </section>
+            ) : (
+              <EmptyState.Root>
+                <EmptyState.Icon>
+                  <Terminal aria-hidden="true" />
+                </EmptyState.Icon>
+                <EmptyState.Title level={3}>VM 인스턴스가 실행 중이 아닙니다.</EmptyState.Title>
+                <EmptyState.Description>
+                  페이지 상단에서 인스턴스를 시작한 뒤 터미널 명령을 확인하십시오.
+                </EmptyState.Description>
+              </EmptyState.Root>
+            )
           ) : (
             <>
               <section aria-label="Docker 연결 개요" className="overseer-detail-summary">
@@ -270,59 +311,6 @@ export function RuntimeInstanceDetailPage({
               </section>
             </>
           )}
-
-          <div className="overseer-detail-actions">
-            {!instance.prepared && instance.compatible ? (
-              <Button
-                disabled={busy || snapshot.selectionLocked}
-                onClick={() => void onPrepare(instance.name).catch(() => undefined)}
-                size="sm"
-                variant="outline"
-              >
-                <Wrench aria-hidden="true" size={14} />
-                사용 준비
-              </Button>
-            ) : null}
-            {!instance.active && instance.prepared ? (
-              <Button
-                disabled={busy || snapshot.selectionLocked}
-                onClick={() => void onSelect(instance.name).catch(() => undefined)}
-                size="sm"
-                variant="outline"
-              >
-                이 인스턴스 사용
-              </Button>
-            ) : null}
-            {instance.compatible ? (
-              running ? (
-                <Button
-                  disabled={busy}
-                  onClick={() => void onStop(instance.name).catch(() => undefined)}
-                  size="sm"
-                  variant="outline"
-                >
-                  <CircleStop aria-hidden="true" size={14} />
-                  중지
-                </Button>
-              ) : (
-                <Button
-                  disabled={busy}
-                  onClick={() => void onStart(instance.name).catch(() => undefined)}
-                  size="sm"
-                >
-                  <Play aria-hidden="true" size={14} />
-                  시작
-                </Button>
-              )
-            ) : null}
-            <RuntimeInstanceActions
-              busy={busy}
-              instance={instance}
-              onDelete={onDelete}
-              onUpdate={onUpdate}
-              selectionLocked={snapshot.selectionLocked}
-            />
-          </div>
         </div>
       </div>
     </article>

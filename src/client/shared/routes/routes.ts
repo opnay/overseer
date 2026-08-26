@@ -51,7 +51,7 @@ export const APP_ROUTES = [
     path: "/operations",
   },
   {
-    description: "로컬 VM의 상태와 컨테이너 사용량을 확인하고 인스턴스를 관리합니다.",
+    description: "로컬 VM의 상태, 가상화 방식과 할당 자원을 확인하고 인스턴스를 관리합니다.",
     eyebrow: "가상화 환경",
     group: "virtualization",
     label: "인스턴스",

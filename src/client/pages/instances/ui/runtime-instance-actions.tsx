@@ -42,12 +42,14 @@ export function RuntimeInstanceActions({
   busy,
   instance,
   onDelete,
+  onSelect,
   onUpdate,
   selectionLocked,
 }: {
   busy: boolean;
   instance: RuntimeInstanceSummary;
   onDelete(name: string, input: DeleteRuntimeInstanceInput): Promise<void>;
+  onSelect(name: string): Promise<void>;
   onUpdate(name: string, input: UpdateRuntimeInstanceInput): Promise<void>;
   selectionLocked: boolean;
 }) {
@@ -102,6 +104,13 @@ export function RuntimeInstanceActions({
         <Menu.Portal>
           <Menu.Positioner align="end" sideOffset={6}>
             <Menu.Popup>
+              <Menu.Item
+                disabled={instance.active || !instance.prepared || selectionLocked}
+                onClick={() => void onSelect(instance.name).catch(() => undefined)}
+              >
+                {instance.active ? "현재 Docker Engine으로 사용 중" : "Docker Engine으로 사용"}
+              </Menu.Item>
+              <Menu.Separator />
               <Menu.Item disabled={!editable} onClick={openEdit}>
                 수정
               </Menu.Item>
