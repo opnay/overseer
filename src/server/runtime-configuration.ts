@@ -5,10 +5,10 @@ import type {
   RecreateDockerEngineInput,
   UpdateRuntimeInstanceInput,
 } from "../shared/contracts.ts";
+import { isRuntimeInstanceName } from "../shared/validation.ts";
 import { ExpectedError } from "./errors.ts";
 
 const MIN_DISK_GIB = 10;
-const LIMA_INSTANCE_NAME = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
 
 function record(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -60,7 +60,7 @@ export function parseRuntimeStartInput(value: unknown): DockerEngineConfiguratio
 
 export function parseCreateRuntimeInstanceInput(value: unknown): CreateRuntimeInstanceInput {
   const input = record(value, "Lima 인스턴스 생성 요청을 확인하십시오.");
-  if (typeof input.name !== "string" || !LIMA_INSTANCE_NAME.test(input.name)) {
+  if (typeof input.name !== "string" || !isRuntimeInstanceName(input.name)) {
     throw new ExpectedError(
       "invalid_runtime_instance_name",
       "인스턴스 이름은 소문자·숫자로 시작하고 소문자·숫자·점·밑줄·하이픈만 사용할 수 있습니다.",
@@ -101,7 +101,7 @@ export function parseDeleteRuntimeInstanceInput(
 }
 
 export function requireRuntimeInstanceName(value: string): string {
-  if (!LIMA_INSTANCE_NAME.test(value)) {
+  if (!isRuntimeInstanceName(value)) {
     throw new ExpectedError(
       "invalid_runtime_instance_name",
       "유효하지 않은 Lima 인스턴스 이름입니다.",

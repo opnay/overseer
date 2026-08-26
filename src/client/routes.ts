@@ -2,10 +2,10 @@ export const APP_ROUTE_GROUPS = [
   { id: "workloads", label: "워크로드" },
   { id: "resources", label: "리소스" },
   { id: "operations", label: "운영" },
-  { id: "system", label: "시스템" },
+  { id: "virtualization", label: "가상화" },
 ] as const;
 
-export type AppRouteGroup = (typeof APP_ROUTE_GROUPS)[number]["id"];
+export type AppRouteGroup = (typeof APP_ROUTE_GROUPS)[number]["id"] | "utility";
 
 export const APP_ROUTES = [
   {
@@ -51,9 +51,16 @@ export const APP_ROUTES = [
     path: "/operations",
   },
   {
-    description: "Overseer의 기본 동작과 Docker Engine 실행 환경을 구성합니다.",
+    description: "로컬 VM의 상태와 컨테이너 사용량을 확인하고 인스턴스를 관리합니다.",
+    eyebrow: "가상화 환경",
+    group: "virtualization",
+    label: "인스턴스",
+    path: "/instances",
+  },
+  {
+    description: "Overseer의 기본 동작과 Docker Engine 동작·네트워크를 구성합니다.",
     eyebrow: "시스템 설정",
-    group: "system",
+    group: "utility",
     label: "설정",
     path: "/settings",
   },
@@ -66,11 +73,18 @@ export type AppLocationPath =
   | `/compose/${string}`
   | `/containers/${string}`
   | `/images/${string}`
+  | `/instances/${string}`
   | `/networks/${string}`
   | `/volumes/${string}`;
 
 export type AppDetailLocation =
   | { identifier: string; parentPath: "/compose"; path: `/compose/${string}`; type: "compose" }
+  | {
+      identifier: string;
+      parentPath: "/instances";
+      path: `/instances/${string}`;
+      type: "instance";
+    }
   | {
       identifier: string;
       parentPath: "/containers";
@@ -106,6 +120,10 @@ export function containerDetailPath(id: string): `/containers/${string}` {
 
 export function imageDetailPath(id: string): `/images/${string}` {
   return `/images/${encodeURIComponent(id)}`;
+}
+
+export function runtimeInstanceDetailPath(name: string): `/instances/${string}` {
+  return `/instances/${encodeURIComponent(name)}`;
 }
 
 export function networkDetailPath(name: string): `/networks/${string}` {
@@ -149,6 +167,14 @@ export function getAppDetailLocation(pathname: string): AppDetailLocation | unde
       type: "image",
     };
   }
+  if (resource === "instances" && isRuntimeInstanceName(identifier)) {
+    return {
+      identifier,
+      parentPath: "/instances",
+      path: runtimeInstanceDetailPath(identifier),
+      type: "instance",
+    };
+  }
   if (resource === "networks" && isResourceName(identifier)) {
     return {
       identifier,
@@ -189,4 +215,5 @@ import {
   isContainerReference,
   isImageIdentifier,
   isResourceName,
+  isRuntimeInstanceName,
 } from "../shared/validation.ts";

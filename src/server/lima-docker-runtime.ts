@@ -748,10 +748,7 @@ export class LimaDockerRuntime implements RuntimeController {
     );
     return {
       activeInstanceName: this.instanceName,
-      instances: summaries.sort(
-        (left, right) =>
-          Number(right.active) - Number(left.active) || left.name.localeCompare(right.name),
-      ),
+      instances: summaries.sort((left, right) => left.name.localeCompare(right.name)),
       selectionLocked: Boolean(CONFIGURED_LIMA_INSTANCE),
     };
   }
@@ -2362,9 +2359,10 @@ export class LimaDockerRuntime implements RuntimeController {
     }
     const socketConfigured = this.dockerSocketConfigured(instance);
     let dockerVersion: string | undefined;
+    let containerCount: RuntimeInstanceSummary["containerCount"];
     if (socketConfigured && instance.status.toLowerCase() === "running") {
-      try {
-        const result = await this.command(
+      const [versionResult, containersResult] = await Promise.allSettled([
+        this.command(
           "docker",
           [
             "--host",
@@ -2374,10 +2372,33 @@ export class LimaDockerRuntime implements RuntimeController {
             "{{.Server.Version}}",
           ],
           { timeoutMs: 5_000 },
-        );
-        dockerVersion = result.stdout.trim() || undefined;
-      } catch {
-        dockerVersion = undefined;
+        ),
+        this.command(
+          "docker",
+          [
+            "--host",
+            `unix://${instance.dir}/sock/docker.sock`,
+            "container",
+            "ls",
+            "--all",
+            "--format",
+            "{{.State}}",
+          ],
+          { timeoutMs: 5_000 },
+        ),
+      ]);
+      if (versionResult.status === "fulfilled") {
+        dockerVersion = versionResult.value.stdout.trim() || undefined;
+      }
+      if (containersResult.status === "fulfilled") {
+        const states = containersResult.value.stdout
+          .split(/\r?\n/)
+          .map((state) => state.trim().toLowerCase())
+          .filter(Boolean);
+        containerCount = {
+          running: states.filter((state) => state === "running").length,
+          total: states.length,
+        };
       }
     }
     const compatible = Boolean(configuration && socketConfigured);
@@ -2395,6 +2416,7 @@ export class LimaDockerRuntime implements RuntimeController {
       architecture: instance.arch ?? "-",
       compatible,
       ...(configuration ? { configuration } : {}),
+      ...(containerCount ? { containerCount } : {}),
       ...(dockerVersion ? { dockerVersion } : {}),
       homeMountWritable,
       managed:

@@ -16,11 +16,13 @@
 - Overseer 관리 인스턴스 삭제는 인스턴스 이름 확인 후 `stop → delete`로 실행하며 성공한 뒤 관리·활성 메타데이터를 정리합니다.
 - 실행 환경은 현재 Lima VM 단일 옵션이므로 Select를 비활성화합니다. 구현이 추가될 때 같은 가상화 설정 경계에서 확장합니다.
 - macOS Docker context 이름은 `overseer`로 유지하고 활성 인스턴스가 바뀔 때 socket endpoint만 갱신합니다.
+- 인스턴스 관리는 Docker daemon 설정과 분리해 메인 메뉴의 **가상화 > 인스턴스**에 둡니다. 목록은 상태와 실행 중·전체 컨테이너 수를 우선 표시합니다.
+- VM 드라이버·CPU·메모리·디스크는 인스턴스 생성 시 결정하며 전역 기본값 설정을 두지 않습니다. 실제 VM 설정과 Docker 연결·선택 상태는 인스턴스 상세로 옮깁니다.
 
 ## 데이터 흐름
 
-1. 설정 화면이 인스턴스 목록을 요청합니다.
-2. 서버가 Lima JSON을 읽고 각 인스턴스의 설정·socket forwarding·홈 공유·Docker 응답을 판정합니다.
+1. 인스턴스 화면이 로컬 VM 목록을 요청합니다.
+2. 서버가 Lima JSON을 읽고 각 인스턴스의 설정·socket forwarding·홈 공유·Docker 응답·컨테이너 수를 판정합니다.
 3. 사용자가 준비된 인스턴스를 선택하면 Docker context endpoint를 갱신한 뒤 활성 이름을 저장합니다.
 4. 이후 Dashboard와 Docker 명령은 활성 인스턴스의 Unix socket을 직접 사용합니다.
 

@@ -1069,6 +1069,9 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
       if (executable === "docker" && args.includes("version")) {
         return { stderr: "", stdout: "29.7.2\n" };
       }
+      if (executable === "docker" && args.includes("container")) {
+        return { stderr: "", stdout: "running\nexited\nrunning\n" };
+      }
       throw new Error(`unexpected command: ${executable} ${args.join(" ")}`);
     });
     const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
@@ -1076,8 +1079,20 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
     await expect(runtime.getRuntimeInstances()).resolves.toMatchObject({
       activeInstanceName: "dev",
       instances: [
-        { active: true, dockerVersion: "29.7.2", name: "dev", prepared: true },
-        { active: false, dockerVersion: "29.7.2", name: "overseer", prepared: true },
+        {
+          active: true,
+          containerCount: { running: 2, total: 3 },
+          dockerVersion: "29.7.2",
+          name: "dev",
+          prepared: true,
+        },
+        {
+          active: false,
+          containerCount: { running: 2, total: 3 },
+          dockerVersion: "29.7.2",
+          name: "overseer",
+          prepared: true,
+        },
       ],
       selectionLocked: false,
     });

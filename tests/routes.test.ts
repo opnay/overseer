@@ -6,6 +6,7 @@ import {
   getAppLocation,
   getAppRoute,
   imageDetailPath,
+  runtimeInstanceDetailPath,
   networkDetailPath,
   volumeDetailPath,
 } from "../src/client/routes.ts";
@@ -30,6 +31,12 @@ describe("application routes", () => {
       path: "/images/3e24e96c89ef",
       type: "image",
     });
+    expect(getAppDetailLocation("/instances/dev-engine")).toEqual({
+      identifier: "dev-engine",
+      parentPath: "/instances",
+      path: "/instances/dev-engine",
+      type: "instance",
+    });
     expect(getAppDetailLocation("/networks/app-network")).toEqual({
       identifier: "app-network",
       parentPath: "/networks",
@@ -51,12 +58,14 @@ describe("application routes", () => {
 
   it("encodes detail paths and rejects invalid nested routes", () => {
     expect(composeProjectDetailPath("demo-stack")).toBe("/compose/demo-stack");
+    expect(runtimeInstanceDetailPath("dev engine")).toBe("/instances/dev%20engine");
     expect(containerDetailPath("worker:latest")).toBe("/containers/worker%3Alatest");
     expect(imageDetailPath("3e24e96c89ef")).toBe("/images/3e24e96c89ef");
     expect(networkDetailPath("app network")).toBe("/networks/app%20network");
     expect(volumeDetailPath("app data")).toBe("/volumes/app%20data");
     expect(getAppDetailLocation("/compose/INVALID")).toBeUndefined();
     expect(getAppDetailLocation("/images/not-an-image")).toBeUndefined();
+    expect(getAppDetailLocation("/instances/Invalid")).toBeUndefined();
     expect(getAppDetailLocation("/containers/id/extra")).toBeUndefined();
     expect(getAppDetailLocation("/volumes/bad%2Fname")).toBeUndefined();
     expect(getAppLocation("/containers/id/extra")).toBe("/containers");

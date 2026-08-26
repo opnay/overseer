@@ -37,6 +37,7 @@ import {
   RefreshCw,
   RotateCcw,
   Settings2,
+  Server,
   Square,
   Sun,
   Terminal,
@@ -95,6 +96,7 @@ import {
   getAppRoute,
   imageDetailPath,
   networkDetailPath,
+  runtimeInstanceDetailPath,
   type AppLocationPath,
   type AppPath,
   volumeDetailPath,
@@ -124,6 +126,21 @@ const OperationsPage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   import("./settings-page.tsx").then((module) => ({ default: module.SettingsPage })),
+);
+const RuntimeInstancesPage = lazy(() =>
+  import("./runtime-instances-page.tsx").then((module) => ({
+    default: module.RuntimeInstancesPage,
+  })),
+);
+const RuntimeInstanceCreateDialog = lazy(() =>
+  import("./runtime-instance-create-dialog.tsx").then((module) => ({
+    default: module.RuntimeInstanceCreateDialog,
+  })),
+);
+const RuntimeInstanceDetailPage = lazy(() =>
+  import("./runtime-instance-detail-page.tsx").then((module) => ({
+    default: module.RuntimeInstanceDetailPage,
+  })),
 );
 const StartupPage = lazy(() =>
   import("./startup-page.tsx").then((module) => ({ default: module.StartupPage })),
@@ -168,6 +185,7 @@ const resourceRouteIcon = {
   "/compose": Layers3,
   "/containers": Boxes,
   "/images": HardDrive,
+  "/instances": Server,
   "/networks": NetworkIcon,
   "/operations": ListChecks,
   "/settings": Settings2,
@@ -270,6 +288,48 @@ function PrimaryNavigation({
   );
 }
 
+function UtilityNavigation({
+  currentPath,
+  mode,
+  onSelect,
+}: {
+  currentPath: AppPath;
+  mode: Exclude<NavigationMode, "mobile"> | "drawer";
+  onSelect(path: AppPath): void;
+}) {
+  const route = APP_ROUTES.find(({ path }) => path === "/settings")!;
+  const link = (
+    <a
+      aria-current={currentPath === route.path ? "page" : undefined}
+      aria-label={mode === "rail" ? route.label : undefined}
+      href={route.path}
+      onClick={(event) => followAppLink(event, () => onSelect(route.path))}
+    >
+      <Settings2 aria-hidden="true" size={16} />
+      <span className="overseer-nav-link-label">{route.label}</span>
+    </a>
+  );
+  if (mode !== "rail") {
+    return (
+      <nav aria-label="유틸리티 메뉴" className="overseer-sidebar-utility">
+        {link}
+      </nav>
+    );
+  }
+  return (
+    <nav aria-label="유틸리티 메뉴" className="overseer-sidebar-utility">
+      <Tooltip.Root>
+        <Tooltip.Trigger render={link} />
+        <Tooltip.Portal>
+          <Tooltip.Positioner side="right" sideOffset={8}>
+            <Tooltip.Popup>{route.label}</Tooltip.Popup>
+          </Tooltip.Positioner>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </nav>
+  );
+}
+
 const runtimePresentation: Record<
   RuntimePhase,
   { label: string; tone: "destructive" | "info" | "neutral" | "success" | "warning" }
@@ -284,16 +344,10 @@ const runtimePresentation: Record<
 
 function MobileNavigationDrawer({
   currentPath,
-  dockerVersion,
-  instance,
   onSelect,
-  status,
 }: {
   currentPath: AppPath;
-  dockerVersion?: string;
-  instance: string;
   onSelect(path: AppPath): void;
-  status: (typeof runtimePresentation)[RuntimePhase];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -328,14 +382,14 @@ function MobileNavigationDrawer({
                   onSelect(path);
                 }}
               />
-              <section aria-label="Docker Engine 상태" className="overseer-mobile-runtime">
-                <div>
-                  <Badge dot size="sm" tone={status.tone} />
-                  <strong>{status.label}</strong>
-                </div>
-                <span>{instance}</span>
-                <span>Docker {dockerVersion ?? "-"}</span>
-              </section>
+              <UtilityNavigation
+                currentPath={currentPath}
+                mode="drawer"
+                onSelect={(path) => {
+                  setOpen(false);
+                  onSelect(path);
+                }}
+              />
             </Drawer.Body>
           </Drawer.Popup>
         </Drawer.Viewport>
@@ -1131,11 +1185,13 @@ function AppContent() {
   const detectedStartupStep: StartupStepId | undefined =
     prerequisiteStartupStep ??
     (displayedStartup?.ready && dashboard?.runtime.phase !== "running" ? "engine" : undefined);
-  const engineSettingsRoute = detectedStartupStep === "engine" && resourcePath === "/settings";
+  const engineManagementRoute =
+    detectedStartupStep === "engine" &&
+    (resourcePath === "/settings" || resourcePath.startsWith("/instances"));
   const entryStartupStep =
     startupReviewMode && !startupPreview
       ? "homebrew"
-      : engineSettingsRoute
+      : engineManagementRoute
         ? undefined
         : detectedStartupStep;
   const currentStartupStep = startupStep ?? entryStartupStep;
@@ -1169,7 +1225,8 @@ function AppContent() {
       !displayedStartup ||
       startupRoute ||
       !detectedStartupStep ||
-      (detectedStartupStep === "engine" && resourcePath === "/settings")
+      (detectedStartupStep === "engine" &&
+        (resourcePath === "/settings" || resourcePath.startsWith("/instances")))
     ) {
       return;
     }
@@ -1591,10 +1648,12 @@ function AppContent() {
     currentDetail?.type === "volume"
       ? dashboard?.volumes.find(({ name }) => name === currentDetail.identifier)
       : undefined;
+  const detailOperationResource =
+    currentDetail?.type === "instance" ? "runtime" : currentDetail?.type;
   const latestFinishedDetailOperation = currentDetail
     ? operations.find(
         ({ status, target }) =>
-          target.resource === currentDetail.type &&
+          target.resource === detailOperationResource &&
           status !== "queued" &&
           status !== "running" &&
           (target.id === currentDetail.identifier || target.name === currentDetail.identifier),
@@ -1608,9 +1667,11 @@ function AppContent() {
         ? "컨테이너 상세"
         : currentDetail.type === "image"
           ? "이미지 상세"
-          : currentDetail.type === "network"
-            ? "네트워크 상세"
-            : "볼륨 상세"
+          : currentDetail.type === "instance"
+            ? "VM 인스턴스 상세"
+            : currentDetail.type === "network"
+              ? "네트워크 상세"
+              : "볼륨 상세"
     : currentRoute.eyebrow;
   const pageLabel = currentDetail
     ? currentDetail.type === "compose"
@@ -1619,11 +1680,13 @@ function AppContent() {
         ? (currentContainer?.name ?? currentDetail.identifier)
         : currentDetail.type === "image" && currentImage
           ? imageDisplayReference(currentImage)
-          : currentDetail.type === "network"
-            ? (currentNetwork?.name ?? currentDetail.identifier)
-            : currentDetail.type === "volume"
-              ? (currentVolume?.name ?? currentDetail.identifier)
-              : currentDetail.identifier
+          : currentDetail.type === "instance"
+            ? currentDetail.identifier
+            : currentDetail.type === "network"
+              ? (currentNetwork?.name ?? currentDetail.identifier)
+              : currentDetail.type === "volume"
+                ? (currentVolume?.name ?? currentDetail.identifier)
+                : currentDetail.identifier
     : currentRoute.label;
   const pageDescription = currentDetail
     ? currentDetail.type === "compose"
@@ -1632,9 +1695,11 @@ function AppContent() {
         ? "컨테이너 실행 상태와 전체 구성을 확인합니다."
         : currentDetail.type === "image"
           ? "이미지의 실행 설정, 메타데이터와 파일 시스템 레이어를 확인합니다."
-          : currentDetail.type === "network"
-            ? "네트워크의 IP 주소 관리, 연결 컨테이너와 Docker 원본 정보를 확인합니다."
-            : "볼륨의 드라이버, 저장 위치와 Docker 원본 정보를 확인합니다."
+          : currentDetail.type === "instance"
+            ? "VM 상태, 리소스와 Docker 연결 정보를 확인합니다."
+            : currentDetail.type === "network"
+              ? "네트워크의 IP 주소 관리, 연결 컨테이너와 Docker 원본 정보를 확인합니다."
+              : "볼륨의 드라이버, 저장 위치와 Docker 원본 정보를 확인합니다."
     : currentRoute.description;
   const runComposeAction = (name: string, action: ComposeProjectAction) =>
     mutate({
@@ -1645,7 +1710,7 @@ function AppContent() {
           { method: "POST" },
         ),
     });
-  const pagePrimaryAction = !runtimeRunning ? null : currentCompose ? (
+  const runtimePagePrimaryAction = !runtimeRunning ? null : currentCompose ? (
     <div className="overseer-compose-create-actions">
       {composeIsRunning(currentCompose.status) ? (
         <>
@@ -1797,6 +1862,18 @@ function AppContent() {
       placeholder="app-network"
     />
   ) : null;
+  const pagePrimaryAction =
+    resourcePath === "/instances" ? (
+      <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+        <RuntimeInstanceCreateDialog
+          busy={runtimeBusy || Boolean(submitting)}
+          onSubmit={createRuntimeInstance}
+          refreshToken={settingsRefreshToken}
+        />
+      </Suspense>
+    ) : (
+      runtimePagePrimaryAction
+    );
 
   return (
     <div className="overseer-shell" data-navigation-mode={navigationMode}>
@@ -1811,13 +1888,11 @@ function AppContent() {
             mode={navigationMode}
             onSelect={selectResourcePath}
           />
-          <div className="overseer-sidebar-status">
-            <span aria-hidden="true" data-state={runtimeStatus.tone} />
-            <div>
-              <strong>{runtimeStatus.label}</strong>
-              <small>{runtime?.instance ?? "overseer"}</small>
-            </div>
-          </div>
+          <UtilityNavigation
+            currentPath={currentRoute.path}
+            mode={navigationMode}
+            onSelect={selectResourcePath}
+          />
         </aside>
       ) : null}
 
@@ -1861,10 +1936,7 @@ function AppContent() {
               </Button>
               <MobileNavigationDrawer
                 currentPath={currentRoute.path}
-                dockerVersion={runtime?.dockerVersion}
-                instance={runtime?.instance ?? "overseer"}
                 onSelect={selectResourcePath}
-                status={runtimeStatus}
               />
             </div>
           </header>
@@ -1875,9 +1947,6 @@ function AppContent() {
               <strong>127.0.0.1 전용</strong>
             </div>
             <div className="overseer-topbar-actions">
-              {runtime?.dockerVersion ? (
-                <span className="overseer-runtime-version">Docker {runtime.dockerVersion}</span>
-              ) : null}
               <span className="overseer-runtime-state">
                 <Badge
                   aria-label={`Lima ${runtimeStatus.label}`}
@@ -1885,7 +1954,11 @@ function AppContent() {
                   size="sm"
                   tone={runtimeStatus.tone}
                 />
-                <span>{runtimeStatus.label}</span>
+                <span>
+                  {runtimeRunning
+                    ? `컨테이너 ${dashboard?.containers.filter(({ state }) => state.toLowerCase() === "running").length ?? 0}개 실행 중`
+                    : runtimeStatus.label}
+                </span>
               </span>
               <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
                 <OperationsDrawer
@@ -1934,9 +2007,11 @@ function AppContent() {
                         ? "컨테이너 목록"
                         : currentDetail.type === "image"
                           ? "이미지 목록"
-                          : currentDetail.type === "network"
-                            ? "네트워크 목록"
-                            : "볼륨 목록"}
+                          : currentDetail.type === "instance"
+                            ? "인스턴스 목록"
+                            : currentDetail.type === "network"
+                              ? "네트워크 목록"
+                              : "볼륨 목록"}
                   </Button>
                 ) : null}
                 <Button
@@ -1945,7 +2020,7 @@ function AppContent() {
                       void loadOperations();
                       return;
                     }
-                    if (resourcePath === "/settings") {
+                    if (resourcePath === "/settings" || resourcePath.startsWith("/instances")) {
                       setSettingsRefreshRevision((value) => value + 1);
                     }
                     if (currentDetail) {
@@ -1998,7 +2073,10 @@ function AppContent() {
             </Alert.Root>
           ) : null}
 
-          {runtime && !runtimeRunning && resourcePath !== "/settings" ? (
+          {runtime &&
+          !runtimeRunning &&
+          resourcePath !== "/settings" &&
+          !resourcePath.startsWith("/instances") ? (
             <Alert.Root appearance="subtle" tone={runtimeStatus.tone}>
               <Alert.Title level={2}>Lima · {runtimeStatus.label}</Alert.Title>
               <Alert.Description>
@@ -2011,7 +2089,8 @@ function AppContent() {
           {dashboard &&
           !runtimeRunning &&
           resourcePath !== "/operations" &&
-          resourcePath !== "/settings" ? (
+          resourcePath !== "/settings" &&
+          !resourcePath.startsWith("/instances") ? (
             <section className="overseer-runtime-empty">
               <EmptyState.Root>
                 <EmptyState.Icon>
@@ -2024,17 +2103,49 @@ function AppContent() {
                 </EmptyState.Title>
                 <EmptyState.Description>
                   {runtime?.phase === "missing"
-                    ? "인스턴스 설정에서 Docker Engine으로 사용할 Lima 인스턴스를 만드십시오."
-                    : "인스턴스 설정에서 활성 인스턴스를 다시 시작할 수 있습니다."}
+                    ? "인스턴스 페이지에서 사용할 Lima VM을 만드십시오."
+                    : "인스턴스 페이지에서 중지된 VM을 다시 시작할 수 있습니다."}
                 </EmptyState.Description>
                 <EmptyState.Actions>
-                  <Button onClick={() => selectResourcePath("/settings")} size="sm">
-                    <Settings2 aria-hidden="true" size={14} />
-                    Docker Engine 설정
+                  <Button onClick={() => selectResourcePath("/instances")} size="sm">
+                    <Server aria-hidden="true" size={14} />
+                    인스턴스 열기
                   </Button>
                 </EmptyState.Actions>
               </EmptyState.Root>
             </section>
+          ) : null}
+
+          {dashboard && resourcePath === "/instances" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <RuntimeInstancesPage
+                busy={runtimeBusy || Boolean(submitting)}
+                onDelete={deleteRuntimeInstance}
+                onOpenDetail={(name) => selectResourcePath(runtimeInstanceDetailPath(name))}
+                onPrepare={(name) => mutateRuntimeInstance(name, "prepare")}
+                onSelect={(name) => mutateRuntimeInstance(name, "select")}
+                onStart={(name) => mutateRuntimeInstance(name, "start")}
+                onStop={(name) => mutateRuntimeInstance(name, "stop")}
+                onUpdate={updateRuntimeInstance}
+                refreshToken={settingsRefreshToken}
+              />
+            </Suspense>
+          ) : null}
+
+          {dashboard && currentDetail?.type === "instance" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <RuntimeInstanceDetailPage
+                busy={runtimeBusy || Boolean(submitting)}
+                name={currentDetail.identifier}
+                onDelete={deleteRuntimeInstance}
+                onPrepare={(name) => mutateRuntimeInstance(name, "prepare")}
+                onSelect={(name) => mutateRuntimeInstance(name, "select")}
+                onStart={(name) => mutateRuntimeInstance(name, "start")}
+                onStop={(name) => mutateRuntimeInstance(name, "stop")}
+                onUpdate={updateRuntimeInstance}
+                refreshToken={detailRefreshToken}
+              />
+            </Suspense>
           ) : null}
 
           {dashboard && resourcePath === "/settings" ? (
@@ -2044,13 +2155,6 @@ function AppContent() {
                 dashboard={dashboard}
                 onApplyDaemonConfiguration={applyDockerDaemonConfiguration}
                 onCheckToolUpdates={checkToolUpdates}
-                onCreateInstance={createRuntimeInstance}
-                onDeleteInstance={deleteRuntimeInstance}
-                onPrepareInstance={(name) => mutateRuntimeInstance(name, "prepare")}
-                onSelectInstance={(name) => mutateRuntimeInstance(name, "select")}
-                onStartInstance={(name) => mutateRuntimeInstance(name, "start")}
-                onStopInstance={(name) => mutateRuntimeInstance(name, "stop")}
-                onUpdateInstance={updateRuntimeInstance}
                 onUpdateTool={updateTool}
                 refreshToken={settingsRefreshToken}
                 toolOperation={latestToolUpdateOperation}

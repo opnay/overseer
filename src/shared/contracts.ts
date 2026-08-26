@@ -38,6 +38,10 @@ export interface RuntimeInstanceSummary {
   architecture: string;
   compatible: boolean;
   configuration?: DockerEngineConfiguration;
+  containerCount?: {
+    running: number;
+    total: number;
+  };
   dockerVersion?: string;
   homeMountWritable: boolean;
   managed: boolean;

@@ -141,6 +141,7 @@ function runtimeInstance(
     architecture: "aarch64",
     compatible: true,
     configuration: dockerEngineSnapshot("instance", true).configuration,
+    containerCount: { running: 1, total: 2 },
     dockerVersion: "29.7.2",
     homeMountWritable: true,
     managed: true,
@@ -1058,67 +1059,27 @@ describe("App", () => {
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.replaceState(null, "", "/settings");
+    window.history.replaceState(null, "", "/instances");
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "설정", level: 1 })).toBeInTheDocument();
-    const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    const overseer = within(settingsNavigation).getByRole("group", { name: "Overseer" });
-    const dockerEngine = within(settingsNavigation).getByRole("group", {
-      name: "Docker Engine",
-    });
-    expect(within(dockerEngine).getByRole("button", { name: "엔진 설정" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(screen.getByRole("heading", { name: "엔진 설정", level: 2 })).toBeInTheDocument();
-
-    await user.click(within(overseer).getByRole("button", { name: "일반" }));
-    expect(within(overseer).getByRole("button", { name: "일반" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(await screen.findByRole("heading", { name: "인스턴스", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "컨테이너" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "활성" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "VM 인스턴스" })).not.toBeInTheDocument();
+    const createButton = screen.getByRole("button", { name: "인스턴스 만들기" });
     expect(
-      screen.getByText("필수 도구와 Docker Engine 준비 과정을 다시 확인합니다."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "시작 준비 열기" })).toHaveAttribute(
-      "href",
-      "/startup",
-    );
-
-    await user.click(within(dockerEngine).getByRole("button", { name: "엔진 설정" }));
-    expect(within(dockerEngine).getByRole("button", { name: "엔진 설정" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(screen.queryByLabelText("CPU")).not.toBeInTheDocument();
-
-    await user.click(within(dockerEngine).getByRole("button", { name: "인스턴스 설정" }));
-    expect(screen.getByRole("heading", { name: "인스턴스 설정", level: 2 })).toBeInTheDocument();
-    expect(within(dockerEngine).getByRole("button", { name: "인스턴스 설정" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(screen.getByRole("combobox", { name: "실행 환경" })).toBeDisabled();
-    expect(
-      screen.queryByText("QEMU가 설치되지 않았습니다. brew install qemu"),
-    ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("combobox", { name: "VM 드라이버" }));
+      screen.getByRole("heading", { name: "인스턴스", level: 1 }).closest(".overseer-page-header"),
+    ).toContainElement(createButton);
+    await waitFor(() => expect(createButton).toBeEnabled());
+    await user.click(createButton);
+    const dialog = await screen.findByRole("dialog", { name: "VM 인스턴스 만들기" });
+    expect(within(dialog).getByLabelText("실행 환경")).toBeDisabled();
+    await user.click(within(dialog).getByRole("combobox", { name: "VM 드라이버" }));
     expect(await screen.findByRole("option", { name: /QEMU/ })).toHaveAttribute(
       "aria-disabled",
       "true",
     );
     await user.keyboard("{Escape}");
-    await user.click(within(dockerEngine).getByRole("button", { name: "네트워크 설정" }));
-    expect(screen.getByRole("heading", { name: "네트워크 설정", level: 2 })).toBeInTheDocument();
-    expect(within(dockerEngine).getByRole("button", { name: "네트워크 설정" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    await user.click(within(dockerEngine).getByRole("button", { name: "인스턴스 설정" }));
-    await user.click(screen.getByRole("button", { name: "인스턴스 만들기" }));
-    const dialog = await screen.findByRole("dialog", { name: "Lima 인스턴스 만들기" });
     expect(within(dialog).getByLabelText("CPU")).toHaveValue("4");
     expect(within(dialog).getByLabelText("메모리")).toHaveValue("4");
     expect(within(dialog).getByLabelText("디스크")).toHaveValue("100");
@@ -1141,6 +1102,51 @@ describe("App", () => {
       configuration: dockerEngineSnapshot().configuration,
       name: "dev",
     });
+  });
+
+  it("moves VM and Docker connection details into an instance detail page", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+        if (url.endsWith("/api/runtime/instances")) {
+          return jsonResponse(runtimeInstancesSnapshot([runtimeInstance()]));
+        }
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/instances/overseer");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "overseer", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByText("1개 실행 중 · 전체 2개")).toBeInTheDocument();
+
+    const navigation = screen.getByRole("navigation", { name: "VM 인스턴스 상세 메뉴" });
+    await user.click(within(navigation).getByRole("button", { name: "VM 설정" }));
+    expect(screen.getByText("VZ")).toBeInTheDocument();
+    expect(screen.getByText("100GiB")).toBeInTheDocument();
+
+    await user.click(within(navigation).getByRole("button", { name: "Docker 연결" }));
+    expect(screen.getByText("현재 사용 중")).toBeInTheDocument();
+    expect(screen.getByText("29.7.2")).toBeInTheDocument();
+    expect(screen.getByText("읽기/쓰기")).toBeInTheDocument();
   });
 
   it("edits Docker daemon settings without network fields from Engine settings", async () => {
@@ -1185,6 +1191,9 @@ describe("App", () => {
     render(<App />);
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    expect(
+      within(navigation).queryByRole("button", { name: "인스턴스 설정" }),
+    ).not.toBeInTheDocument();
     await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
     const liveRestore = await screen.findByRole("switch", { name: "컨테이너 실행 유지" });
     expect(liveRestore).not.toBeChecked();
@@ -1356,11 +1365,9 @@ describe("App", () => {
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.replaceState(null, "", "/settings");
+    window.history.replaceState(null, "", "/instances");
     render(<App />);
 
-    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(navigation).getByRole("button", { name: "인스턴스 설정" }));
     await user.click(await screen.findByRole("button", { name: "dev Overseer 사용 준비" }));
 
     await waitFor(() =>
@@ -1424,9 +1431,7 @@ describe("App", () => {
       expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
     }
 
-    await user.click(screen.getByRole("link", { name: "설정" }));
-    const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(settingsNavigation).getByRole("button", { name: "인스턴스 설정" }));
+    await user.click(screen.getByRole("link", { name: "인스턴스" }));
     await user.click(await screen.findByRole("button", { name: "overseer 인스턴스 중지" }));
     await waitFor(() =>
       expect(
@@ -1483,11 +1488,9 @@ describe("App", () => {
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.replaceState(null, "", "/settings");
+    window.history.replaceState(null, "", "/instances");
     render(<App />);
 
-    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(navigation).getByRole("button", { name: "인스턴스 설정" }));
     await user.click(await screen.findByRole("button", { name: "overseer 인스턴스 시작" }));
     await waitFor(() =>
       expect(
@@ -1561,11 +1564,9 @@ describe("App", () => {
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.replaceState(null, "", "/settings");
+    window.history.replaceState(null, "", "/instances");
     render(<App />);
 
-    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(navigation).getByRole("button", { name: "인스턴스 설정" }));
     await user.click(await screen.findByRole("button", { name: "overseer 인스턴스 메뉴" }));
     await user.click(await screen.findByRole("menuitem", { name: "수정" }));
     const editDialog = await screen.findByRole("dialog", { name: "overseer 인스턴스 수정" });
@@ -1802,10 +1803,8 @@ describe("App", () => {
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.replaceState(null, "", "/settings");
+    window.history.replaceState(null, "", "/instances");
     render(<App />);
-    const settingsNavigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(settingsNavigation).getByRole("button", { name: "인스턴스 설정" }));
     await user.click(await screen.findByRole("button", { name: "dev 인스턴스 사용" }));
 
     await waitFor(() =>
@@ -1846,7 +1845,7 @@ describe("App", () => {
       .closest(".overseer-page-header");
     expect(primaryAction).toBeEnabled();
     expect(pageHeader).toContainElement(primaryAction);
-    expect(screen.getByText(/Docker 29\.7\.2/)).toBeInTheDocument();
+    expect(screen.getByText("컨테이너 0개 실행 중")).toBeInTheDocument();
   });
 
   it("shows the expanded City DS container configuration sections", async () => {
@@ -2198,7 +2197,7 @@ describe("App", () => {
     );
   });
 
-  it("groups desktop navigation by workload, resource, operations, and system", async () => {
+  it("groups desktop navigation and keeps settings as a utility", async () => {
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
       containers: [],
@@ -2227,7 +2226,7 @@ describe("App", () => {
     const workloads = within(navigation).getByRole("group", { name: "워크로드" });
     const resources = within(navigation).getByRole("group", { name: "리소스" });
     const operations = within(navigation).getByRole("group", { name: "운영" });
-    const system = within(navigation).getByRole("group", { name: "시스템" });
+    const virtualization = within(navigation).getByRole("group", { name: "가상화" });
     expect(
       within(workloads)
         .getAllByRole("link")
@@ -2242,7 +2241,12 @@ describe("App", () => {
       "href",
       "/operations",
     );
-    expect(within(system).getByRole("link", { name: "설정" })).toHaveAttribute("href", "/settings");
+    expect(within(virtualization).getByRole("link", { name: "인스턴스" })).toHaveAttribute(
+      "href",
+      "/instances",
+    );
+    expect(within(navigation).queryByRole("link", { name: "설정" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "유틸리티 메뉴" })).toHaveTextContent("설정");
   });
 
   it("uses an accessible icon rail at tablet width", async () => {
@@ -2319,12 +2323,14 @@ describe("App", () => {
     expect(within(navigation).getByRole("group", { name: "워크로드" })).toBeInTheDocument();
     expect(within(navigation).getByRole("group", { name: "리소스" })).toBeInTheDocument();
     expect(within(navigation).getByRole("group", { name: "운영" })).toBeInTheDocument();
-    expect(within(navigation).getByRole("group", { name: "시스템" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "가상화" })).toBeInTheDocument();
     expect(within(navigation).getByRole("link", { name: "컨테이너" })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    expect(within(drawer).getByText("Docker 29.7.2")).toBeInTheDocument();
+    expect(within(drawer).getByRole("navigation", { name: "유틸리티 메뉴" })).toHaveTextContent(
+      "설정",
+    );
 
     await user.click(within(navigation).getByRole("link", { name: "이미지" }));
     expect(await screen.findByRole("heading", { name: "이미지", level: 1 })).toBeInTheDocument();

@@ -6,6 +6,7 @@ const ENVIRONMENT_NAME = /^[a-zA-Z_][a-zA-Z0-9_]{0,127}$/;
 const HOSTNAME = /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]{0,61}[a-zA-Z0-9])?$/;
 const LABEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,127}$/;
 const COMPOSE_PROJECT_NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+const RUNTIME_INSTANCE_NAME = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
 
 export function isContainerReference(value: string): boolean {
   return CONTAINER_REFERENCE.test(value);
@@ -25,6 +26,10 @@ export function isImageIdentifier(value: string): boolean {
 
 export function isResourceName(value: string): boolean {
   return RESOURCE_NAME.test(value);
+}
+
+export function isRuntimeInstanceName(value: string): boolean {
+  return RUNTIME_INSTANCE_NAME.test(value);
 }
 
 export function isContainerPort(value: number): boolean {
