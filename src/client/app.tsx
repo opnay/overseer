@@ -63,6 +63,7 @@ import type {
   ContainerSummary,
   CreateRuntimeInstanceInput,
   DashboardSnapshot,
+  DeleteRuntimeInstanceInput,
   DockerEngineConfiguration,
   ImageSummary,
   NetworkSummary,
@@ -76,6 +77,7 @@ import type {
   StartupSnapshot,
   StartupStepId,
   ToolUpdateId,
+  UpdateRuntimeInstanceInput,
   UpdateDockerDaemonConfigurationSectionInput,
   VolumeSummary,
 } from "../shared/contracts.ts";
@@ -1428,6 +1430,26 @@ function AppContent() {
         }),
     });
 
+  const updateRuntimeInstance = (name: string, input: UpdateRuntimeInstanceInput) =>
+    mutate({
+      key: `runtime-instance-update-${name}`,
+      request: () =>
+        apiRequest<OperationAccepted>(`/runtime/instances/${encodeURIComponent(name)}`, {
+          body: JSON.stringify(input),
+          method: "PATCH",
+        }),
+    });
+
+  const deleteRuntimeInstance = (name: string, input: DeleteRuntimeInstanceInput) =>
+    mutate({
+      key: `runtime-instance-delete-${name}`,
+      request: () =>
+        apiRequest<OperationAccepted>(`/runtime/instances/${encodeURIComponent(name)}`, {
+          body: JSON.stringify(input),
+          method: "DELETE",
+        }),
+    });
+
   const mutateRuntimeInstance = (name: string, action: "prepare" | "select" | "start" | "stop") =>
     mutate({
       key: `runtime-instance-${action}-${name}`,
@@ -2023,10 +2045,12 @@ function AppContent() {
                 onApplyDaemonConfiguration={applyDockerDaemonConfiguration}
                 onCheckToolUpdates={checkToolUpdates}
                 onCreateInstance={createRuntimeInstance}
+                onDeleteInstance={deleteRuntimeInstance}
                 onPrepareInstance={(name) => mutateRuntimeInstance(name, "prepare")}
                 onSelectInstance={(name) => mutateRuntimeInstance(name, "select")}
                 onStartInstance={(name) => mutateRuntimeInstance(name, "start")}
                 onStopInstance={(name) => mutateRuntimeInstance(name, "stop")}
+                onUpdateInstance={updateRuntimeInstance}
                 onUpdateTool={updateTool}
                 refreshToken={settingsRefreshToken}
                 toolOperation={latestToolUpdateOperation}

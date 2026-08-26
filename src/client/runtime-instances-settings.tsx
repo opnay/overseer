@@ -5,7 +5,6 @@ import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
 import { Dialog } from "@opnay/city-ds-react/dialog";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Field } from "@opnay/city-ds-react/field";
-import { Fieldset } from "@opnay/city-ds-react/fieldset";
 import { Input } from "@opnay/city-ds-react/input";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
@@ -13,20 +12,25 @@ import { CircleStop, Play, Plus, ServerCog, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type {
   CreateRuntimeInstanceInput,
+  DeleteRuntimeInstanceInput,
   DockerEngineConfiguration,
   RuntimeInstancesSnapshot,
+  UpdateRuntimeInstanceInput,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
-import { DockerEngineNumberSetting } from "./docker-engine-number-setting.tsx";
+import { RuntimeInstanceActions } from "./runtime-instance-actions.tsx";
+import { RuntimeInstanceResourceFields } from "./runtime-instance-resource-fields.tsx";
 
 interface RuntimeInstancesSettingsProps {
   busy: boolean;
   defaultConfiguration: DockerEngineConfiguration;
   onCreate(input: CreateRuntimeInstanceInput): Promise<void>;
+  onDelete(name: string, input: DeleteRuntimeInstanceInput): Promise<void>;
   onPrepare(name: string): Promise<void>;
   onSelect(name: string): Promise<void>;
   onStart(name: string): Promise<void>;
   onStop(name: string): Promise<void>;
+  onUpdate(name: string, input: UpdateRuntimeInstanceInput): Promise<void>;
   refreshToken: string;
 }
 
@@ -38,10 +42,12 @@ export function RuntimeInstancesSettings({
   busy,
   defaultConfiguration,
   onCreate,
+  onDelete,
   onPrepare,
   onSelect,
   onStart,
   onStop,
+  onUpdate,
   refreshToken,
 }: RuntimeInstancesSettingsProps) {
   const [snapshot, setSnapshot] = useState<RuntimeInstancesSnapshot>();
@@ -116,47 +122,12 @@ export function RuntimeInstancesSettings({
                         소문자·숫자로 시작하고 점·밑줄·하이픈을 사용할 수 있습니다.
                       </Field.Description>
                     </Field.Root>
-                    <Fieldset.Root appearance="plain">
-                      <Fieldset.Legend>VM 리소스</Fieldset.Legend>
-                      <Fieldset.Content className="overseer-settings-resource-grid">
-                        <DockerEngineNumberSetting
-                          description="가상 CPU 수"
-                          label="CPU"
-                          min={1}
-                          onChange={(cpus) =>
-                            setConfiguration((current) => ({
-                              ...current,
-                              cpus: cpus ?? current.cpus,
-                            }))
-                          }
-                          value={configuration.cpus}
-                        />
-                        <DockerEngineNumberSetting
-                          description="GiB 단위"
-                          label="메모리"
-                          min={1}
-                          onChange={(memoryGiB) =>
-                            setConfiguration((current) => ({
-                              ...current,
-                              memoryGiB: memoryGiB ?? current.memoryGiB,
-                            }))
-                          }
-                          value={configuration.memoryGiB}
-                        />
-                        <DockerEngineNumberSetting
-                          description="GiB 단위, 최소 10GiB"
-                          label="디스크"
-                          min={10}
-                          onChange={(diskGiB) =>
-                            setConfiguration((current) => ({
-                              ...current,
-                              diskGiB: diskGiB ?? current.diskGiB,
-                            }))
-                          }
-                          value={configuration.diskGiB}
-                        />
-                      </Fieldset.Content>
-                    </Fieldset.Root>
+                    <RuntimeInstanceResourceFields
+                      configuration={configuration}
+                      onChange={(resources) =>
+                        setConfiguration((current) => ({ ...current, ...resources }))
+                      }
+                    />
                     {formError ? (
                       <Alert.Root tone="destructive">
                         <Alert.Title level={3}>인스턴스를 만들지 못했습니다.</Alert.Title>
@@ -342,6 +313,13 @@ export function RuntimeInstancesSettings({
                             </Button>
                           )
                         ) : null}
+                        <RuntimeInstanceActions
+                          busy={busy}
+                          instance={instance}
+                          onDelete={onDelete}
+                          onUpdate={onUpdate}
+                          selectionLocked={snapshot.selectionLocked}
+                        />
                       </div>
                     </Table.Cell>
                   </Table.Row>

@@ -1120,6 +1120,157 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
     expect(command).toHaveBeenCalledTimes(1);
   });
 
+  it("updates a running managed instance in stop, edit, start order", async () => {
+    const store = new MemoryRuntimeInstanceStore();
+    store.markManaged("dev");
+    store.setActiveInstanceName("dev");
+    let status = "Running";
+    const lifecycle: string[] = [];
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list") {
+        return {
+          stderr: "",
+          stdout: args.includes("--json")
+            ? limaDetails({ dir: "/tmp/dev", name: "dev", status })
+            : `dev\t${status}\t/tmp/dev\n`,
+        };
+      }
+      if (executable === "limactl" && args[0] === "stop") {
+        lifecycle.push("stop");
+        status = "Stopped";
+      }
+      if (executable === "limactl" && args[0] === "edit") lifecycle.push("edit");
+      if (executable === "limactl" && args[0] === "start") {
+        lifecycle.push("start");
+        status = "Running";
+      }
+      if (executable === "docker") return { stderr: "", stdout: "29.7.2\n" };
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+
+    await runtime.updateRuntimeInstance("dev", {
+      configuration: { cpus: 6, diskGiB: 120, memoryGiB: 8 },
+    });
+
+    expect(lifecycle).toEqual(["stop", "edit", "start"]);
+    expect(command).toHaveBeenCalledWith(
+      "limactl",
+      ["edit", "dev", "--cpus=6", "--memory=8", "--disk=120", "--tty=false"],
+      expect.any(Object),
+    );
+  });
+
+  it("rejects disk shrinking and external instance mutation before side effects", async () => {
+    const store = new MemoryRuntimeInstanceStore();
+    store.markManaged("dev");
+    const command: CommandRunner = vi.fn(async () => ({
+      stderr: "",
+      stdout: limaDetails({ dir: "/tmp/dev", name: "dev", status: "Stopped" }),
+    }));
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+
+    await expect(
+      runtime.updateRuntimeInstance("dev", {
+        configuration: { cpus: 4, diskGiB: 90, memoryGiB: 4 },
+      }),
+    ).rejects.toThrow("작게 줄일 수 없습니다");
+    await expect(runtime.deleteRuntimeInstance("external")).rejects.toThrow(
+      "외부에서 만든 Lima 인스턴스",
+    );
+    expect(
+      vi
+        .mocked(command)
+        .mock.calls.some(
+          ([, args]) => args[0] === "stop" || args[0] === "edit" || args[0] === "delete",
+        ),
+    ).toBe(false);
+  });
+
+  it("deletes a running managed instance and clears its host metadata", async () => {
+    const store = new MemoryRuntimeInstanceStore();
+    store.markManaged("dev");
+    store.setActiveInstanceName("dev");
+    const lifecycle: string[] = [];
+    const command: CommandRunner = vi.fn(async (_executable, args) => {
+      if (args[0] === "list") {
+        return {
+          stderr: "",
+          stdout: limaDetails({ dir: "/tmp/dev", name: "dev", status: "Running" }),
+        };
+      }
+      if (args[0] === "stop") lifecycle.push("stop");
+      if (args[0] === "delete") lifecycle.push("delete");
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+
+    await runtime.deleteRuntimeInstance("dev");
+
+    expect(lifecycle).toEqual(["stop", "delete"]);
+    expect(store.getActiveInstanceName()).toBeUndefined();
+    expect(store.isManaged("dev")).toBe(false);
+  });
+
+  it("does not start after edit failure or clear metadata after delete failure", async () => {
+    const updateStore = new MemoryRuntimeInstanceStore();
+    updateStore.markManaged("dev");
+    const updateLifecycle: string[] = [];
+    const updateCommand: CommandRunner = vi.fn(async (_executable, args) => {
+      if (args[0] === "list") {
+        return {
+          stderr: "",
+          stdout: limaDetails({ dir: "/tmp/dev", name: "dev", status: "Running" }),
+        };
+      }
+      if (args[0] === "stop") updateLifecycle.push("stop");
+      if (args[0] === "edit") {
+        updateLifecycle.push("edit");
+        throw commandFailure("limactl edit", "edit failed");
+      }
+      if (args[0] === "start") updateLifecycle.push("start");
+      return { stderr: "", stdout: "" };
+    });
+    const updateRuntime = new LimaDockerRuntime(
+      updateCommand,
+      undefined,
+      undefined,
+      undefined,
+      updateStore,
+    );
+
+    await expect(
+      updateRuntime.updateRuntimeInstance("dev", {
+        configuration: { cpus: 6, diskGiB: 120, memoryGiB: 8 },
+      }),
+    ).rejects.toThrow("edit failed");
+    expect(updateLifecycle).toEqual(["stop", "edit"]);
+
+    const deleteStore = new MemoryRuntimeInstanceStore();
+    deleteStore.markManaged("dev");
+    deleteStore.setActiveInstanceName("dev");
+    const deleteCommand: CommandRunner = vi.fn(async (_executable, args) => {
+      if (args[0] === "list") {
+        return {
+          stderr: "",
+          stdout: limaDetails({ dir: "/tmp/dev", name: "dev", status: "Stopped" }),
+        };
+      }
+      throw commandFailure("limactl delete", "delete failed");
+    });
+    const deleteRuntime = new LimaDockerRuntime(
+      deleteCommand,
+      undefined,
+      undefined,
+      undefined,
+      deleteStore,
+    );
+
+    await expect(deleteRuntime.deleteRuntimeInstance("dev")).rejects.toThrow("delete failed");
+    expect(deleteStore.getActiveInstanceName()).toBe("dev");
+    expect(deleteStore.isManaged("dev")).toBe(true);
+  });
+
   it("does not recreate an external active instance", async () => {
     const store = new MemoryRuntimeInstanceStore();
     store.setActiveInstanceName("external");

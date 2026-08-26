@@ -106,6 +106,8 @@ pnpm check
 - `GET /api/runtime/configuration`: 실제 VM 설정 또는 기본 설정과 드라이버 가용성
 - `GET /api/runtime/instances`: 로컬 Lima 인스턴스와 호환성·준비·활성 상태
 - `POST /api/runtime/instances`: 이름과 VM 설정으로 관리 인스턴스 생성
+- `PATCH /api/runtime/instances/:name`: Overseer 관리 인스턴스의 CPU·메모리·디스크 수정
+- `DELETE /api/runtime/instances/:name`: 이름 확인 후 Overseer 관리 인스턴스 삭제
 - `POST /api/runtime/instances/:name/select`: 준비된 인스턴스를 활성 Engine으로 선택
 - `POST /api/runtime/instances/:name/prepare`: writable 홈 공유와 Docker context 준비
 - `POST /api/runtime/instances/:name/start`: 선택한 Lima 인스턴스 시작

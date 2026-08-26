@@ -10,11 +10,13 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   CreateRuntimeInstanceInput,
   DashboardSnapshot,
+  DeleteRuntimeInstanceInput,
   DockerEngineConfigurationSnapshot,
   LimaVmType,
   OperationSnapshot,
   RuntimePhase,
   ToolUpdateId,
+  UpdateRuntimeInstanceInput,
   UpdateDockerDaemonConfigurationSectionInput,
 } from "../shared/contracts.ts";
 import { apiRequest } from "./api.ts";
@@ -32,10 +34,12 @@ interface SettingsPageProps {
   onApplyDaemonConfiguration(input: UpdateDockerDaemonConfigurationSectionInput): Promise<void>;
   onCheckToolUpdates(): Promise<void>;
   onCreateInstance(input: CreateRuntimeInstanceInput): Promise<void>;
+  onDeleteInstance(name: string, input: DeleteRuntimeInstanceInput): Promise<void>;
   onPrepareInstance(name: string): Promise<void>;
   onSelectInstance(name: string): Promise<void>;
   onStartInstance(name: string): Promise<void>;
   onStopInstance(name: string): Promise<void>;
+  onUpdateInstance(name: string, input: UpdateRuntimeInstanceInput): Promise<void>;
   onUpdateTool(id: ToolUpdateId): Promise<void>;
   refreshToken: string;
   toolOperation?: OperationSnapshot;
@@ -88,10 +92,12 @@ export function SettingsPage({
   onApplyDaemonConfiguration,
   onCheckToolUpdates,
   onCreateInstance,
+  onDeleteInstance,
   onPrepareInstance,
   onSelectInstance,
   onStartInstance,
   onStopInstance,
+  onUpdateInstance,
   onUpdateTool,
   refreshToken,
   toolOperation,
@@ -377,10 +383,12 @@ export function SettingsPage({
                         vmType: form.vmType,
                       }}
                       onCreate={onCreateInstance}
+                      onDelete={onDeleteInstance}
                       onPrepare={onPrepareInstance}
                       onSelect={onSelectInstance}
                       onStart={onStartInstance}
                       onStop={onStopInstance}
+                      onUpdate={onUpdateInstance}
                       refreshToken={refreshToken}
                     />
                   </>

@@ -58,6 +58,19 @@ export interface CreateRuntimeInstanceInput {
   name: string;
 }
 
+export type RuntimeInstanceResources = Pick<
+  DockerEngineConfiguration,
+  "cpus" | "diskGiB" | "memoryGiB"
+>;
+
+export interface UpdateRuntimeInstanceInput {
+  configuration: RuntimeInstanceResources;
+}
+
+export interface DeleteRuntimeInstanceInput {
+  confirmation: string;
+}
+
 export interface DockerCliIntegrationSnapshot {
   activeContext?: string;
   contextEndpoint?: string;
@@ -599,6 +612,8 @@ export type OperationKind =
   | "runtime.daemon.configure"
   | "runtime.start"
   | "runtime.connect"
+  | "runtime.instance.delete"
+  | "runtime.instance.update"
   | "runtime.recreate"
   | "runtime.restart"
   | "runtime.stop"

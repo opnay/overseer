@@ -22,6 +22,7 @@ function createController(): RuntimeController {
     containerAction: vi.fn(async () => undefined),
     createNetwork: vi.fn(async () => undefined),
     createRuntimeInstance: vi.fn(async () => undefined),
+    deleteRuntimeInstance: vi.fn(async () => undefined),
     createVolume: vi.fn(async () => undefined),
     getBuilderComposeProject: vi.fn(async (name) => ({
       configHash: "a".repeat(64),
@@ -236,6 +237,7 @@ function createController(): RuntimeController {
     stopRuntimeInstance: vi.fn(async () => undefined),
     updateContainer: vi.fn(async () => undefined),
     updateBuilderCompose: vi.fn(async () => undefined),
+    updateRuntimeInstance: vi.fn(async () => undefined),
   };
 }
 
@@ -456,6 +458,72 @@ describe("API boundary", () => {
         retryable: false,
         target: { name: "dev-engine" },
       });
+    });
+  });
+
+  it("validates and updates a Lima instance without retry", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const input = { configuration: { cpus: 6, diskGiB: 120, memoryGiB: 8 } };
+    const response = await app.request("/runtime/instances/dev", {
+      body: JSON.stringify(input),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.updateRuntimeInstance).toHaveBeenCalledWith(
+        "dev",
+        input,
+        expect.any(Object),
+      ),
+    );
+    await vi.waitFor(async () => {
+      const operations = await app.request("/operations", { headers: localHeaders });
+      const body = (await operations.json()) as { operations: Array<{ retryable: boolean }> };
+      expect(body.operations[0]?.retryable).toBe(false);
+    });
+  });
+
+  it("rejects invalid Lima instance resources before enqueueing", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/instances/dev", {
+      body: JSON.stringify({ configuration: { cpus: 4, diskGiB: 9, memoryGiB: 4 } }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "PATCH",
+    });
+
+    expect(response.status).toBe(400);
+    expect(controller.updateRuntimeInstance).not.toHaveBeenCalled();
+  });
+
+  it("requires the instance name before deleting without retry", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const rejected = await app.request("/runtime/instances/dev", {
+      body: JSON.stringify({ confirmation: "wrong" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "DELETE",
+    });
+
+    expect(rejected.status).toBe(400);
+    expect(controller.deleteRuntimeInstance).not.toHaveBeenCalled();
+
+    const accepted = await app.request("/runtime/instances/dev", {
+      body: JSON.stringify({ confirmation: "dev" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "DELETE",
+    });
+    expect(accepted.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.deleteRuntimeInstance).toHaveBeenCalledWith("dev", expect.any(Object)),
+    );
+    await vi.waitFor(async () => {
+      const operations = await app.request("/operations", { headers: localHeaders });
+      const body = (await operations.json()) as { operations: Array<{ retryable: boolean }> };
+      expect(body.operations[0]?.retryable).toBe(false);
     });
   });
 

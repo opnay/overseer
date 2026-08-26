@@ -44,6 +44,7 @@ import type {
   UpdateDockerDaemonConfigurationSectionInput,
   UpdateContainerInput,
   UpdateComposeBuilderInput,
+  UpdateRuntimeInstanceInput,
   VolumeDetail,
   VolumeSummary,
 } from "../shared/contracts.ts";
@@ -87,6 +88,7 @@ export interface RuntimeController {
     input: CreateRuntimeInstanceInput,
     progress?: OperationProgress,
   ): Promise<void>;
+  deleteRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   createVolume(input: CreateNamedResourceInput, progress?: OperationProgress): Promise<void>;
   getContainer(id: string): Promise<ContainerDetail>;
   getContainerInspection(id: string): Promise<ContainerInspection>;
@@ -145,6 +147,11 @@ export interface RuntimeController {
   updateBuilderCompose(
     name: string,
     input: UpdateComposeBuilderInput,
+    progress?: OperationProgress,
+  ): Promise<void>;
+  updateRuntimeInstance(
+    name: string,
+    input: UpdateRuntimeInstanceInput,
     progress?: OperationProgress,
   ): Promise<void>;
 }
@@ -776,6 +783,80 @@ export class LimaDockerRuntime implements RuntimeController {
     await this.waitForDockerReady(progress, input.name);
     const instance = await this.requireInstanceDetails(input.name);
     await this.configureDockerContext(instance, progress);
+  }
+
+  async updateRuntimeInstance(
+    name: string,
+    input: UpdateRuntimeInstanceInput,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    this.requireRuntimeIdle();
+    this.requireManagedInstance(name);
+    const instance = await this.requireInstanceDetails(name);
+    const current = this.configurationFromInstance(instance);
+    if (input.configuration.diskGiB < current.diskGiB) {
+      throw new ExpectedError(
+        "runtime_disk_shrink_unsupported",
+        `디스크는 현재 ${current.diskGiB}GiB보다 작게 줄일 수 없습니다.`,
+        409,
+      );
+    }
+    const wasRunning = instance.status.toLowerCase() === "running";
+    if (wasRunning) {
+      progress?.step("Lima 인스턴스 중지 중");
+      await this.command("limactl", ["stop", name], {
+        onOutput: progress?.output,
+        timeoutMs: 120_000,
+      });
+    }
+    progress?.step("VM 리소스 수정 중");
+    await this.command(
+      "limactl",
+      [
+        "edit",
+        name,
+        `--cpus=${input.configuration.cpus}`,
+        `--memory=${input.configuration.memoryGiB}`,
+        `--disk=${input.configuration.diskGiB}`,
+        "--tty=false",
+      ],
+      { onOutput: progress?.output, timeoutMs: 120_000 },
+    );
+    if (wasRunning) {
+      progress?.step("Lima 인스턴스 시작 중");
+      await this.command("limactl", ["start", name, "--tty=false", "--progress"], {
+        onOutput: progress?.output,
+        timeoutMs: 10 * 60_000,
+      });
+      await this.waitForDockerReady(progress, name);
+    }
+  }
+
+  async deleteRuntimeInstance(name: string, progress?: OperationProgress): Promise<void> {
+    this.requireRuntimeIdle();
+    this.requireManagedInstance(name);
+    if (CONFIGURED_LIMA_INSTANCE === name) {
+      throw new ExpectedError(
+        "runtime_instance_selection_locked",
+        `OVERSEER_LIMA_INSTANCE=${name} 설정을 해제해야 이 인스턴스를 삭제할 수 있습니다.`,
+        409,
+      );
+    }
+    const instance = await this.requireInstanceDetails(name);
+    if (instance.status.toLowerCase() === "running") {
+      progress?.step("Lima 인스턴스 중지 중");
+      await this.command("limactl", ["stop", name], {
+        onOutput: progress?.output,
+        timeoutMs: 120_000,
+      });
+    }
+    progress?.step("Lima 인스턴스 삭제 중");
+    await this.command("limactl", ["delete", "--force", name], {
+      onOutput: progress?.output,
+      timeoutMs: 120_000,
+    });
+    this.instanceStore.clearActiveInstanceName(name);
+    this.instanceStore.unmarkManaged(name);
   }
 
   async selectRuntimeInstance(name: string, progress?: OperationProgress): Promise<void> {
@@ -2238,6 +2319,16 @@ export class LimaDockerRuntime implements RuntimeController {
       throw new ExpectedError(
         "runtime_instance_selection_locked",
         `OVERSEER_LIMA_INSTANCE=${CONFIGURED_LIMA_INSTANCE} 설정으로 인스턴스 선택이 고정되어 있습니다.`,
+        409,
+      );
+    }
+  }
+
+  private requireManagedInstance(name: string): void {
+    if (!this.instanceStore.isManaged(name) && name !== DEFAULT_LIMA_INSTANCE) {
+      throw new ExpectedError(
+        "runtime_instance_external",
+        "외부에서 만든 Lima 인스턴스는 Overseer에서 수정하거나 삭제할 수 없습니다.",
         409,
       );
     }

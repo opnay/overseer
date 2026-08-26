@@ -1,7 +1,9 @@
 import type {
   CreateRuntimeInstanceInput,
+  DeleteRuntimeInstanceInput,
   DockerEngineConfiguration,
   RecreateDockerEngineInput,
+  UpdateRuntimeInstanceInput,
 } from "../shared/contracts.ts";
 import { ExpectedError } from "./errors.ts";
 
@@ -69,6 +71,33 @@ export function parseCreateRuntimeInstanceInput(value: unknown): CreateRuntimeIn
     configuration: parseDockerEngineConfiguration(input.configuration),
     name: input.name,
   };
+}
+
+export function parseUpdateRuntimeInstanceInput(value: unknown): UpdateRuntimeInstanceInput {
+  const input = record(value, "Lima 인스턴스 수정 요청을 확인하십시오.");
+  const configuration = record(input.configuration, "VM 리소스 설정을 확인하십시오.");
+  return {
+    configuration: {
+      cpus: positiveInteger(configuration.cpus, "CPU"),
+      diskGiB: positiveInteger(configuration.diskGiB, "디스크", MIN_DISK_GIB),
+      memoryGiB: positiveInteger(configuration.memoryGiB, "메모리"),
+    },
+  };
+}
+
+export function parseDeleteRuntimeInstanceInput(
+  value: unknown,
+  name: string,
+): DeleteRuntimeInstanceInput {
+  const input = record(value, "Lima 인스턴스 삭제 요청을 확인하십시오.");
+  if (input.confirmation !== name) {
+    throw new ExpectedError(
+      "runtime_confirmation_mismatch",
+      `삭제하려면 인스턴스 이름을 정확히 입력하십시오: ${name}`,
+      400,
+    );
+  }
+  return { confirmation: name };
 }
 
 export function requireRuntimeInstanceName(value: string): string {

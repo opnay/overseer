@@ -4,15 +4,21 @@ import { dirname, join } from "node:path";
 import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.ts";
 
 export interface RuntimeInstanceStore {
+  clearActiveInstanceName(name: string): void;
   getActiveInstanceName(): string | undefined;
   isManaged(name: string): boolean;
   markManaged(name: string): void;
   setActiveInstanceName(name: string): void;
+  unmarkManaged(name: string): void;
 }
 
 export class MemoryRuntimeInstanceStore implements RuntimeInstanceStore {
   private activeInstanceName?: string;
   private readonly managed = new Set<string>();
+
+  clearActiveInstanceName(name: string): void {
+    if (this.activeInstanceName === name) this.activeInstanceName = undefined;
+  }
 
   getActiveInstanceName(): string | undefined {
     return this.activeInstanceName;
@@ -28,6 +34,10 @@ export class MemoryRuntimeInstanceStore implements RuntimeInstanceStore {
 
   setActiveInstanceName(name: string): void {
     this.activeInstanceName = name;
+  }
+
+  unmarkManaged(name: string): void {
+    this.managed.delete(name);
   }
 }
 
@@ -50,6 +60,12 @@ export class SqliteRuntimeInstanceStore implements RuntimeInstanceStore {
   close(): void {
     this.database?.close();
     this.database = undefined;
+  }
+
+  clearActiveInstanceName(name: string): void {
+    this.db
+      .prepare("DELETE FROM runtime_settings WHERE key = 'active_instance' AND value = ?")
+      .run(name);
   }
 
   getActiveInstanceName(): string | undefined {
@@ -76,6 +92,10 @@ export class SqliteRuntimeInstanceStore implements RuntimeInstanceStore {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       )
       .run(name);
+  }
+
+  unmarkManaged(name: string): void {
+    this.db.prepare("DELETE FROM runtime_managed_instances WHERE name = ?").run(name);
   }
 
   private get db(): SqliteDatabase {

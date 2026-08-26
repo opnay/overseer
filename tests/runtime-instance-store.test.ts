@@ -11,6 +11,14 @@ describe("SqliteRuntimeInstanceStore", () => {
     expect(store.getActiveInstanceName()).toBe("external");
     expect(store.isManaged("overseer")).toBe(true);
     expect(store.isManaged("external")).toBe(false);
+
+    store.clearActiveInstanceName("other");
+    expect(store.getActiveInstanceName()).toBe("external");
+    store.clearActiveInstanceName("external");
+    store.unmarkManaged("overseer");
+
+    expect(store.getActiveInstanceName()).toBeUndefined();
+    expect(store.isManaged("overseer")).toBe(false);
     store.close();
   });
 });

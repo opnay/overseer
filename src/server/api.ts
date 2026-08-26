@@ -29,8 +29,10 @@ import { SqliteRuntimeInstanceStore } from "./runtime-instance-store.ts";
 import { deriveRemoteComposeProjectName } from "./remote-compose.ts";
 import {
   parseCreateRuntimeInstanceInput,
+  parseDeleteRuntimeInstanceInput,
   parseRecreateDockerEngineInput,
   parseRuntimeStartInput,
+  parseUpdateRuntimeInstanceInput,
   requireRuntimeInstanceName,
 } from "./runtime-configuration.ts";
 import { requireLocalRequest } from "./security.ts";
@@ -238,6 +240,44 @@ export function createApi(
         successMessage: `${input.name} Lima 인스턴스를 만들었습니다.`,
         target: { name: input.name, resource: "runtime" },
         title: "Lima 인스턴스 만들기",
+      },
+      undefined,
+      false,
+    );
+    return context.json({ operation }, 202);
+  });
+  app.patch("/runtime/instances/:name", async (context) => {
+    const name = requireRuntimeInstanceName(context.req.param("name"));
+    const input = parseUpdateRuntimeInstanceInput(await readObject(context));
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.instance.update",
+        locks: [],
+        run: (progress) => controller.updateRuntimeInstance(name, input, progress),
+        successMessage: `${name} 인스턴스의 VM 리소스를 수정했습니다.`,
+        target: { name, resource: "runtime" },
+        title: "Lima 인스턴스 수정",
+      },
+      undefined,
+      false,
+    );
+    return context.json({ operation }, 202);
+  });
+  app.delete("/runtime/instances/:name", async (context) => {
+    const name = requireRuntimeInstanceName(context.req.param("name"));
+    parseDeleteRuntimeInstanceInput(await readObject(context), name);
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.instance.delete",
+        locks: [],
+        run: (progress) => controller.deleteRuntimeInstance(name, progress),
+        successMessage: `${name} Lima 인스턴스를 삭제했습니다.`,
+        target: { name, resource: "runtime" },
+        title: "Lima 인스턴스 삭제",
       },
       undefined,
       false,

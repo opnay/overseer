@@ -1500,6 +1500,134 @@ describe("App", () => {
     );
   });
 
+  it("updates and deletes managed instances from the row menu", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+      if (url.endsWith("/api/runtime/configuration")) {
+        return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/runtime/instances") && !init?.method) {
+        return jsonResponse(
+          runtimeInstancesSnapshot([
+            runtimeInstance(),
+            runtimeInstance({ active: false, managed: false, name: "external" }),
+          ]),
+        );
+      }
+      if (url.endsWith("/api/runtime/engine/configuration")) {
+        return jsonResponse(dockerDaemonSnapshot());
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/runtime/instances/overseer") && init?.method === "PATCH") {
+        return jsonResponse(
+          {
+            operation: operation("succeeded", {
+              kind: "runtime.instance.update",
+              target: { name: "overseer", resource: "runtime" },
+              title: "Lima 인스턴스 수정",
+            }),
+          },
+          202,
+        );
+      }
+      if (url.endsWith("/api/runtime/instances/overseer") && init?.method === "DELETE") {
+        return jsonResponse(
+          {
+            operation: operation("succeeded", {
+              kind: "runtime.instance.delete",
+              target: { name: "overseer", resource: "runtime" },
+              title: "Lima 인스턴스 삭제",
+            }),
+          },
+          202,
+        );
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/settings");
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(within(navigation).getByRole("button", { name: "인스턴스 설정" }));
+    await user.click(await screen.findByRole("button", { name: "overseer 인스턴스 메뉴" }));
+    await user.click(await screen.findByRole("menuitem", { name: "수정" }));
+    const editDialog = await screen.findByRole("dialog", { name: "overseer 인스턴스 수정" });
+    const cpus = within(editDialog).getByLabelText("CPU");
+    expect(cpus).toHaveValue("4");
+    expect(within(editDialog).getByRole("button", { name: "저장" })).toBeDisabled();
+    await user.clear(cpus);
+    await user.type(cpus, "6");
+    const save = within(editDialog).getByRole("button", { name: "저장" });
+    expect(save).toBeEnabled();
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([request, init]) =>
+            String(request).endsWith("/api/runtime/instances/overseer") && init?.method === "PATCH",
+        ),
+      ).toBe(true),
+    );
+    const updateCall = fetchMock.mock.calls.find(
+      ([request, init]) =>
+        String(request).endsWith("/api/runtime/instances/overseer") && init?.method === "PATCH",
+    );
+    expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
+      configuration: { cpus: 6, diskGiB: 100, memoryGiB: 4 },
+    });
+
+    await user.click(screen.getByRole("button", { name: "overseer 인스턴스 메뉴" }));
+    await user.click(await screen.findByRole("menuitem", { name: "삭제" }));
+    const deleteDialog = await screen.findByRole("alertdialog", {
+      name: "overseer 인스턴스를 삭제하시겠습니까?",
+    });
+    const deleteButton = within(deleteDialog).getByRole("button", { name: "삭제" });
+    expect(deleteButton).toBeDisabled();
+    await user.type(within(deleteDialog).getByLabelText("인스턴스 이름 확인"), "overseer");
+    expect(deleteButton).toBeEnabled();
+    await user.click(deleteButton);
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([request, init]) =>
+            String(request).endsWith("/api/runtime/instances/overseer") &&
+            init?.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+    const deleteCall = fetchMock.mock.calls.find(
+      ([request, init]) =>
+        String(request).endsWith("/api/runtime/instances/overseer") && init?.method === "DELETE",
+    );
+    expect(JSON.parse(String(deleteCall?.[1]?.body))).toEqual({ confirmation: "overseer" });
+
+    await user.click(screen.getByRole("button", { name: "external 인스턴스 메뉴" }));
+    expect(await screen.findByRole("menuitem", { name: "수정" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "삭제" })).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("checks and updates Homebrew-managed tools from general settings", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
