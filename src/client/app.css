@@ -949,15 +949,6 @@
     gap: var(--city-space-2);
   }
 
-  .overseer-instance-detail-actions {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: var(--city-space-2);
-  }
-
   .overseer-table-column-compact {
     min-width: 48px;
   }

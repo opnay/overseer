@@ -1140,7 +1140,8 @@ describe("App", () => {
 
     const navigation = screen.getByRole("navigation", { name: "VM 인스턴스 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "VM 설정" }));
-    expect(screen.getByText("VZ")).toBeInTheDocument();
+    expect(screen.getByText("Lima VM")).toBeInTheDocument();
+    expect(screen.getByText("Apple Virtualization (VZ)")).toBeInTheDocument();
     expect(screen.getByText("100GiB")).toBeInTheDocument();
 
     await user.click(within(navigation).getByRole("button", { name: "Docker 연결" }));

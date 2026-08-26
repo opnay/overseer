@@ -1,4 +1,5 @@
 import { Alert } from "@opnay/city-ds-react/alert";
+import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
@@ -26,9 +27,17 @@ const sectionPresentation: Record<InstanceDetailSection, { description: string; 
   },
 };
 
-function Definition({ label, value }: { label: string; value: ReactNode }) {
+function Definition({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value: ReactNode;
+  wide?: boolean;
+}) {
   return (
-    <div>
+    <div className={wide ? "overseer-detail-definition--wide" : undefined}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -38,6 +47,12 @@ function Definition({ label, value }: { label: string; value: ReactNode }) {
 function containers(instance: RuntimeInstanceSummary): string {
   if (!instance.containerCount) return "확인 불가";
   return `${instance.containerCount.running}개 실행 중 · 전체 ${instance.containerCount.total}개`;
+}
+
+function vmType(instance: RuntimeInstanceSummary): string {
+  if (instance.configuration?.vmType === "vz") return "Apple Virtualization (VZ)";
+  if (instance.configuration?.vmType === "qemu") return "QEMU";
+  return "확인 불가";
 }
 
 export function RuntimeInstanceDetailPage({
@@ -142,7 +157,121 @@ export function RuntimeInstanceDetailPage({
             <span className="city-text-supporting">{presentation.description}</span>
           </header>
 
-          <div className="overseer-instance-detail-actions">
+          {section === "overview" ? (
+            <>
+              <section aria-label="VM 인스턴스 개요" className="overseer-detail-summary">
+                <div>
+                  <span>상태</span>
+                  <strong className="overseer-settings-status-value">
+                    <Badge dot size="sm" tone={running ? "success" : "neutral"} />
+                    {instance.status}
+                  </strong>
+                </div>
+                <div>
+                  <span>컨테이너</span>
+                  <strong>{containers(instance)}</strong>
+                </div>
+                <div>
+                  <span>가상화</span>
+                  <strong>
+                    {vmType(instance)} · {instance.architecture}
+                  </strong>
+                </div>
+              </section>
+              <section className="overseer-detail-section">
+                <header>
+                  <div>
+                    <h3 className="city-text-subsection-title">인스턴스 정보</h3>
+                  </div>
+                </header>
+                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                  <Definition label="이름" value={instance.name} />
+                  <Definition
+                    label="관리 방식"
+                    value={instance.managed ? "Overseer 관리" : "외부 인스턴스"}
+                  />
+                </dl>
+              </section>
+            </>
+          ) : section === "settings" ? (
+            <div className="overseer-detail-section-list">
+              <section className="overseer-detail-section">
+                <header>
+                  <div>
+                    <h3 className="city-text-subsection-title">가상화 설정</h3>
+                    <p>이 인스턴스가 사용하는 가상화 환경과 VM 드라이버입니다.</p>
+                  </div>
+                </header>
+                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                  <Definition label="실행 환경" value="Lima VM" />
+                  <Definition label="VM 드라이버" value={vmType(instance)} />
+                </dl>
+              </section>
+              <section className="overseer-detail-section">
+                <header>
+                  <div>
+                    <h3 className="city-text-subsection-title">할당 자원</h3>
+                    <p>VM에 할당된 CPU, 메모리와 디스크 용량입니다.</p>
+                  </div>
+                </header>
+                <dl className="overseer-detail-definitions">
+                  <Definition label="CPU" value={instance.configuration?.cpus ?? "확인 불가"} />
+                  <Definition
+                    label="메모리"
+                    value={
+                      instance.configuration
+                        ? `${instance.configuration.memoryGiB}GiB`
+                        : "확인 불가"
+                    }
+                  />
+                  <Definition
+                    label="디스크"
+                    value={
+                      instance.configuration ? `${instance.configuration.diskGiB}GiB` : "확인 불가"
+                    }
+                  />
+                </dl>
+              </section>
+            </div>
+          ) : (
+            <>
+              <section aria-label="Docker 연결 개요" className="overseer-detail-summary">
+                <div>
+                  <span>Overseer 사용</span>
+                  <strong>{instance.active ? "현재 사용 중" : "사용 안 함"}</strong>
+                </div>
+                <div>
+                  <span>Docker</span>
+                  <strong>{instance.dockerVersion ?? "확인 불가"}</strong>
+                </div>
+                <div>
+                  <span>사용 준비</span>
+                  <strong>{instance.prepared ? "준비됨" : "준비 필요"}</strong>
+                </div>
+              </section>
+              <section className="overseer-detail-section">
+                <header>
+                  <div>
+                    <h3 className="city-text-subsection-title">연결 정보</h3>
+                    <p>Docker socket과 macOS 홈 공유의 연결 상태입니다.</p>
+                  </div>
+                </header>
+                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                  <Definition
+                    label="Docker 호환"
+                    value={instance.compatible ? "호환" : "호환 안 됨"}
+                  />
+                  <Definition
+                    label="macOS 홈 공유"
+                    value={instance.homeMountWritable ? "읽기/쓰기" : "읽기 전용"}
+                  />
+                  <Definition label="상태 설명" value={instance.message} wide />
+                </dl>
+              </section>
+            </>
+          )}
+
+          <div className="overseer-detail-actions">
             {!instance.prepared && instance.compatible ? (
               <Button
                 disabled={busy || snapshot.selectionLocked}
@@ -194,62 +323,6 @@ export function RuntimeInstanceDetailPage({
               selectionLocked={snapshot.selectionLocked}
             />
           </div>
-
-          {section === "overview" ? (
-            <section className="overseer-detail-section">
-              <dl className="overseer-detail-definitions">
-                <Definition label="상태" value={instance.status} />
-                <Definition label="컨테이너" value={containers(instance)} />
-                <Definition
-                  label="관리 방식"
-                  value={instance.managed ? "Overseer 관리" : "외부 인스턴스"}
-                />
-                <Definition label="아키텍처" value={instance.architecture} />
-              </dl>
-            </section>
-          ) : section === "settings" ? (
-            <section className="overseer-detail-section">
-              <dl className="overseer-detail-definitions">
-                <Definition
-                  label="VM 드라이버"
-                  value={instance.configuration?.vmType.toUpperCase() ?? "확인 불가"}
-                />
-                <Definition label="CPU" value={instance.configuration?.cpus ?? "확인 불가"} />
-                <Definition
-                  label="메모리"
-                  value={
-                    instance.configuration ? `${instance.configuration.memoryGiB}GiB` : "확인 불가"
-                  }
-                />
-                <Definition
-                  label="디스크"
-                  value={
-                    instance.configuration ? `${instance.configuration.diskGiB}GiB` : "확인 불가"
-                  }
-                />
-              </dl>
-            </section>
-          ) : (
-            <section className="overseer-detail-section">
-              <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-                <Definition
-                  label="Overseer 사용"
-                  value={instance.active ? "현재 사용 중" : "사용 안 함"}
-                />
-                <Definition label="Docker" value={instance.dockerVersion ?? "확인 불가"} />
-                <Definition
-                  label="Docker 호환"
-                  value={instance.compatible ? "호환" : "호환 안 됨"}
-                />
-                <Definition label="사용 준비" value={instance.prepared ? "준비됨" : "준비 필요"} />
-                <Definition
-                  label="macOS 홈 공유"
-                  value={instance.homeMountWritable ? "읽기/쓰기" : "읽기 전용"}
-                />
-                <Definition label="상태 설명" value={instance.message} />
-              </dl>
-            </section>
-          )}
         </div>
       </div>
     </article>
