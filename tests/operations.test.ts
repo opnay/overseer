@@ -2,8 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SqliteOperationHistoryStore } from "../src/server/operation-history.ts";
-import { OperationQueue, type OperationProgress } from "../src/server/operations.ts";
+import {
+  OperationQueue,
+  SqliteOperationHistoryStore,
+  type OperationProgress,
+} from "../src/server/modules/operations/index.ts";
 
 const temporaryDirectories: string[] = [];
 

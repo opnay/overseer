@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SqliteRuntimeInstanceStore } from "../src/server/runtime-instance-store.ts";
+import { SqliteRuntimeInstanceStore } from "../src/server/modules/instances/index.ts";
 
 describe("SqliteRuntimeInstanceStore", () => {
   it("persists the active and Overseer-managed instance separately", () => {

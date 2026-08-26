@@ -3,13 +3,12 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ComposeBuilderSpec, UpdateComposeBuilderInput } from "../shared/contracts.ts";
-import { composeBuilderYaml, validateComposeBuilderSpec } from "../shared/compose-builder.ts";
-import { ExpectedError } from "./errors.ts";
-import type { CommandRunner } from "./lima-docker-runtime.ts";
-import type { OperationProgress } from "./operations.ts";
-import { runCommand } from "./process.ts";
-import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.ts";
+import type { ComposeBuilderSpec, UpdateComposeBuilderInput } from "../../../shared/contracts.ts";
+import { composeBuilderYaml, validateComposeBuilderSpec } from "../../../shared/compose-builder.ts";
+import { ExpectedError } from "../../core/errors.ts";
+import { type CommandRunner, runCommand } from "../../infrastructure/process.ts";
+import { openSqliteDatabase, type SqliteDatabase } from "../../infrastructure/sqlite.ts";
+import type { OperationProgress } from "../operations/index.ts";
 import { validateComposeContent } from "./remote-compose.ts";
 
 export interface BuilderComposeProject {

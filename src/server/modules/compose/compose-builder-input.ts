@@ -6,9 +6,9 @@ import type {
   ContainerRestartPolicy,
   ContainerVolumeMount,
   UpdateComposeBuilderInput,
-} from "../shared/contracts.ts";
-import { validateComposeBuilderSpec } from "../shared/compose-builder.ts";
-import { ExpectedError } from "./errors.ts";
+} from "../../../shared/contracts.ts";
+import { validateComposeBuilderSpec } from "../../../shared/compose-builder.ts";
+import { ExpectedError } from "../../core/errors.ts";
 
 function record(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

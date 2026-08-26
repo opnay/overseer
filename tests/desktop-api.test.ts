@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { forwardDesktopApiRequest } from "../src/server/desktop-api.ts";
-import { requireLocalRequest } from "../src/server/security.ts";
+import { requireLocalRequest } from "../src/server/app/security.ts";
+import { forwardDesktopApiRequest } from "../src/server/infrastructure/desktop-api.ts";
 
 function testApi() {
   const api = new Hono();

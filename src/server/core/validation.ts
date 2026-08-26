@@ -6,7 +6,7 @@ import {
   isImageIdentifier,
   isImageReference,
   isResourceName,
-} from "../shared/validation.ts";
+} from "../../shared/validation.ts";
 
 export function requireContainerReference(value: string): string {
   if (!isContainerReference(value)) {

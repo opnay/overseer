@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runCommand } from "../src/server/process.ts";
+import { runCommand } from "../src/server/infrastructure/process.ts";
 
 describe("runCommand", () => {
   it("forwards input through stdin without adding it to the command", async () => {

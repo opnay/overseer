@@ -6,8 +6,8 @@ import type {
   DockerDaemonProxyConfiguration,
   UpdateDockerDaemonConfigurationInput,
   UpdateDockerDaemonConfigurationSectionInput,
-} from "../shared/contracts.ts";
-import { ExpectedError } from "./errors.ts";
+} from "../../../shared/contracts.ts";
+import { ExpectedError } from "../../core/errors.ts";
 
 const MANAGED_KEYS = new Set([
   "debug",

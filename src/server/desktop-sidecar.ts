@@ -1,9 +1,9 @@
-import { createPersistentApi } from "./api.ts";
+import { createPersistentApi } from "./app/api.ts";
 import {
   forwardDesktopApiRequest,
   type DesktopApiRequest,
   type DesktopApiResponse,
-} from "./desktop-api.ts";
+} from "./infrastructure/desktop-api.ts";
 
 const api = createPersistentApi();
 

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { createApi } from "../src/server/api.ts";
+import { createApi } from "../src/server/app/api.ts";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
 import {
   emptyComposeBuilderService,
   emptyComposeBuilderSpec,
 } from "../src/shared/compose-builder.ts";
-import { ExpectedError } from "../src/server/errors.ts";
-import type { RuntimeController } from "../src/server/lima-docker-runtime.ts";
-import { OperationQueue } from "../src/server/operations.ts";
-import type { StartupPrerequisiteController } from "../src/server/startup.ts";
+import type { RuntimeController } from "../src/server/application/overseer-controller.ts";
+import { ExpectedError } from "../src/server/core/errors.ts";
+import { OperationQueue } from "../src/server/modules/operations/index.ts";
+import type { StartupPrerequisiteController } from "../src/server/modules/startup/index.ts";
 import type { StartupSnapshot } from "../src/shared/contracts.ts";
 
 function createController(): RuntimeController {

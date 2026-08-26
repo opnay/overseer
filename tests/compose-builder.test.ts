@@ -2,10 +2,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BuilderComposeService, BuilderComposeStore } from "../src/server/builder-compose.ts";
+import { BuilderComposeService, BuilderComposeStore } from "../src/server/modules/compose/index.ts";
 import { composeBuilderYaml, validateComposeBuilderSpec } from "../src/shared/compose-builder.ts";
 import type { ComposeBuilderSpec } from "../src/shared/contracts.ts";
-import type { CommandRunner } from "../src/server/lima-docker-runtime.ts";
+import type { CommandRunner } from "../src/server/infrastructure/process.ts";
 
 const temporaryDirectories: string[] = [];
 

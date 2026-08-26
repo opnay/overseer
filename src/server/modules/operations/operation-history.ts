@@ -1,8 +1,8 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { OperationSnapshot } from "../shared/contracts.ts";
-import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.ts";
+import type { OperationSnapshot } from "../../../shared/contracts.ts";
+import { openSqliteDatabase, type SqliteDatabase } from "../../infrastructure/sqlite.ts";
 
 export type OperationRetryMethod = "DELETE" | "PATCH" | "POST";
 

@@ -4,9 +4,9 @@ import type {
   DockerEngineConfiguration,
   RecreateDockerEngineInput,
   UpdateRuntimeInstanceInput,
-} from "../shared/contracts.ts";
-import { isRuntimeInstanceName } from "../shared/validation.ts";
-import { ExpectedError } from "./errors.ts";
+} from "../../../shared/contracts.ts";
+import { isRuntimeInstanceName } from "../../../shared/validation.ts";
+import { ExpectedError } from "../../core/errors.ts";
 
 const MIN_DISK_GIB = 10;
 

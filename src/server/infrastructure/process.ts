@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-interface RunCommandOptions {
+export interface RunCommandOptions {
   input?: string;
   onOutput?: (value: string) => void;
   signal?: AbortSignal;
@@ -11,6 +11,8 @@ export interface CommandResult {
   stderr: string;
   stdout: string;
 }
+
+export type CommandRunner = typeof runCommand;
 
 export class CommandError extends Error {
   readonly command: string;
@@ -94,15 +96,4 @@ export function runCommand(
     else options.signal?.addEventListener("abort", abort, { once: true });
     child.stdin.end(options.input);
   });
-}
-
-export function parseJsonLines<T>(text: string): T[] {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return [];
-
-  if (trimmed.startsWith("[")) {
-    return JSON.parse(trimmed) as T[];
-  }
-
-  return trimmed.split("\n").map((line) => JSON.parse(line) as T);
 }

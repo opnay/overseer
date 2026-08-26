@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { homedir } from "node:os";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
-import { LimaDockerRuntime, type CommandRunner } from "../src/server/lima-docker-runtime.ts";
-import { CommandError } from "../src/server/process.ts";
-import { MemoryRuntimeInstanceStore } from "../src/server/runtime-instance-store.ts";
-import type { BuilderComposeRegistry } from "../src/server/builder-compose.ts";
-import type { RemoteComposeRegistry } from "../src/server/remote-compose.ts";
+import { LimaDockerRuntime } from "../src/server/infrastructure/lima/lima-docker-runtime.ts";
+import { CommandError, type CommandRunner } from "../src/server/infrastructure/process.ts";
+import type {
+  BuilderComposeRegistry,
+  RemoteComposeRegistry,
+} from "../src/server/modules/compose/index.ts";
+import { MemoryRuntimeInstanceStore } from "../src/server/modules/instances/index.ts";
 
 const limaRow = "overseer\tRunning\t/tmp/overseer\n";
 

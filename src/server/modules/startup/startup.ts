@@ -8,11 +8,10 @@ import type {
   StartupSnapshot,
   ToolUpdateId,
   ToolUpdateSnapshot,
-} from "../shared/contracts.ts";
-import { ExpectedError } from "./errors.ts";
-import type { CommandRunner } from "./lima-docker-runtime.ts";
-import type { OperationProgress } from "./operations.ts";
-import { CommandError, runCommand } from "./process.ts";
+} from "../../../shared/contracts.ts";
+import { ExpectedError } from "../../core/errors.ts";
+import { CommandError, type CommandRunner, runCommand } from "../../infrastructure/process.ts";
+import type { OperationProgress } from "../operations/index.ts";
 
 const HOMEBREW_INSTALL_COMMAND =
   '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"';

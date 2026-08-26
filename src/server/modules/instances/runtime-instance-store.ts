@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.ts";
+import { openSqliteDatabase, type SqliteDatabase } from "../../infrastructure/sqlite.ts";
 
 export interface RuntimeInstanceStore {
   clearActiveInstanceName(name: string): void;

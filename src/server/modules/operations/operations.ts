@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
-import type { OperationKind, OperationSnapshot, OperationTarget } from "../shared/contracts.ts";
-import { ExpectedError } from "./errors.ts";
+import type {
+  OperationKind,
+  OperationSnapshot,
+  OperationTarget,
+} from "../../../shared/contracts.ts";
+import { ExpectedError } from "../../core/errors.ts";
 import type {
   OperationHistoryStore,
   OperationRetryRequest,

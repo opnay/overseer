@@ -4,9 +4,9 @@ import type {
   ContainerSpecInput,
   ContainerVolumeMount,
   UpdateContainerInput,
-} from "../shared/contracts.ts";
-import { validateContainerSpec } from "../shared/container-spec.ts";
-import { ExpectedError } from "./errors.ts";
+} from "../../../shared/contracts.ts";
+import { validateContainerSpec } from "../../../shared/container-spec.ts";
+import { ExpectedError } from "../../core/errors.ts";
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

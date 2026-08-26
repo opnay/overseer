@@ -5,13 +5,12 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { isIP } from "node:net";
-import type { RegisterRemoteComposeInput } from "../shared/contracts.ts";
-import { isComposeProjectName } from "../shared/validation.ts";
-import { ExpectedError } from "./errors.ts";
-import type { CommandRunner } from "./lima-docker-runtime.ts";
-import type { OperationProgress } from "./operations.ts";
-import { CommandError, runCommand } from "./process.ts";
-import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.ts";
+import type { RegisterRemoteComposeInput } from "../../../shared/contracts.ts";
+import { isComposeProjectName } from "../../../shared/validation.ts";
+import { ExpectedError } from "../../core/errors.ts";
+import { CommandError, type CommandRunner, runCommand } from "../../infrastructure/process.ts";
+import { openSqliteDatabase, type SqliteDatabase } from "../../infrastructure/sqlite.ts";
+import type { OperationProgress } from "../operations/index.ts";
 
 const MAX_COMPOSE_BYTES = 1024 * 1024;
 const MAX_REDIRECTS = 3;

@@ -8,8 +8,8 @@ import {
   SafeRemoteComposeFetcher,
   deriveRemoteComposeProjectName,
   type RemoteComposeFetcher,
-} from "../src/server/remote-compose.ts";
-import type { CommandRunner } from "../src/server/lima-docker-runtime.ts";
+} from "../src/server/modules/compose/index.ts";
+import type { CommandRunner } from "../src/server/infrastructure/process.ts";
 
 const temporaryDirectories: string[] = [];
 

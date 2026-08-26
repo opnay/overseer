@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseJsonLines } from "../src/server/process.ts";
+import { parseJsonLines } from "../src/server/core/json-lines.ts";
 import { emptyContainerSpec, validateContainerSpec } from "../src/shared/container-spec.ts";
 import {
   optionalContainerName,
@@ -7,7 +7,7 @@ import {
   requireContainerReference,
   requireImageReference,
   requireResourceName,
-} from "../src/server/validation.ts";
+} from "../src/server/core/validation.ts";
 
 describe("command input validation", () => {
   it("accepts normal Docker references", () => {

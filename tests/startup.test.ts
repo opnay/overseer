@@ -2,9 +2,8 @@ import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CommandRunner } from "../src/server/lima-docker-runtime.ts";
-import { CommandError } from "../src/server/process.ts";
-import { StartupPrerequisiteService } from "../src/server/startup.ts";
+import { CommandError, type CommandRunner } from "../src/server/infrastructure/process.ts";
+import { StartupPrerequisiteService } from "../src/server/modules/startup/index.ts";
 
 const temporaryDirectories: string[] = [];
 
