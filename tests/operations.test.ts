@@ -133,6 +133,23 @@ describe("OperationQueue", () => {
     expect(queue.get(snapshot.id)?.output).toEqual(["partial", "", "last"]);
   });
 
+  it("removes escaped ANSI sequences from structured command output", async () => {
+    const queue = new OperationQueue();
+    const snapshot = queue.enqueue(
+      operation(async (progress) => {
+        progress.output(
+          String.raw`time="2026-08-26T12:41:26+09:00" level=info msg="[cloud-init] \x1b[104m\x1b[97m[INFO]\x1b[49m\x1b[39m Installed docker.service successfully."` +
+            "\n",
+        );
+      }),
+    );
+
+    await vi.waitFor(() => expect(queue.get(snapshot.id)?.status).toBe("succeeded"));
+    expect(queue.get(snapshot.id)?.output).toEqual([
+      'time="2026-08-26T12:41:26+09:00" level=info msg="[cloud-init] [INFO] Installed docker.service successfully."',
+    ]);
+  });
+
   it("keeps all completed history instead of trimming old records", async () => {
     const queue = new OperationQueue(8);
     for (let index = 0; index < 120; index += 1) {

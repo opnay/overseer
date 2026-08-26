@@ -8,6 +8,12 @@ import type {
   PersistedOperation,
 } from "./operation-history.ts";
 
+const ESCAPED_ANSI_ESCAPE = /\\(?:x1b|u001b)/gi;
+
+function sanitizeOperationOutputLine(value: string): string {
+  return stripVTControlCharacters(value.replace(ESCAPED_ANSI_ESCAPE, "\u001b")).trimEnd();
+}
+
 export interface OperationProgress {
   output(value: string): void;
   step(value: string): void;
@@ -73,7 +79,7 @@ export class OperationQueue {
           error: record.snapshot.error ? { ...record.snapshot.error } : undefined,
           exclusive: false,
           locks: [],
-          output: [...record.snapshot.output],
+          output: record.snapshot.output.map(sanitizeOperationOutputLine),
           ...(record.retryRequest ? { retryRequest: record.retryRequest } : {}),
           target: { ...record.snapshot.target },
         });
@@ -195,7 +201,7 @@ export class OperationQueue {
 
     let pendingOutput = "";
     const appendOutput = (lines: string[]) => {
-      operation.output.push(...lines.map((line) => stripVTControlCharacters(line).trimEnd()));
+      operation.output.push(...lines.map(sanitizeOperationOutputLine));
     };
     const flushOutput = () => {
       if (!pendingOutput) return;
