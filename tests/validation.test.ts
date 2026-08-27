@@ -6,6 +6,7 @@ import {
   optionalPort,
   requireContainerReference,
   requireImageRepository,
+  requireImageRepositoryIdentifier,
   requireImageReference,
   requireResourceName,
 } from "../src/server/core/validation.ts";
@@ -17,6 +18,9 @@ describe("command input validation", () => {
     expect(requireImageRepository("GHCR.IO/Opnay/Overseer")).toBe("ghcr.io/opnay/overseer");
     expect(requireImageRepository("localhost:5000/team/app")).toBe("localhost:5000/team/app");
     expect(requireImageRepository("[::1]:5000/team/app")).toBe("[::1]:5000/team/app");
+    expect(requireImageRepositoryIdentifier("11111111-1111-4111-8111-111111111111")).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
     expect(requireContainerReference("overseer-web_1")).toBe("overseer-web_1");
     expect(optionalContainerName("api-1")).toBe("api-1");
     expect(optionalPort(8080)).toBe(8080);
@@ -27,6 +31,7 @@ describe("command input validation", () => {
     expect(() => requireImageReference("alpine; rm -rf /")).toThrow("유효한 이미지");
     expect(() => requireImageRepository("ghcr.io/opnay/app:latest")).toThrow("Docker 이미지 이름");
     expect(() => requireImageRepository("https://ghcr.io/opnay/app")).toThrow("Docker 이미지 이름");
+    expect(() => requireImageRepositoryIdentifier("not-an-id")).toThrow("저장소 식별자");
     expect(() => optionalContainerName("api $(whoami)")).toThrow("컨테이너 이름");
     expect(() => optionalPort(0)).toThrow("1–65535");
     expect(() => requireResourceName("app/data")).toThrow("이름은");

@@ -14,6 +14,8 @@ import type { AddImageRepositoryInput, ImageRepositorySummary } from "@contracts
 import { normalizeImageRepository } from "@contracts/validation.ts";
 import { ApiRequestError, apiRequest } from "@/shared/api";
 import { formatDateTime } from "@/shared/lib/date-time";
+import { followLink } from "@/shared/lib/follow-link";
+import { imageRepositoryDetailPath } from "@/shared/routes";
 import { ConfirmAction } from "@/shared/ui/confirm-action";
 
 function errorMessage(error: unknown): string {
@@ -109,11 +111,13 @@ export function AddImageRepositoryDialog({
 
 export function ImageRepositoriesPage({
   isBusy,
+  onInspect,
   onRemove,
   onSync,
   refreshToken,
 }: {
   isBusy(repository: ImageRepositorySummary): boolean;
+  onInspect(repository: ImageRepositorySummary): void;
   onRemove(repository: ImageRepositorySummary): Promise<void>;
   onSync(repository: ImageRepositorySummary): Promise<void>;
   refreshToken: string;
@@ -180,7 +184,13 @@ export function ImageRepositoriesPage({
               repositories.map((repository) => (
                 <Table.Row key={repository.id}>
                   <Table.Cell className="overseer-table-column-wide">
-                    <strong>{repository.repository}</strong>
+                    <a
+                      className="overseer-detail-link"
+                      href={imageRepositoryDetailPath(repository.id)}
+                      onClick={(event) => followLink(event, () => onInspect(repository))}
+                    >
+                      {repository.repository}
+                    </a>
                   </Table.Cell>
                   <Table.Cell>{repository.tagCount ?? "—"}</Table.Cell>
                   <Table.Cell>

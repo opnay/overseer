@@ -6,6 +6,7 @@ import {
   getAppLocation,
   getAppRoute,
   imageDetailPath,
+  imageRepositoryDetailPath,
   runtimeInstanceDetailPath,
   networkDetailPath,
   volumeDetailPath,
@@ -31,6 +32,14 @@ describe("application routes", () => {
       path: "/images/3e24e96c89ef",
       type: "image",
     });
+    expect(
+      getAppDetailLocation("/image-repositories/11111111-1111-4111-8111-111111111111"),
+    ).toEqual({
+      identifier: "11111111-1111-4111-8111-111111111111",
+      parentPath: "/image-repositories",
+      path: "/image-repositories/11111111-1111-4111-8111-111111111111",
+      type: "imageRepository",
+    });
     expect(getAppDetailLocation("/instances/dev-engine")).toEqual({
       identifier: "dev-engine",
       parentPath: "/instances",
@@ -52,6 +61,9 @@ describe("application routes", () => {
     expect(getAppLocation("/compose/demo-stack")).toBe("/compose/demo-stack");
     expect(getAppRoute("/containers/container-id").path).toBe("/containers");
     expect(getAppRoute("/images/3e24e96c89ef").path).toBe("/images");
+    expect(getAppRoute("/image-repositories/11111111-1111-4111-8111-111111111111").path).toBe(
+      "/image-repositories",
+    );
     expect(getAppRoute("/networks/app-network").path).toBe("/networks");
     expect(getAppRoute("/volumes/app-data").path).toBe("/volumes");
   });
@@ -61,6 +73,9 @@ describe("application routes", () => {
     expect(runtimeInstanceDetailPath("dev engine")).toBe("/instances/dev%20engine");
     expect(containerDetailPath("worker:latest")).toBe("/containers/worker%3Alatest");
     expect(imageDetailPath("3e24e96c89ef")).toBe("/images/3e24e96c89ef");
+    expect(imageRepositoryDetailPath("11111111-1111-4111-8111-111111111111")).toBe(
+      "/image-repositories/11111111-1111-4111-8111-111111111111",
+    );
     expect(networkDetailPath("app network")).toBe("/networks/app%20network");
     expect(volumeDetailPath("app data")).toBe("/volumes/app%20data");
     expect(getAppDetailLocation("/compose/INVALID")).toBeUndefined();

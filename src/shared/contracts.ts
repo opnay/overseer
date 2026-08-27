@@ -497,6 +497,23 @@ export interface ImageRepositorySummary {
   tagCount?: number;
 }
 
+export interface ImageRepositoryDetail extends ImageRepositorySummary {
+  favoriteCount: number;
+}
+
+export interface ImageRepositoryTagItem {
+  favorite: boolean;
+  name: string;
+}
+
+export interface ImageRepositoryTagList {
+  count: number;
+  page: number;
+  pageSize: number;
+  repository: string;
+  tags: ImageRepositoryTagItem[];
+}
+
 export interface VolumeSummary {
   driver: string;
   labels: string;

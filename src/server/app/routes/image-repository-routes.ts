@@ -2,19 +2,12 @@ import type { Hono } from "hono";
 import type { AddImageRepositoryInput } from "../../../shared/contracts.ts";
 import type { ImageRepositoryController } from "../../modules/image-repositories/index.ts";
 import { ExpectedError } from "../../core/errors.ts";
-import { requireImageRepository } from "../../core/validation.ts";
-import { readObject, type EnqueueApiOperation } from "../http.ts";
-
-function requireRepositoryId(value: string): string {
-  if (!/^[0-9a-f-]{36}$/i.test(value)) {
-    throw new ExpectedError(
-      "invalid_image_repository",
-      "유효하지 않은 이미지 저장소 식별자입니다.",
-      400,
-    );
-  }
-  return value;
-}
+import {
+  requireImageRepository,
+  requireImageRepositoryIdentifier,
+  requireImageTag,
+} from "../../core/validation.ts";
+import { readObject, requirePageNumber, type EnqueueApiOperation } from "../http.ts";
 
 export function registerImageRepositoryRoutes(
   app: Hono,
@@ -29,8 +22,30 @@ export function registerImageRepositoryRoutes(
     };
     return context.json({ repository: repositories.add(input) }, 201);
   });
+  app.get("/image-repositories/:id/tags", async (context) => {
+    const id = requireImageRepositoryIdentifier(context.req.param("id"));
+    const page = requirePageNumber(context.req.query("page"));
+    return context.json({ tags: await repositories.getTags(id, page) });
+  });
+  app.patch("/image-repositories/:id/tags/:tag/favorite", async (context) => {
+    const id = requireImageRepositoryIdentifier(context.req.param("id"));
+    const tag = requireImageTag(context.req.param("tag"));
+    const body = await readObject(context);
+    if (typeof body.favorite !== "boolean") {
+      throw new ExpectedError(
+        "invalid_image_repository_favorite",
+        "즐겨찾기 상태를 확인하십시오.",
+        400,
+      );
+    }
+    return context.json({ tag: repositories.setFavorite(id, tag, body.favorite) });
+  });
+  app.get("/image-repositories/:id", (context) => {
+    const id = requireImageRepositoryIdentifier(context.req.param("id"));
+    return context.json({ repository: repositories.get(id) });
+  });
   app.post("/image-repositories/:id/sync", (context) => {
-    const id = requireRepositoryId(context.req.param("id"));
+    const id = requireImageRepositoryIdentifier(context.req.param("id"));
     const repository = repositories.list().find((candidate) => candidate.id === id);
     if (!repository) {
       throw new ExpectedError(
@@ -50,7 +65,7 @@ export function registerImageRepositoryRoutes(
     return context.json({ operation }, 202);
   });
   app.delete("/image-repositories/:id", (context) => {
-    const id = requireRepositoryId(context.req.param("id"));
+    const id = requireImageRepositoryIdentifier(context.req.param("id"));
     repositories.remove(id);
     return context.json({ repository: { id } });
   });

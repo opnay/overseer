@@ -7,14 +7,17 @@ import { openSqliteDatabase, type SqliteDatabase } from "../../infrastructure/sq
 
 export interface ImageRepositoryStore {
   add(repository: ImageRepositorySummary): void;
+  favoriteTags(id: string): string[];
   find(id: string): ImageRepositorySummary | undefined;
   findByRepository(repository: string): ImageRepositorySummary | undefined;
   list(): ImageRepositorySummary[];
   remove(id: string): boolean;
+  setFavorite(id: string, tag: string, favorite: boolean, createdAt: string): void;
   updateSync(id: string, lastSyncedAt: string, tagCount: number): void;
 }
 
 export class MemoryImageRepositoryStore implements ImageRepositoryStore {
+  private readonly favorites = new Map<string, Set<string>>();
   private readonly repositories = new Map<string, ImageRepositorySummary>();
 
   add(repository: ImageRepositorySummary): void {
@@ -24,6 +27,10 @@ export class MemoryImageRepositoryStore implements ImageRepositoryStore {
   find(id: string): ImageRepositorySummary | undefined {
     const repository = this.repositories.get(id);
     return repository ? { ...repository } : undefined;
+  }
+
+  favoriteTags(id: string): string[] {
+    return [...(this.favorites.get(id) ?? [])].sort();
   }
 
   findByRepository(repository: string): ImageRepositorySummary | undefined {
@@ -37,7 +44,16 @@ export class MemoryImageRepositoryStore implements ImageRepositoryStore {
   }
 
   remove(id: string): boolean {
+    this.favorites.delete(id);
     return this.repositories.delete(id);
+  }
+
+  setFavorite(id: string, tag: string, favorite: boolean, _createdAt: string): void {
+    const tags = this.favorites.get(id) ?? new Set<string>();
+    if (favorite) tags.add(tag);
+    else tags.delete(tag);
+    if (tags.size > 0) this.favorites.set(id, tags);
+    else this.favorites.delete(id);
   }
 
   updateSync(id: string, lastSyncedAt: string, tagCount: number): void {
@@ -116,6 +132,17 @@ export class SqliteImageRepositoryStore implements ImageRepositoryStore {
     return row ? rowToSummary(row) : undefined;
   }
 
+  favoriteTags(id: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT tag FROM image_repository_favorites
+           WHERE repository_id = ? ORDER BY tag COLLATE NOCASE`,
+        )
+        .all(id) as Array<{ tag: string }>
+    ).map(({ tag }) => tag);
+  }
+
   findByRepository(repository: string): ImageRepositorySummary | undefined {
     const row = this.db
       .prepare(
@@ -139,6 +166,25 @@ export class SqliteImageRepositoryStore implements ImageRepositoryStore {
 
   remove(id: string): boolean {
     return this.db.prepare("DELETE FROM image_repositories WHERE id = ?").run(id).changes > 0;
+  }
+
+  setFavorite(id: string, tag: string, favorite: boolean, createdAt: string): void {
+    if (favorite) {
+      this.db
+        .prepare(
+          `INSERT INTO image_repository_favorites (repository_id, tag, created_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT (repository_id, tag) DO NOTHING`,
+        )
+        .run(id, tag, createdAt);
+      return;
+    }
+    this.db
+      .prepare(
+        `DELETE FROM image_repository_favorites
+         WHERE repository_id = ? AND tag = ?`,
+      )
+      .run(id, tag);
   }
 
   updateSync(id: string, lastSyncedAt: string, tagCount: number): void {
@@ -175,6 +221,15 @@ export class SqliteImageRepositoryStore implements ImageRepositoryStore {
     this.database.exec(`
       CREATE INDEX IF NOT EXISTS image_repositories_repository
         ON image_repositories (repository COLLATE NOCASE);
+      CREATE TABLE IF NOT EXISTS image_repository_favorites (
+        repository_id TEXT NOT NULL,
+        tag TEXT NOT NULL COLLATE BINARY,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (repository_id, tag),
+        FOREIGN KEY (repository_id) REFERENCES image_repositories(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS image_repository_favorites_repository
+        ON image_repository_favorites (repository_id, created_at);
     `);
     return this.database;
   }

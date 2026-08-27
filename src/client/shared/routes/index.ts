@@ -7,6 +7,7 @@ export {
   getAppLocation,
   getAppRoute,
   imageDetailPath,
+  imageRepositoryDetailPath,
   networkDetailPath,
   runtimeInstanceDetailPath,
   type AppDetailLocation,

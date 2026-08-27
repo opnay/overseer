@@ -2498,6 +2498,7 @@ describe("App", () => {
       id: string;
       repository: string;
     }> = [];
+    let favorite = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
@@ -2522,6 +2523,50 @@ describe("App", () => {
               resource: "imageRepository",
             },
             title: "이미지 저장소 동기화",
+          }),
+        });
+      }
+      if (url.endsWith("/api/image-repositories/11111111-1111-4111-8111-111111111111")) {
+        return jsonResponse({
+          repository: {
+            ...repositories[0],
+            favoriteCount: favorite ? 1 : 0,
+            tagCount: 2,
+          },
+        });
+      }
+      if (
+        url.includes(
+          "/api/image-repositories/11111111-1111-4111-8111-111111111111/tags/latest/favorite",
+        ) &&
+        init?.method === "PATCH"
+      ) {
+        favorite = (JSON.parse(String(init.body)) as { favorite: boolean }).favorite;
+        return jsonResponse({ tag: { favorite, name: "latest" } });
+      }
+      if (
+        url.includes("/api/image-repositories/11111111-1111-4111-8111-111111111111/tags?page=1")
+      ) {
+        return jsonResponse({
+          tags: {
+            count: 2,
+            page: 1,
+            pageSize: 25,
+            repository: "ghcr.io/opnay/overseer",
+            tags: [
+              { favorite, name: "latest" },
+              { favorite: false, name: "v1" },
+            ],
+          },
+        });
+      }
+      if (url.endsWith("/api/images/pull") && init?.method === "POST") {
+        return jsonResponse({
+          operation: operation("queued", {
+            id: "repository-tag-pull",
+            kind: "image.pull",
+            target: { name: "ghcr.io/opnay/overseer:latest", resource: "image" },
+            title: "이미지 받기",
           }),
         });
       }
@@ -2560,6 +2605,41 @@ describe("App", () => {
     expect(
       fetchMock.mock.calls.some(
         ([input, init]) => String(input).endsWith("/sync") && init?.method === "POST",
+      ),
+    ).toBe(true);
+
+    await user.click(screen.getByRole("link", { name: "ghcr.io/opnay/overseer" }));
+    expect(
+      await screen.findByRole("heading", { name: "ghcr.io/opnay/overseer", level: 1 }),
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe(
+      "/image-repositories/11111111-1111-4111-8111-111111111111",
+    );
+    expect(
+      await screen.findByRole("table", { name: "ghcr.io/opnay/overseer 태그 목록" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "latest 작업" }));
+    await user.click(await screen.findByRole("menuitem", { name: "즐겨찾기 추가" }));
+    const latestRow = screen.getByRole("row", { name: /latest ghcr\.io\/opnay\/overseer:latest/ });
+    expect(await within(latestRow).findByText("즐겨찾기")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "latest 작업" }));
+    await user.click(await screen.findByRole("menuitem", { name: "컨테이너 생성" }));
+    const runDialog = await screen.findByRole("dialog", { name: "컨테이너 실행" });
+    expect(within(runDialog).getByRole("combobox", { name: "이미지" })).toHaveValue(
+      "ghcr.io/opnay/overseer:latest",
+    );
+    await user.click(within(runDialog).getByRole("button", { name: "취소" }));
+
+    await user.click(screen.getByRole("button", { name: "latest 작업" }));
+    await user.click(await screen.findByRole("menuitem", { name: "이미지 다운로드" }));
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith("/api/images/pull") &&
+          init?.method === "POST" &&
+          init.body === JSON.stringify({ image: "ghcr.io/opnay/overseer:latest" }),
       ),
     ).toBe(true);
   });

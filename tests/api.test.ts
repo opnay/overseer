@@ -957,7 +957,23 @@ describe("API boundary", () => {
     const controller = createController();
     const repositories = new ImageRepositoryService(
       new MemoryImageRepositoryStore(),
-      vi.fn(async () => new Response(JSON.stringify({ count: 3, results: [] }), { status: 200 })),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              count: 3,
+              results: [
+                {
+                  full_size: 1_000,
+                  images: [{ architecture: "arm64", os: "linux" }],
+                  last_updated: "2026-08-27T01:00:00.000Z",
+                  name: "latest",
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+      ),
       () => "2026-08-27T01:00:00.000Z",
       () => "11111111-1111-4111-8111-111111111111",
     );
@@ -984,6 +1000,27 @@ describe("API boundary", () => {
       method: "POST",
     });
     expect(invalid.status).toBe(400);
+
+    const detail = await app.request("/image-repositories/11111111-1111-4111-8111-111111111111", {
+      headers: localHeaders,
+    });
+    await expect(detail.json()).resolves.toMatchObject({ repository: { favoriteCount: 0 } });
+    const favorite = await app.request(
+      "/image-repositories/11111111-1111-4111-8111-111111111111/tags/latest/favorite",
+      {
+        body: JSON.stringify({ favorite: true }),
+        headers: { ...localHeaders, "content-type": "application/json" },
+        method: "PATCH",
+      },
+    );
+    expect(favorite.status).toBe(200);
+    const tags = await app.request(
+      "/image-repositories/11111111-1111-4111-8111-111111111111/tags?page=1",
+      { headers: localHeaders },
+    );
+    await expect(tags.json()).resolves.toMatchObject({
+      tags: { count: 3, tags: [{ favorite: true, name: "latest" }] },
+    });
 
     const sync = await app.request(
       "/image-repositories/11111111-1111-4111-8111-111111111111/sync",

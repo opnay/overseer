@@ -5,6 +5,8 @@ import {
   isComposeProjectName,
   isImageIdentifier,
   isImageReference,
+  isImageRepositoryIdentifier,
+  isImageTag,
   isResourceName,
   normalizeImageRepository,
 } from "../../shared/validation.ts";
@@ -26,6 +28,24 @@ export function requireImageRepository(value: unknown): string {
     );
   }
   return repository;
+}
+
+export function requireImageRepositoryIdentifier(value: string): string {
+  if (!isImageRepositoryIdentifier(value)) {
+    throw new ExpectedError(
+      "invalid_image_repository",
+      "유효하지 않은 이미지 저장소 식별자입니다.",
+      400,
+    );
+  }
+  return value;
+}
+
+export function requireImageTag(value: string): string {
+  if (!isImageTag(value)) {
+    throw new ExpectedError("invalid_image_tag", "유효하지 않은 이미지 태그입니다.", 400);
+  }
+  return value;
 }
 
 export function requireContainerReference(value: string): string {

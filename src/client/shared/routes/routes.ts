@@ -81,6 +81,7 @@ export type AppLocationPath =
   | `/compose/${string}`
   | `/containers/${string}`
   | `/images/${string}`
+  | `/image-repositories/${string}`
   | `/instances/${string}`
   | `/networks/${string}`
   | `/volumes/${string}`;
@@ -107,6 +108,12 @@ export type AppDetailLocation =
     }
   | {
       identifier: string;
+      parentPath: "/image-repositories";
+      path: `/image-repositories/${string}`;
+      type: "imageRepository";
+    }
+  | {
+      identifier: string;
       parentPath: "/networks";
       path: `/networks/${string}`;
       type: "network";
@@ -128,6 +135,10 @@ export function containerDetailPath(id: string): `/containers/${string}` {
 
 export function imageDetailPath(id: string): `/images/${string}` {
   return `/images/${encodeURIComponent(id)}`;
+}
+
+export function imageRepositoryDetailPath(id: string): `/image-repositories/${string}` {
+  return `/image-repositories/${encodeURIComponent(id)}`;
 }
 
 export function runtimeInstanceDetailPath(name: string): `/instances/${string}` {
@@ -173,6 +184,14 @@ export function getAppDetailLocation(pathname: string): AppDetailLocation | unde
       parentPath: "/images",
       path: imageDetailPath(identifier),
       type: "image",
+    };
+  }
+  if (resource === "image-repositories" && isImageRepositoryIdentifier(identifier)) {
+    return {
+      identifier,
+      parentPath: "/image-repositories",
+      path: imageRepositoryDetailPath(identifier),
+      type: "imageRepository",
     };
   }
   if (resource === "instances" && isRuntimeInstanceName(identifier)) {
@@ -222,6 +241,7 @@ import {
   isComposeProjectName,
   isContainerReference,
   isImageIdentifier,
+  isImageRepositoryIdentifier,
   isResourceName,
   isRuntimeInstanceName,
 } from "@contracts/validation.ts";

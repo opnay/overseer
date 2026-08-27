@@ -48,6 +48,7 @@ import type {
   DeleteRuntimeInstanceInput,
   DockerEngineConfiguration,
   ImageRepositorySummary,
+  ImageRepositoryDetail,
   ImageSummary,
   NetworkSummary,
   OperationAccepted,
@@ -79,6 +80,7 @@ import {
   getAppLocation,
   getAppRoute,
   imageDetailPath,
+  imageRepositoryDetailPath,
   networkDetailPath,
   runtimeInstanceDetailPath,
   type AppLocationPath,
@@ -104,6 +106,11 @@ const PullImageDialog = lazy(() =>
 const ImageRepositoriesPage = lazy(() =>
   import("@/pages/image-repositories").then((module) => ({
     default: module.ImageRepositoriesPage,
+  })),
+);
+const ImageRepositoryDetailPage = lazy(() =>
+  import("@/pages/image-repositories").then((module) => ({
+    default: module.ImageRepositoryDetailPage,
   })),
 );
 const AddImageRepositoryDialog = lazy(() =>
@@ -702,12 +709,14 @@ function AppContent() {
   const [submitting, setSubmitting] = useState<string>();
   const [operations, setOperations] = useState<OperationSnapshot[]>([]);
   const [editContainer, setEditContainer] = useState<ContainerSummary>();
+  const [runContainerImage, setRunContainerImage] = useState<string>();
   const [logsTarget, setLogsTarget] = useState<LogsTarget>();
   const [dark, setDark] = useState(() => window.localStorage.getItem("overseer-theme") === "dark");
   const [resourcePath, setResourcePath] = useState<AppLocationPath>(resourcePathFromLocation);
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
   const [imageRepositoryRefreshRevision, setImageRepositoryRefreshRevision] = useState(0);
+  const [imageRepositoryHeader, setImageRepositoryHeader] = useState<ImageRepositoryDetail>();
   const [runtimeInstanceHeaderState, setRuntimeInstanceHeaderState] = useState<{
     instance: RuntimeInstanceSummary;
     selectionLocked: boolean;
@@ -733,6 +742,7 @@ function AppContent() {
 
   useEffect(() => {
     setRuntimeInstanceHeaderState(undefined);
+    setImageRepositoryHeader(undefined);
   }, [resourcePath]);
 
   const refreshStartup = useCallback(async () => {
@@ -783,7 +793,7 @@ function AppContent() {
   const engineManagementRoute =
     detectedStartupStep === "engine" &&
     (resourcePath === "/settings" ||
-      resourcePath === "/image-repositories" ||
+      resourcePath.startsWith("/image-repositories") ||
       resourcePath.startsWith("/instances"));
   const entryStartupStep =
     startupReviewMode && !startupPreview
@@ -824,7 +834,7 @@ function AppContent() {
       !detectedStartupStep ||
       (detectedStartupStep === "engine" &&
         (resourcePath === "/settings" ||
-          resourcePath === "/image-repositories" ||
+          resourcePath.startsWith("/image-repositories") ||
           resourcePath.startsWith("/instances")))
     ) {
       return;
@@ -1276,11 +1286,13 @@ function AppContent() {
         ? "컨테이너 상세"
         : currentDetail.type === "image"
           ? "이미지 상세"
-          : currentDetail.type === "instance"
-            ? "VM 인스턴스 상세"
-            : currentDetail.type === "network"
-              ? "네트워크 상세"
-              : "볼륨 상세"
+          : currentDetail.type === "imageRepository"
+            ? "이미지 저장소 상세"
+            : currentDetail.type === "instance"
+              ? "VM 인스턴스 상세"
+              : currentDetail.type === "network"
+                ? "네트워크 상세"
+                : "볼륨 상세"
     : currentRoute.eyebrow;
   const pageLabel = currentDetail
     ? currentDetail.type === "compose"
@@ -1291,13 +1303,15 @@ function AppContent() {
           ? currentImage.tag === "<none>"
             ? currentImage.repository
             : `${currentImage.repository}:${currentImage.tag}`
-          : currentDetail.type === "instance"
-            ? currentDetail.identifier
-            : currentDetail.type === "network"
-              ? (currentNetwork?.name ?? currentDetail.identifier)
-              : currentDetail.type === "volume"
-                ? (currentVolume?.name ?? currentDetail.identifier)
-                : currentDetail.identifier
+          : currentDetail.type === "imageRepository"
+            ? (imageRepositoryHeader?.repository ?? currentDetail.identifier)
+            : currentDetail.type === "instance"
+              ? currentDetail.identifier
+              : currentDetail.type === "network"
+                ? (currentNetwork?.name ?? currentDetail.identifier)
+                : currentDetail.type === "volume"
+                  ? (currentVolume?.name ?? currentDetail.identifier)
+                  : currentDetail.identifier
     : currentRoute.label;
   const pageDescription = currentDetail
     ? currentDetail.type === "compose"
@@ -1306,11 +1320,13 @@ function AppContent() {
         ? "실행 중인 컨테이너의 운영·진단 정보를 관리합니다."
         : currentDetail.type === "image"
           ? "이미지의 출처, 실행 기본값과 레이어를 탐색합니다."
-          : currentDetail.type === "instance"
-            ? "Lima VM과 Docker Engine 연결을 관리합니다."
-            : currentDetail.type === "network"
-              ? "Docker 네트워크의 연결 관계와 원본 구성을 탐색합니다."
-              : "Docker 볼륨의 저장 위치와 원본 구성을 탐색합니다."
+          : currentDetail.type === "imageRepository"
+            ? "원격 태그를 탐색하고 이미지 다운로드·즐겨찾기·컨테이너 생성을 관리합니다."
+            : currentDetail.type === "instance"
+              ? "Lima VM과 Docker Engine 연결을 관리합니다."
+              : currentDetail.type === "network"
+                ? "Docker 네트워크의 연결 관계와 원본 구성을 탐색합니다."
+                : "Docker 볼륨의 저장 위치와 원본 구성을 탐색합니다."
     : currentRoute.description;
   const runComposeAction = (name: string, action: ComposeProjectAction) =>
     mutate({
@@ -1320,6 +1336,24 @@ function AppContent() {
           `/compose/projects/${encodeURIComponent(name)}/actions/${action}`,
           { method: "POST" },
         ),
+    });
+  const pullImage = (image: string, key = "image-pull") =>
+    mutate({
+      key,
+      request: () =>
+        apiRequest<OperationAccepted>("/images/pull", {
+          body: JSON.stringify({ image }),
+          method: "POST",
+        }),
+    });
+  const runContainer = (spec: ContainerSpecInput) =>
+    mutate({
+      key: "container-run",
+      request: () =>
+        apiRequest<OperationAccepted>("/containers", {
+          body: JSON.stringify(spec),
+          method: "POST",
+        }),
     });
   const runtimePagePrimaryAction = !runtimeRunning ? null : currentCompose ? (
     <div className="overseer-compose-create-actions">
@@ -1408,16 +1442,7 @@ function AppContent() {
         disabled={Boolean(submitting) || runtimeBusy}
         images={dashboard?.images ?? []}
         networks={dashboard?.networks ?? []}
-        onSubmit={async (spec) =>
-          mutate({
-            key: "container-run",
-            request: () =>
-              apiRequest<OperationAccepted>("/containers", {
-                body: JSON.stringify(spec),
-                method: "POST",
-              }),
-          })
-        }
+        onSubmit={runContainer}
         volumes={dashboard?.volumes ?? []}
       />
     </Suspense>
@@ -1425,16 +1450,7 @@ function AppContent() {
     <PullImageDialog
       busy={submitting === "image-pull"}
       disabled={Boolean(submitting) || runtimeBusy}
-      onSubmit={async (image) =>
-        mutate({
-          key: "image-pull",
-          request: () =>
-            apiRequest<OperationAccepted>("/images/pull", {
-              body: JSON.stringify({ image }),
-              method: "POST",
-            }),
-        })
-      }
+      onSubmit={pullImage}
     />
   ) : resourcePath === "/volumes" ? (
     <NamedResourceDialog
@@ -1659,11 +1675,13 @@ function AppContent() {
                         ? "컨테이너 목록"
                         : currentDetail.type === "image"
                           ? "이미지 목록"
-                          : currentDetail.type === "instance"
-                            ? "인스턴스 목록"
-                            : currentDetail.type === "network"
-                              ? "네트워크 목록"
-                              : "볼륨 목록"}
+                          : currentDetail.type === "imageRepository"
+                            ? "이미지 저장소 목록"
+                            : currentDetail.type === "instance"
+                              ? "인스턴스 목록"
+                              : currentDetail.type === "network"
+                                ? "네트워크 목록"
+                                : "볼륨 목록"}
                   </Button>
                 ) : null}
                 <Button
@@ -1728,7 +1746,7 @@ function AppContent() {
           {runtime &&
           !runtimeRunning &&
           resourcePath !== "/settings" &&
-          resourcePath !== "/image-repositories" &&
+          !resourcePath.startsWith("/image-repositories") &&
           !resourcePath.startsWith("/instances") ? (
             <Alert.Root appearance="subtle" tone={runtimeStatus.tone}>
               <Alert.Title level={2}>Lima · {runtimeStatus.label}</Alert.Title>
@@ -1743,7 +1761,7 @@ function AppContent() {
           !runtimeRunning &&
           resourcePath !== "/operations" &&
           resourcePath !== "/settings" &&
-          resourcePath !== "/image-repositories" &&
+          !resourcePath.startsWith("/image-repositories") &&
           !resourcePath.startsWith("/instances") ? (
             <section className="overseer-runtime-empty">
               <EmptyState.Root>
@@ -1830,6 +1848,9 @@ function AppContent() {
                   targetBusy("imageRepository", repository.id) ||
                   submitting === `image-repository-remove-${repository.id}`
                 }
+                onInspect={(repository) =>
+                  selectResourcePath(imageRepositoryDetailPath(repository.id))
+                }
                 onRemove={async (repository) => {
                   setSubmitting(`image-repository-remove-${repository.id}`);
                   setOperationError(undefined);
@@ -1856,6 +1877,25 @@ function AppContent() {
                   })
                 }
                 refreshToken={`${imageRepositoryRefreshRevision}:${imageRepositoryOperationRefreshToken}`}
+              />
+            </Suspense>
+          ) : null}
+
+          {currentDetail?.type === "imageRepository" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <ImageRepositoryDetailPage
+                id={currentDetail.identifier}
+                isBusy={(reference) =>
+                  submitting === `image-repository-pull-${reference}` ||
+                  targetBusy("image", reference)
+                }
+                onCreateContainer={setRunContainerImage}
+                onDownload={(reference) =>
+                  pullImage(reference, `image-repository-pull-${reference}`)
+                }
+                onRepositoryChange={setImageRepositoryHeader}
+                refreshToken={detailRefreshToken}
+                runtimeAvailable={runtimeRunning}
               />
             </Suspense>
           ) : null}
@@ -2163,6 +2203,20 @@ function AppContent() {
           volumes={dashboard?.volumes ?? []}
         />
       </Suspense>
+      {runContainerImage ? (
+        <Suspense fallback={null}>
+          <RunContainerDialog
+            disabled={Boolean(submitting) || runtimeBusy}
+            images={dashboard?.images ?? []}
+            initialImage={runContainerImage}
+            networks={dashboard?.networks ?? []}
+            onOpenChange={(open) => !open && setRunContainerImage(undefined)}
+            onSubmit={runContainer}
+            open
+            volumes={dashboard?.volumes ?? []}
+          />
+        </Suspense>
+      ) : null}
       <LogsDialog onClose={() => setLogsTarget(undefined)} target={logsTarget} />
       <Toast.Portal>
         <Toast.Viewport>

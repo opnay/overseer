@@ -1345,7 +1345,8 @@
     margin: var(--city-space-4);
   }
 
-  .overseer-operation-pagination {
+  .overseer-operation-pagination,
+  .overseer-table-pagination {
     display: flex;
     min-height: var(--city-control-lg);
     padding: var(--city-space-3) var(--city-space-4);
@@ -2513,7 +2514,8 @@
       justify-content: flex-end;
     }
 
-    .overseer-operation-pagination {
+    .overseer-operation-pagination,
+    .overseer-table-pagination {
       align-items: flex-start;
       flex-direction: column;
     }

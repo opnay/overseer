@@ -1,6 +1,9 @@
 const CONTAINER_REFERENCE = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/;
 const IMAGE_IDENTIFIER = /^(?:sha256:)?[a-f0-9]{12,64}$/;
+const IMAGE_REPOSITORY_IDENTIFIER =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IMAGE_REFERENCE = /^[a-zA-Z0-9][a-zA-Z0-9._/@:-]{0,254}$/;
+const IMAGE_TAG = /^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$/;
 const IMAGE_REPOSITORY_COMPONENT = /^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*$/;
 const REGISTRY_HOSTNAME =
   /^(?:localhost|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)$/;
@@ -25,6 +28,14 @@ export function isImageReference(value: string): boolean {
 
 export function isImageIdentifier(value: string): boolean {
   return IMAGE_IDENTIFIER.test(value);
+}
+
+export function isImageRepositoryIdentifier(value: string): boolean {
+  return IMAGE_REPOSITORY_IDENTIFIER.test(value);
+}
+
+export function isImageTag(value: string): boolean {
+  return IMAGE_TAG.test(value);
 }
 
 export interface ParsedImageRepository {

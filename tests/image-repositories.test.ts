@@ -28,7 +28,11 @@ describe("ImageRepositoryService", () => {
           { status: 200 },
         ),
     );
-    const times = ["2026-08-27T00:00:00.000Z", "2026-08-27T02:00:00.000Z"];
+    const times = [
+      "2026-08-27T00:00:00.000Z",
+      "2026-08-27T02:00:00.000Z",
+      "2026-08-27T03:00:00.000Z",
+    ];
     const service = new ImageRepositoryService(
       new MemoryImageRepositoryStore(),
       fetcher,
@@ -95,8 +99,19 @@ describe("ImageRepositoryService", () => {
     const repository = service.add({ repository: "ghcr.io/opnay/overseer" });
 
     await service.sync(repository.id);
+    expect(service.setFavorite(repository.id, "v2", true)).toEqual({ favorite: true, name: "v2" });
+    await expect(service.getTags(repository.id, 1)).resolves.toMatchObject({
+      count: 3,
+      repository: "ghcr.io/opnay/overseer",
+      tags: [
+        { favorite: false, name: "latest" },
+        { favorite: false, name: "v1" },
+        { favorite: true, name: "v2" },
+      ],
+    });
 
-    expect(service.list()[0]).toMatchObject({
+    expect(service.get(repository.id)).toMatchObject({
+      favoriteCount: 1,
       lastSyncedAt: "2026-08-27T02:00:00.000Z",
       repository: "ghcr.io/opnay/overseer",
       tagCount: 3,
@@ -146,6 +161,15 @@ describe("ImageRepositoryService", () => {
           repository: "ghcr.io/opnay/overseer",
         }),
       ).not.toThrow();
+      store.setFavorite(
+        "22222222-2222-4222-8222-222222222222",
+        "latest",
+        true,
+        "2026-08-27T04:00:00.000Z",
+      );
+      expect(store.favoriteTags("22222222-2222-4222-8222-222222222222")).toEqual(["latest"]);
+      store.remove("22222222-2222-4222-8222-222222222222");
+      expect(store.favoriteTags("22222222-2222-4222-8222-222222222222")).toEqual([]);
     } finally {
       store.close();
       rmSync(dataDirectory, { force: true, recursive: true });

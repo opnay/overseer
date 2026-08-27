@@ -791,30 +791,44 @@ function ContainerForm({
 export function RunContainerDialog({
   disabled,
   images,
+  initialImage,
   networks,
+  onOpenChange,
   onSubmit,
+  open: controlledOpen,
   volumes,
 }: {
   disabled: boolean;
   images: ImageSummary[];
+  initialImage?: string;
   networks: NetworkSummary[];
+  onOpenChange?(open: boolean): void;
   onSubmit: (spec: ContainerSpecInput) => Promise<void>;
+  open?: boolean;
   volumes: VolumeSummary[];
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (nextOpen: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
+  const initialSpec = { ...emptyContainerSpec(), ...(initialImage ? { image: initialImage } : {}) };
   return (
     <Dialog.Root onOpenChange={setOpen} open={open}>
-      <Dialog.Trigger disabled={disabled} render={<Button size="sm" variant="primary" />}>
-        <Plus aria-hidden="true" size={15} />
-        컨테이너 실행
-      </Dialog.Trigger>
+      {controlledOpen === undefined ? (
+        <Dialog.Trigger disabled={disabled} render={<Button size="sm" variant="primary" />}>
+          <Plus aria-hidden="true" size={15} />
+          컨테이너 실행
+        </Dialog.Trigger>
+      ) : null}
       <Dialog.Portal>
         <Dialog.Backdrop />
         <Dialog.Viewport>
           <ContainerForm
             images={images}
-            initialSpec={emptyContainerSpec()}
-            key={String(open)}
+            initialSpec={initialSpec}
+            key={`${String(open)}:${initialImage ?? ""}`}
             networks={networks}
             onClose={() => setOpen(false)}
             onSubmit={onSubmit}

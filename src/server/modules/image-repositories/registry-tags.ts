@@ -172,10 +172,10 @@ function parseTags(value: unknown): string[] {
   return tags as string[];
 }
 
-export async function getRegistryRepositoryTagCount(
+export async function getRegistryRepositoryTagNames(
   repository: ParsedImageRepository,
   fetcher: typeof fetch = fetch,
-): Promise<number> {
+): Promise<string[]> {
   const origin = registryOrigin(repository.registry);
   const name = repository.name.split("/").map(encodeURIComponent).join("/");
   const expectedPath = `/v2/${name}/tags/list`;
@@ -204,7 +204,7 @@ export async function getRegistryRepositoryTagCount(
     }
     for (const tag of parseTags(value)) tags.add(tag);
     const next = nextPage(url, result.response.headers.get("link"), expectedPath);
-    if (!next) return tags.size;
+    if (!next) return [...tags];
     url = next;
   }
   throw new ExpectedError(
