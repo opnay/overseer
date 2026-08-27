@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../src/client/app/index.ts";
+import { formatDateTime } from "../src/client/shared/lib/date-time/index.ts";
 import { emptyContainerSpec } from "../src/shared/container-spec.ts";
 import {
   emptyComposeBuilderService,
@@ -2652,6 +2653,8 @@ describe("App", () => {
 
   it("navigates from the container list to the container detail page", async () => {
     const user = userEvent.setup();
+    const healthStartedAt = "2026-08-25T01:01:00.000000000+09:00";
+    const healthStartedAtLabel = formatDateTime(healthStartedAt);
     let includeHealth = true;
     let terminalStatus: "not-running" | "paused" | "ready" | "shell-not-found" = "ready";
     const dashboard: DashboardSnapshot = {
@@ -2692,7 +2695,7 @@ describe("App", () => {
                           endedAt: "2026-08-25T01:01:01.000000000+09:00",
                           exitCode: 1,
                           output: "service unavailable",
-                          startedAt: "2026-08-25T01:01:00.000000000+09:00",
+                          startedAt: healthStartedAt,
                         },
                       ],
                       status: "unhealthy",
@@ -2825,10 +2828,10 @@ describe("App", () => {
     await user.click(within(containerGroup).getByRole("button", { name: "상태 검사" }));
     expect(await screen.findByText("비정상")).toBeInTheDocument();
     expect(screen.getByText("1회")).toBeInTheDocument();
-    expect(screen.getAllByText("2026-08-25 01:01:00")).toHaveLength(2);
+    expect(screen.getAllByText(healthStartedAtLabel)).toHaveLength(2);
     expect(
       await screen.findByRole("region", {
-        name: "2026-08-25 01:01:00 상태 검사 출력",
+        name: `${healthStartedAtLabel} 상태 검사 출력`,
       }),
     ).toHaveTextContent("service unavailable");
     expect(screen.getByRole("button", { name: "상태 검사 출력 옵션" })).toBeInTheDocument();
