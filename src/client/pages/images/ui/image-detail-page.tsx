@@ -16,8 +16,9 @@ import type {
 } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
 import { formatDateTime } from "@/shared/lib/date-time";
-import { reconstructDockerfileLayers } from "../lib/image-history-presentation.ts";
 import { LogViewer } from "@/shared/ui/log-viewer";
+import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
+import { reconstructDockerfileLayers } from "../lib/image-history-presentation.ts";
 
 interface ImageDetailPageProps {
   id: string;
@@ -73,6 +74,13 @@ const sectionOrder: ImageDetailSection[] = [
   "labels",
   "layers",
   "inspect",
+];
+
+const imageDetailNavigation = [
+  {
+    items: sectionOrder.map((value) => ({ label: sectionPresentation[value].label, value })),
+    label: "이미지",
+  },
 ];
 
 const tagPaginationLabels = {
@@ -282,264 +290,235 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
 
   return (
     <article className="overseer-detail-page">
-      <div className="overseer-detail-layout">
-        <aside className="overseer-detail-sidebar">
-          <nav aria-label="이미지 상세 메뉴">
-            <div
-              aria-labelledby="overseer-image-detail-navigation"
-              className="overseer-detail-nav-group"
-              role="group"
-            >
-              <span className="overseer-detail-nav-label" id="overseer-image-detail-navigation">
-                이미지
-              </span>
-              <div className="overseer-detail-nav-items">
-                {sectionOrder.map((value) => (
-                  <button
-                    aria-current={section === value ? "page" : undefined}
-                    key={value}
-                    onClick={() => setSection(value)}
-                    type="button"
-                  >
-                    {sectionPresentation[value].label}
-                  </button>
-                ))}
+      <SectionedWorkspace<ImageDetailSection>
+        category="이미지"
+        description={presentation.description}
+        groups={imageDetailNavigation}
+        navigationLabel="이미지 상세 메뉴"
+        onSectionChange={setSection}
+        section={section}
+        title={presentation.label}
+      >
+        {section === "overview" ? (
+          <>
+            <section aria-label="이미지 개요" className="overseer-detail-summary">
+              <div>
+                <span>크기</span>
+                <strong>{summary?.size ?? formatBytes(detail.sizeBytes)}</strong>
               </div>
-            </div>
-          </nav>
-        </aside>
+              <div>
+                <span>생성</span>
+                <strong>
+                  <time dateTime={detail.createdAt}>{formatDateTime(detail.createdAt)}</time>
+                </strong>
+              </div>
+              <div>
+                <span>플랫폼</span>
+                <strong>
+                  {detail.operatingSystem}/{detail.architecture}
+                </strong>
+              </div>
+            </section>
 
-        <div className="overseer-detail-content">
-          <header className="overseer-detail-content-header">
-            <p>이미지</p>
-            <h2 className="city-text-section-title">{presentation.label}</h2>
-            <span className="city-text-supporting">{presentation.description}</span>
-          </header>
-
-          {section === "overview" ? (
-            <>
-              <section aria-label="이미지 개요" className="overseer-detail-summary">
-                <div>
-                  <span>크기</span>
-                  <strong>{summary?.size ?? formatBytes(detail.sizeBytes)}</strong>
-                </div>
-                <div>
-                  <span>생성</span>
-                  <strong>
-                    <time dateTime={detail.createdAt}>{formatDateTime(detail.createdAt)}</time>
-                  </strong>
-                </div>
-                <div>
-                  <span>플랫폼</span>
-                  <strong>
-                    {detail.operatingSystem}/{detail.architecture}
-                  </strong>
-                </div>
-              </section>
-
-              {links.length > 0 ? (
-                <section className="overseer-detail-section">
-                  <header>
-                    <div>
-                      <h3 className="city-text-subsection-title">관련 링크</h3>
-                    </div>
-                  </header>
-                  <nav aria-label="이미지 관련 링크" className="overseer-detail-external-links">
-                    {links.map(({ href, label }) => (
-                      <Button
-                        key={href}
-                        nativeButton={false}
-                        render={<a href={href} rel="noreferrer" target="_blank" />}
-                        size="sm"
-                        variant="outline"
-                      >
-                        <ExternalLink aria-hidden="true" size={14} />
-                        {label}
-                      </Button>
-                    ))}
-                  </nav>
-                </section>
-              ) : null}
-
+            {links.length > 0 ? (
               <section className="overseer-detail-section">
                 <header>
                   <div>
-                    <h3 className="city-text-subsection-title">식별 정보</h3>
+                    <h3 className="city-text-subsection-title">관련 링크</h3>
                   </div>
                 </header>
-                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-                  <Definition label="참조 URL" value={<code>{referenceUrl}</code>} />
-                  <Definition label="이미지 ID" value={<code>{detail.id}</code>} />
-                  <Definition
-                    label="저장소·태그"
-                    value={<CodeValues empty="태그 없음" values={detail.repositoryTags} />}
-                  />
-                  <Definition
-                    label="Digest"
-                    value={<CodeValues empty="Digest 없음" values={detail.repositoryDigests} />}
-                  />
-                </dl>
+                <nav aria-label="이미지 관련 링크" className="overseer-detail-external-links">
+                  {links.map(({ href, label }) => (
+                    <Button
+                      key={href}
+                      nativeButton={false}
+                      render={<a href={href} rel="noreferrer" target="_blank" />}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <ExternalLink aria-hidden="true" size={14} />
+                      {label}
+                    </Button>
+                  ))}
+                </nav>
               </section>
-            </>
-          ) : null}
+            ) : null}
 
-          {section === "tags" ? (
-            tagError ? (
-              <Alert.Root appearance="subtle" tone="destructive">
-                <Alert.Title level={3}>저장소 태그를 불러오지 못했습니다.</Alert.Title>
-                <Alert.Description>{tagError}</Alert.Description>
-              </Alert.Root>
-            ) : !repositoryTags ? (
-              <section aria-label="저장소 태그 불러오는 중" className="overseer-detail-loading">
-                <Skeleton />
-                <Skeleton className="overseer-loading-table" />
-              </section>
-            ) : (
-              <section className="overseer-detail-section">
-                <header>
-                  <div>
-                    <h3 className="city-text-subsection-title">{repositoryTags.repository}</h3>
-                    <p className="city-text-supporting">총 {repositoryTags.count}개 태그</p>
-                  </div>
-                </header>
-                <DataTableRegion
-                  hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-                  label={`${repositoryTags.repository} 태그 표`}
-                >
-                  <Table.Root
-                    aria-label={`${repositoryTags.repository} 태그 목록`}
-                    className="overseer-table overseer-table--image-tags"
-                    size="sm"
-                  >
-                    <Table.Caption className="overseer-table-caption">
-                      Docker Hub 공개 저장소의 최근 업데이트 태그
-                    </Table.Caption>
-                    <Table.Header>
-                      <Table.Row>
-                        <Table.Head className="overseer-table-column-wide">태그</Table.Head>
-                        <Table.Head>플랫폼</Table.Head>
-                        <Table.Head>크기</Table.Head>
-                        <Table.Head>업데이트</Table.Head>
-                      </Table.Row>
-                    </Table.Header>
-                    <Table.Body>
-                      {repositoryTags.tags.length > 0 ? (
-                        repositoryTags.tags.map((tag) => (
-                          <Table.Row key={tag.name}>
-                            <Table.Cell className="overseer-table-column-wide">
-                              <strong>{tag.name}</strong>
-                            </Table.Cell>
-                            <Table.Cell>
-                              <code>{tag.platforms.join(" · ") || "—"}</code>
-                            </Table.Cell>
-                            <Table.Cell>{formatBytes(tag.sizeBytes)}</Table.Cell>
-                            <Table.Cell>
-                              <time dateTime={tag.lastUpdated}>
-                                {formatDateTime(tag.lastUpdated)}
-                              </time>
-                            </Table.Cell>
-                          </Table.Row>
-                        ))
-                      ) : (
-                        <Table.StateRow colSpan={4}>
-                          <EmptyState.Root density="compact">
-                            <EmptyState.Title level={3}>표시할 태그가 없습니다.</EmptyState.Title>
-                            <EmptyState.Description>
-                              이 페이지에는 공개 태그가 없습니다.
-                            </EmptyState.Description>
-                          </EmptyState.Root>
-                        </Table.StateRow>
-                      )}
-                    </Table.Body>
-                  </Table.Root>
-                </DataTableRegion>
-                {repositoryTags.count > repositoryTags.pageSize ? (
-                  <Pagination.Root
-                    density="compact"
-                    labels={tagPaginationLabels}
-                    onPageChange={setTagPage}
-                    page={repositoryTags.page}
-                    totalPages={Math.ceil(repositoryTags.count / repositoryTags.pageSize)}
-                  />
-                ) : null}
-              </section>
-            )
-          ) : null}
+            <section className="overseer-detail-section">
+              <header>
+                <div>
+                  <h3 className="city-text-subsection-title">식별 정보</h3>
+                </div>
+              </header>
+              <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                <Definition label="참조 URL" value={<code>{referenceUrl}</code>} />
+                <Definition label="이미지 ID" value={<code>{detail.id}</code>} />
+                <Definition
+                  label="저장소·태그"
+                  value={<CodeValues empty="태그 없음" values={detail.repositoryTags} />}
+                />
+                <Definition
+                  label="Digest"
+                  value={<CodeValues empty="Digest 없음" values={detail.repositoryDigests} />}
+                />
+              </dl>
+            </section>
+          </>
+        ) : null}
 
-          {section === "configuration" ? (
-            <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-              <Definition
-                label="작업 디렉터리"
-                value={detail.workingDirectory ?? "지정되지 않음"}
-              />
-              <Definition
-                label="Entrypoint"
-                value={<CodeValues empty="지정되지 않음" values={detail.entrypoint} />}
-              />
-              <Definition
-                label="명령"
-                value={<CodeValues empty="지정되지 않음" values={detail.command} />}
-              />
-              <Definition
-                label="공개 포트"
-                value={<CodeValues empty="없음" values={detail.exposedPorts} />}
-              />
-              <Definition label="레이어" value={`${detail.layers.length}개`} />
-              <Definition label="빌드 설명" value={detail.comment ?? "—"} />
-            </dl>
-          ) : null}
-
-          {section === "environment" ? (
-            <KeyValues empty="환경 변수가 없습니다." values={detail.environment} />
-          ) : null}
-
-          {section === "labels" ? (
-            <KeyValues empty="라벨이 없습니다." values={detail.labels} />
-          ) : null}
-
-          {section === "layers" ? (
-            historyError ? (
-              <Alert.Root appearance="subtle" tone="destructive">
-                <Alert.Title level={3}>레이어 기록을 불러오지 못했습니다.</Alert.Title>
-                <Alert.Description>{historyError}</Alert.Description>
-              </Alert.Root>
-            ) : !history ? (
-              <section
-                aria-label="이미지 레이어 기록 불러오는 중"
-                className="overseer-detail-loading"
+        {section === "tags" ? (
+          tagError ? (
+            <Alert.Root appearance="subtle" tone="destructive">
+              <Alert.Title level={3}>저장소 태그를 불러오지 못했습니다.</Alert.Title>
+              <Alert.Description>{tagError}</Alert.Description>
+            </Alert.Root>
+          ) : !repositoryTags ? (
+            <section aria-label="저장소 태그 불러오는 중" className="overseer-detail-loading">
+              <Skeleton />
+              <Skeleton className="overseer-loading-table" />
+            </section>
+          ) : (
+            <section className="overseer-detail-section">
+              <header>
+                <div>
+                  <h3 className="city-text-subsection-title">{repositoryTags.repository}</h3>
+                  <p className="city-text-supporting">총 {repositoryTags.count}개 태그</p>
+                </div>
+              </header>
+              <DataTableRegion
+                hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
+                label={`${repositoryTags.repository} 태그 표`}
               >
-                <Skeleton />
-                <Skeleton className="overseer-loading-table" />
-              </section>
-            ) : (
-              <LogViewer
-                ariaLabel="Dockerfile 레이어 코드"
-                context={
-                  <>
-                    <code>Dockerfile</code>
-                    <span>{history.length}개 레이어 · 빌드 순서 · history 재구성</span>
-                  </>
-                }
-                emptyMessage="레이어 기록이 없습니다."
-                height="expanded"
-                optionsLabel="코드 보기 옵션"
-                value={reconstructDockerfileLayers(history)}
-              />
-            )
-          ) : null}
+                <Table.Root
+                  aria-label={`${repositoryTags.repository} 태그 목록`}
+                  className="overseer-table overseer-table--image-tags"
+                  size="sm"
+                >
+                  <Table.Caption className="overseer-table-caption">
+                    Docker Hub 공개 저장소의 최근 업데이트 태그
+                  </Table.Caption>
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.Head className="overseer-table-column-wide">태그</Table.Head>
+                      <Table.Head>플랫폼</Table.Head>
+                      <Table.Head>크기</Table.Head>
+                      <Table.Head>업데이트</Table.Head>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {repositoryTags.tags.length > 0 ? (
+                      repositoryTags.tags.map((tag) => (
+                        <Table.Row key={tag.name}>
+                          <Table.Cell className="overseer-table-column-wide">
+                            <strong>{tag.name}</strong>
+                          </Table.Cell>
+                          <Table.Cell>
+                            <code>{tag.platforms.join(" · ") || "—"}</code>
+                          </Table.Cell>
+                          <Table.Cell>{formatBytes(tag.sizeBytes)}</Table.Cell>
+                          <Table.Cell>
+                            <time dateTime={tag.lastUpdated}>
+                              {formatDateTime(tag.lastUpdated)}
+                            </time>
+                          </Table.Cell>
+                        </Table.Row>
+                      ))
+                    ) : (
+                      <Table.StateRow colSpan={4}>
+                        <EmptyState.Root density="compact">
+                          <EmptyState.Title level={3}>표시할 태그가 없습니다.</EmptyState.Title>
+                          <EmptyState.Description>
+                            이 페이지에는 공개 태그가 없습니다.
+                          </EmptyState.Description>
+                        </EmptyState.Root>
+                      </Table.StateRow>
+                    )}
+                  </Table.Body>
+                </Table.Root>
+              </DataTableRegion>
+              {repositoryTags.count > repositoryTags.pageSize ? (
+                <Pagination.Root
+                  density="compact"
+                  labels={tagPaginationLabels}
+                  onPageChange={setTagPage}
+                  page={repositoryTags.page}
+                  totalPages={Math.ceil(repositoryTags.count / repositoryTags.pageSize)}
+                />
+              ) : null}
+            </section>
+          )
+        ) : null}
 
-          {section === "inspect" ? (
-            <LogViewer
-              ariaLabel="이미지 원본 JSON"
-              context={<code>docker image inspect {detail.id.slice(0, 12)}</code>}
-              emptyMessage="원본 정보가 없습니다."
-              height="expanded"
-              optionsLabel="원본 JSON 보기 옵션"
-              value={detail.inspectJson}
+        {section === "configuration" ? (
+          <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+            <Definition label="작업 디렉터리" value={detail.workingDirectory ?? "지정되지 않음"} />
+            <Definition
+              label="Entrypoint"
+              value={<CodeValues empty="지정되지 않음" values={detail.entrypoint} />}
             />
-          ) : null}
-        </div>
-      </div>
+            <Definition
+              label="명령"
+              value={<CodeValues empty="지정되지 않음" values={detail.command} />}
+            />
+            <Definition
+              label="공개 포트"
+              value={<CodeValues empty="없음" values={detail.exposedPorts} />}
+            />
+            <Definition label="레이어" value={`${detail.layers.length}개`} />
+            <Definition label="빌드 설명" value={detail.comment ?? "—"} />
+          </dl>
+        ) : null}
+
+        {section === "environment" ? (
+          <KeyValues empty="환경 변수가 없습니다." values={detail.environment} />
+        ) : null}
+
+        {section === "labels" ? (
+          <KeyValues empty="라벨이 없습니다." values={detail.labels} />
+        ) : null}
+
+        {section === "layers" ? (
+          historyError ? (
+            <Alert.Root appearance="subtle" tone="destructive">
+              <Alert.Title level={3}>레이어 기록을 불러오지 못했습니다.</Alert.Title>
+              <Alert.Description>{historyError}</Alert.Description>
+            </Alert.Root>
+          ) : !history ? (
+            <section
+              aria-label="이미지 레이어 기록 불러오는 중"
+              className="overseer-detail-loading"
+            >
+              <Skeleton />
+              <Skeleton className="overseer-loading-table" />
+            </section>
+          ) : (
+            <LogViewer
+              ariaLabel="Dockerfile 레이어 코드"
+              context={
+                <>
+                  <code>Dockerfile</code>
+                  <span>{history.length}개 레이어 · 빌드 순서 · history 재구성</span>
+                </>
+              }
+              emptyMessage="레이어 기록이 없습니다."
+              height="expanded"
+              optionsLabel="코드 보기 옵션"
+              value={reconstructDockerfileLayers(history)}
+            />
+          )
+        ) : null}
+
+        {section === "inspect" ? (
+          <LogViewer
+            ariaLabel="이미지 원본 JSON"
+            context={<code>docker image inspect {detail.id.slice(0, 12)}</code>}
+            emptyMessage="원본 정보가 없습니다."
+            height="expanded"
+            optionsLabel="원본 JSON 보기 옵션"
+            value={detail.inspectJson}
+          />
+        ) : null}
+      </SectionedWorkspace>
     </article>
   );
 }

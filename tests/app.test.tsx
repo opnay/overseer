@@ -1072,6 +1072,10 @@ describe("App", () => {
     expect(
       screen.getByRole("heading", { name: "인스턴스", level: 1 }).closest(".overseer-page-header"),
     ).toContainElement(createButton);
+    const refreshButton = screen.getByRole("button", { name: "새로고침" });
+    expect(
+      refreshButton.compareDocumentPosition(createButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     await waitFor(() => expect(createButton).toBeEnabled());
     await user.click(createButton);
     const dialog = await screen.findByRole("dialog", { name: "VM 인스턴스 만들기" });

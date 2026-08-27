@@ -15,6 +15,7 @@ import { apiRequest } from "@/shared/api";
 import { containerDetailPath } from "@/shared/routes";
 import { formatDateTime } from "@/shared/lib/date-time";
 import { LogViewer } from "@/shared/ui/log-viewer";
+import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 
 interface NetworkDetailPageProps {
   name: string;
@@ -58,6 +59,13 @@ const sectionOrder: NetworkDetailSection[] = [
   "options",
   "labels",
   "inspect",
+];
+
+const networkDetailNavigation = [
+  {
+    items: sectionOrder.map((value) => ({ label: sectionPresentation[value].label, value })),
+    label: "네트워크",
+  },
 ];
 
 function Definition({ label, value }: { label: string; value: ReactNode }) {
@@ -212,175 +220,143 @@ export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: Netwo
 
   return (
     <article className="overseer-detail-page">
-      <div className="overseer-detail-layout">
-        <aside className="overseer-detail-sidebar">
-          <nav aria-label="네트워크 상세 메뉴">
-            <div
-              aria-labelledby="overseer-network-detail-navigation"
-              className="overseer-detail-nav-group"
-              role="group"
-            >
-              <span className="overseer-detail-nav-label" id="overseer-network-detail-navigation">
-                네트워크
-              </span>
-              <div className="overseer-detail-nav-items">
-                {sectionOrder.map((value) => (
-                  <button
-                    aria-current={section === value ? "page" : undefined}
-                    key={value}
-                    onClick={() => setSection(value)}
-                    type="button"
-                  >
-                    {sectionPresentation[value].label}
-                  </button>
-                ))}
+      <SectionedWorkspace<NetworkDetailSection>
+        category="네트워크"
+        description={presentation.description}
+        groups={networkDetailNavigation}
+        navigationLabel="네트워크 상세 메뉴"
+        onSectionChange={setSection}
+        section={section}
+        title={presentation.label}
+      >
+        {section === "overview" ? (
+          <>
+            <section aria-label="네트워크 개요" className="overseer-detail-summary">
+              <div>
+                <span>드라이버</span>
+                <strong>{detail.driver}</strong>
               </div>
-            </div>
-          </nav>
-        </aside>
-
-        <div className="overseer-detail-content">
-          <header className="overseer-detail-content-header">
-            <p>네트워크</p>
-            <h2 className="city-text-section-title">{presentation.label}</h2>
-            <span className="city-text-supporting">{presentation.description}</span>
-          </header>
-
-          {section === "overview" ? (
-            <>
-              <section aria-label="네트워크 개요" className="overseer-detail-summary">
+              <div>
+                <span>범위</span>
+                <strong>{detail.scope}</strong>
+              </div>
+              <div>
+                <span>생성</span>
+                <strong>
+                  <time dateTime={detail.createdAt}>{formatDateTime(detail.createdAt)}</time>
+                </strong>
+              </div>
+            </section>
+            <section className="overseer-detail-section">
+              <header>
                 <div>
-                  <span>드라이버</span>
-                  <strong>{detail.driver}</strong>
+                  <h3 className="city-text-subsection-title">식별 및 동작 정보</h3>
                 </div>
-                <div>
-                  <span>범위</span>
-                  <strong>{detail.scope}</strong>
-                </div>
-                <div>
-                  <span>생성</span>
-                  <strong>
-                    <time dateTime={detail.createdAt}>{formatDateTime(detail.createdAt)}</time>
-                  </strong>
-                </div>
-              </section>
-              <section className="overseer-detail-section">
-                <header>
-                  <div>
-                    <h3 className="city-text-subsection-title">식별 및 동작 정보</h3>
-                  </div>
-                </header>
-                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-                  <Definition label="이름" value={detail.name} />
-                  <Definition label="ID" value={<code>{detail.id}</code>} />
-                  <Definition
-                    label="종류"
-                    value={
-                      detail.builtIn ? (
-                        <Badge appearance="outline" size="sm" tone="neutral">
-                          Docker 기본 네트워크
-                        </Badge>
-                      ) : (
-                        "사용자 네트워크"
-                      )
-                    }
-                  />
-                  <Definition label="IPv4" value={detail.enableIpv4 ? "사용" : "사용 안 함"} />
-                  <Definition label="IPv6" value={detail.enableIpv6 ? "사용" : "사용 안 함"} />
-                  <Definition label="내부 전용" value={detail.internal ? "예" : "아니요"} />
-                  <Definition label="수동 연결" value={detail.attachable ? "허용" : "허용 안 함"} />
-                  <Definition label="Ingress" value={detail.ingress ? "예" : "아니요"} />
-                  <Definition label="설정 전용" value={detail.configOnly ? "예" : "아니요"} />
-                </dl>
-              </section>
-            </>
-          ) : null}
-
-          {section === "ipam" ? (
-            <div className="overseer-detail-section-list">
-              <dl className="overseer-detail-definitions">
+              </header>
+              <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                <Definition label="이름" value={detail.name} />
+                <Definition label="ID" value={<code>{detail.id}</code>} />
                 <Definition
-                  label="IP 주소 관리 드라이버"
-                  value={<code>{detail.ipamDriver}</code>}
+                  label="종류"
+                  value={
+                    detail.builtIn ? (
+                      <Badge appearance="outline" size="sm" tone="neutral">
+                        Docker 기본 네트워크
+                      </Badge>
+                    ) : (
+                      "사용자 네트워크"
+                    )
+                  }
                 />
-                <Definition label="주소 풀" value={`${detail.ipamConfigurations.length}개`} />
+                <Definition label="IPv4" value={detail.enableIpv4 ? "사용" : "사용 안 함"} />
+                <Definition label="IPv6" value={detail.enableIpv6 ? "사용" : "사용 안 함"} />
+                <Definition label="내부 전용" value={detail.internal ? "예" : "아니요"} />
+                <Definition label="수동 연결" value={detail.attachable ? "허용" : "허용 안 함"} />
+                <Definition label="Ingress" value={detail.ingress ? "예" : "아니요"} />
+                <Definition label="설정 전용" value={detail.configOnly ? "예" : "아니요"} />
               </dl>
-              {detail.ipamConfigurations.map((configuration, index) => (
-                <section
-                  className="overseer-detail-section"
-                  key={`${configuration.subnet}-${index}`}
-                >
-                  <header>
-                    <div>
-                      <h3 className="city-text-subsection-title">주소 풀 {index + 1}</h3>
-                    </div>
-                  </header>
-                  <dl className="overseer-detail-definitions">
-                    <Definition label="Subnet" value={<code>{configuration.subnet ?? "—"}</code>} />
-                    <Definition
-                      label="게이트웨이"
-                      value={<code>{configuration.gateway ?? "—"}</code>}
-                    />
-                    <Definition
-                      label="IP Range"
-                      value={<code>{configuration.ipRange ?? "—"}</code>}
-                    />
-                  </dl>
-                  {configuration.auxiliaryAddresses.length > 0 ? (
-                    <KeyValues empty="" values={configuration.auxiliaryAddresses} />
-                  ) : null}
-                </section>
-              ))}
-              {detail.ipamConfigurations.length === 0 ? (
-                <p className="overseer-detail-empty-copy">IP 주소 풀이 없습니다.</p>
-              ) : null}
-            </div>
-          ) : null}
+            </section>
+          </>
+        ) : null}
 
-          {section === "containers" ? (
-            <Containers containers={detail.containers} onOpenContainer={onOpenContainer} />
-          ) : null}
-
-          {section === "options" ? (
-            <div className="overseer-detail-section-list">
-              <section className="overseer-detail-section">
+        {section === "ipam" ? (
+          <div className="overseer-detail-section-list">
+            <dl className="overseer-detail-definitions">
+              <Definition label="IP 주소 관리 드라이버" value={<code>{detail.ipamDriver}</code>} />
+              <Definition label="주소 풀" value={`${detail.ipamConfigurations.length}개`} />
+            </dl>
+            {detail.ipamConfigurations.map((configuration, index) => (
+              <section className="overseer-detail-section" key={`${configuration.subnet}-${index}`}>
                 <header>
                   <div>
-                    <h3 className="city-text-subsection-title">네트워크 드라이버</h3>
+                    <h3 className="city-text-subsection-title">주소 풀 {index + 1}</h3>
                   </div>
                 </header>
-                <KeyValues empty="네트워크 드라이버 옵션이 없습니다." values={detail.options} />
+                <dl className="overseer-detail-definitions">
+                  <Definition label="Subnet" value={<code>{configuration.subnet ?? "—"}</code>} />
+                  <Definition
+                    label="게이트웨이"
+                    value={<code>{configuration.gateway ?? "—"}</code>}
+                  />
+                  <Definition
+                    label="IP Range"
+                    value={<code>{configuration.ipRange ?? "—"}</code>}
+                  />
+                </dl>
+                {configuration.auxiliaryAddresses.length > 0 ? (
+                  <KeyValues empty="" values={configuration.auxiliaryAddresses} />
+                ) : null}
               </section>
-              <section className="overseer-detail-section">
-                <header>
-                  <div>
-                    <h3 className="city-text-subsection-title">IP 주소 관리 드라이버</h3>
-                  </div>
-                </header>
-                <KeyValues
-                  empty="IP 주소 관리 드라이버 옵션이 없습니다."
-                  values={detail.ipamOptions}
-                />
-              </section>
-            </div>
-          ) : null}
+            ))}
+            {detail.ipamConfigurations.length === 0 ? (
+              <p className="overseer-detail-empty-copy">IP 주소 풀이 없습니다.</p>
+            ) : null}
+          </div>
+        ) : null}
 
-          {section === "labels" ? (
-            <KeyValues empty="라벨이 없습니다." values={detail.labels} />
-          ) : null}
+        {section === "containers" ? (
+          <Containers containers={detail.containers} onOpenContainer={onOpenContainer} />
+        ) : null}
 
-          {section === "inspect" ? (
-            <LogViewer
-              ariaLabel="네트워크 원본 JSON"
-              context={<code>docker network inspect {detail.name}</code>}
-              emptyMessage="원본 정보가 없습니다."
-              height="expanded"
-              optionsLabel="원본 JSON 보기 옵션"
-              value={detail.inspectJson}
-            />
-          ) : null}
-        </div>
-      </div>
+        {section === "options" ? (
+          <div className="overseer-detail-section-list">
+            <section className="overseer-detail-section">
+              <header>
+                <div>
+                  <h3 className="city-text-subsection-title">네트워크 드라이버</h3>
+                </div>
+              </header>
+              <KeyValues empty="네트워크 드라이버 옵션이 없습니다." values={detail.options} />
+            </section>
+            <section className="overseer-detail-section">
+              <header>
+                <div>
+                  <h3 className="city-text-subsection-title">IP 주소 관리 드라이버</h3>
+                </div>
+              </header>
+              <KeyValues
+                empty="IP 주소 관리 드라이버 옵션이 없습니다."
+                values={detail.ipamOptions}
+              />
+            </section>
+          </div>
+        ) : null}
+
+        {section === "labels" ? (
+          <KeyValues empty="라벨이 없습니다." values={detail.labels} />
+        ) : null}
+
+        {section === "inspect" ? (
+          <LogViewer
+            ariaLabel="네트워크 원본 JSON"
+            context={<code>docker network inspect {detail.name}</code>}
+            emptyMessage="원본 정보가 없습니다."
+            height="expanded"
+            optionsLabel="원본 JSON 보기 옵션"
+            value={detail.inspectJson}
+          />
+        ) : null}
+      </SectionedWorkspace>
     </article>
   );
 }

@@ -5,6 +5,7 @@ import type { ContainerKeyValue, VolumeDetail } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
 import { formatDateTime } from "@/shared/lib/date-time";
 import { LogViewer } from "@/shared/ui/log-viewer";
+import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 
 interface VolumeDetailPageProps {
   name: string;
@@ -33,6 +34,13 @@ const sectionPresentation: Record<VolumeDetailSection, { description: string; la
 };
 
 const sectionOrder: VolumeDetailSection[] = ["overview", "settings", "labels", "inspect"];
+
+const volumeDetailNavigation = [
+  {
+    items: sectionOrder.map((value) => ({ label: sectionPresentation[value].label, value })),
+    label: "볼륨",
+  },
+];
 
 function Definition({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -109,96 +117,70 @@ export function VolumeDetailPage({ name, refreshToken }: VolumeDetailPageProps) 
 
   return (
     <article className="overseer-detail-page">
-      <div className="overseer-detail-layout">
-        <aside className="overseer-detail-sidebar">
-          <nav aria-label="볼륨 상세 메뉴">
-            <div
-              aria-labelledby="overseer-volume-detail-navigation"
-              className="overseer-detail-nav-group"
-              role="group"
-            >
-              <span className="overseer-detail-nav-label" id="overseer-volume-detail-navigation">
-                볼륨
-              </span>
-              <div className="overseer-detail-nav-items">
-                {sectionOrder.map((value) => (
-                  <button
-                    aria-current={section === value ? "page" : undefined}
-                    key={value}
-                    onClick={() => setSection(value)}
-                    type="button"
-                  >
-                    {sectionPresentation[value].label}
-                  </button>
-                ))}
+      <SectionedWorkspace<VolumeDetailSection>
+        category="볼륨"
+        description={presentation.description}
+        groups={volumeDetailNavigation}
+        navigationLabel="볼륨 상세 메뉴"
+        onSectionChange={setSection}
+        section={section}
+        title={presentation.label}
+      >
+        {section === "overview" ? (
+          <>
+            <section aria-label="볼륨 개요" className="overseer-detail-summary">
+              <div>
+                <span>드라이버</span>
+                <strong>{detail.driver}</strong>
               </div>
-            </div>
-          </nav>
-        </aside>
-
-        <div className="overseer-detail-content">
-          <header className="overseer-detail-content-header">
-            <p>볼륨</p>
-            <h2 className="city-text-section-title">{presentation.label}</h2>
-            <span className="city-text-supporting">{presentation.description}</span>
-          </header>
-
-          {section === "overview" ? (
-            <>
-              <section aria-label="볼륨 개요" className="overseer-detail-summary">
+              <div>
+                <span>범위</span>
+                <strong>{detail.scope}</strong>
+              </div>
+              <div>
+                <span>생성</span>
+                <strong>
+                  {detail.createdAt ? (
+                    <time dateTime={detail.createdAt}>{formatDateTime(detail.createdAt)}</time>
+                  ) : (
+                    "—"
+                  )}
+                </strong>
+              </div>
+            </section>
+            <section className="overseer-detail-section">
+              <header>
                 <div>
-                  <span>드라이버</span>
-                  <strong>{detail.driver}</strong>
+                  <h3 className="city-text-subsection-title">식별 및 저장 정보</h3>
                 </div>
-                <div>
-                  <span>범위</span>
-                  <strong>{detail.scope}</strong>
-                </div>
-                <div>
-                  <span>생성</span>
-                  <strong>
-                    {detail.createdAt ? (
-                      <time dateTime={detail.createdAt}>{formatDateTime(detail.createdAt)}</time>
-                    ) : (
-                      "—"
-                    )}
-                  </strong>
-                </div>
-              </section>
-              <section className="overseer-detail-section">
-                <header>
-                  <div>
-                    <h3 className="city-text-subsection-title">식별 및 저장 정보</h3>
-                  </div>
-                </header>
-                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-                  <Definition label="이름" value={detail.name} />
-                  <Definition label="Mountpoint" value={<code>{detail.mountpoint}</code>} />
-                </dl>
-              </section>
-            </>
-          ) : null}
+              </header>
+              <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                <Definition label="이름" value={detail.name} />
+                <Definition label="Mountpoint" value={<code>{detail.mountpoint}</code>} />
+              </dl>
+            </section>
+          </>
+        ) : null}
 
-          {section === "settings" ? (
-            <KeyValues empty="드라이버 옵션이 없습니다." values={detail.options} />
-          ) : null}
+        {section === "settings" ? (
+          <KeyValues empty="드라이버 옵션이 없습니다." values={detail.options} />
+        ) : null}
 
-          {section === "labels" ? (
-            <KeyValues empty="라벨이 없습니다." values={detail.labels} />
-          ) : null}
+        {section === "labels" ? (
+          <KeyValues empty="라벨이 없습니다." values={detail.labels} />
+        ) : null}
 
-          {section === "inspect" ? (
-            <LogViewer
-              ariaLabel="볼륨 원본 JSON"
-              context={<code>docker volume inspect {detail.name}</code>}
-              emptyMessage="원본 정보가 없습니다."
-              height="expanded"
-              optionsLabel="원본 JSON 보기 옵션"
-              value={detail.inspectJson}
-            />
-          ) : null}
-        </div>
-      </div>
+        {section === "inspect" ? (
+          <LogViewer
+            ariaLabel="볼륨 원본 JSON"
+            context={<code>docker volume inspect {detail.name}</code>}
+            emptyMessage="원본 정보가 없습니다."
+            height="expanded"
+            optionsLabel="원본 JSON 보기 옵션"
+            value={detail.inspectJson}
+          />
+        ) : null}
+      </SectionedWorkspace>
     </article>
   );
 }

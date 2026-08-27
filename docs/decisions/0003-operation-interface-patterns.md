@@ -2,7 +2,7 @@
 
 ## 상태
 
-채택. `DESIGN.md`를 상위 규칙으로 유지하면서 Overseer 운영 화면에서 반복되는 Table, 상태, 액션과 로그 표현을 구체화합니다.
+채택. `DESIGN.md`와 `docs/design/project-patterns.md`를 상위 규칙으로 유지하면서 Overseer 운영 화면에서 반복되는 Table, 상태, 액션과 로그 표현을 구체화합니다.
 
 ## 화면 위계
 

@@ -21,6 +21,7 @@ import { CommandBlock } from "@/shared/ui/command-block";
 import { composeProjectDetailPath } from "@/shared/routes";
 import { formatDateTime } from "@/shared/lib/date-time";
 import { LogViewer } from "@/shared/ui/log-viewer";
+import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 
 interface ContainerDetailPageProps {
   id: string;
@@ -77,6 +78,13 @@ const sectionOrder: ContainerDetailSection[] = [
   "environment",
   "labels",
   "inspect",
+];
+
+const containerDetailNavigation = [
+  {
+    items: sectionOrder.map((value) => ({ label: sectionPresentation[value].label, value })),
+    label: "컨테이너",
+  },
 ];
 
 const healthStatusPresentation: Record<
@@ -446,274 +454,241 @@ export function ContainerDetailPage({
 
   return (
     <article className="overseer-detail-page">
-      <div className="overseer-detail-layout">
-        <aside className="overseer-detail-sidebar">
-          <nav aria-label="컨테이너 상세 메뉴">
-            <div
-              aria-labelledby="overseer-container-detail-navigation"
-              className="overseer-detail-nav-group"
-              role="group"
-            >
-              <span className="overseer-detail-nav-label" id="overseer-container-detail-navigation">
-                컨테이너
-              </span>
-              <div className="overseer-detail-nav-items">
-                {sectionOrder.map((value) => {
-                  const item = sectionPresentation[value];
-                  return (
-                    <button
-                      aria-current={section === value ? "page" : undefined}
-                      key={value}
-                      onClick={() => setSection(value)}
-                      type="button"
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
+      <SectionedWorkspace<ContainerDetailSection>
+        category="컨테이너"
+        description={presentation.description}
+        groups={containerDetailNavigation}
+        navigationLabel="컨테이너 상세 메뉴"
+        onSectionChange={setSection}
+        section={section}
+        title={presentation.label}
+      >
+        {section === "overview" ? (
+          <>
+            <section aria-label="컨테이너 개요" className="overseer-detail-summary">
+              <div>
+                <span>상태</span>
+                <strong className="overseer-settings-status-value">
+                  <Badge dot size="sm" tone={running ? "success" : "neutral"} />
+                  {summary?.status ?? (detail.running ? "실행 중" : "중지됨")}
+                </strong>
               </div>
-            </div>
-          </nav>
-        </aside>
-
-        <div className="overseer-detail-content">
-          <header className="overseer-detail-content-header">
-            <p>컨테이너</p>
-            <h2 className="city-text-section-title">{presentation.label}</h2>
-            <span className="city-text-supporting">{presentation.description}</span>
-          </header>
-
-          {section === "overview" ? (
-            <>
-              <section aria-label="컨테이너 개요" className="overseer-detail-summary">
-                <div>
-                  <span>상태</span>
-                  <strong className="overseer-settings-status-value">
-                    <Badge dot size="sm" tone={running ? "success" : "neutral"} />
-                    {summary?.status ?? (detail.running ? "실행 중" : "중지됨")}
-                  </strong>
-                </div>
-                <div>
-                  <span>이미지</span>
-                  <strong>{summary?.image ?? spec.image}</strong>
-                </div>
-                <div>
-                  <span>포트</span>
-                  <strong>{summary?.ports || ports.join(" · ") || "—"}</strong>
-                </div>
-              </section>
-
-              {detail.replacementBlockers.length > 0 ? (
-                <Alert.Root appearance="subtle" tone="warning">
-                  <Alert.Title level={3}>일부 설정은 읽기 전용입니다.</Alert.Title>
-                  <Alert.Description>{detail.replacementBlockers.join(" ")}</Alert.Description>
-                </Alert.Root>
-              ) : null}
-
-              <section className="overseer-detail-section">
-                <header>
-                  <div>
-                    <h3 className="city-text-subsection-title">식별 정보</h3>
-                  </div>
-                </header>
-                <dl className="overseer-detail-definitions">
-                  <Definition label="이름" value={spec.name ?? "—"} />
-                  <Definition label="ID" value={<code>{detail.id}</code>} />
-                  {composeProject ? (
-                    <Definition
-                      label="Compose 프로젝트"
-                      value={
-                        <a
-                          className="overseer-detail-link"
-                          href={composeProjectDetailPath(composeProject)}
-                          onClick={(event) =>
-                            followComposeLink(event, composeProject, onOpenCompose)
-                          }
-                        >
-                          {composeProject}
-                          {summary.composeService ? ` / ${summary.composeService}` : ""}
-                        </a>
-                      }
-                    />
-                  ) : null}
-                </dl>
-              </section>
-            </>
-          ) : null}
-
-          {section === "runtime" ? (
-            <div className="overseer-detail-section-list">
-              <section className="overseer-detail-section">
-                <header>
-                  <div>
-                    <h3 className="city-text-subsection-title">기본 정보</h3>
-                    <p>컨테이너가 시작될 때 적용되는 이미지와 프로세스 설정입니다.</p>
-                  </div>
-                </header>
-                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-                  <Definition label="이미지" value={<code>{spec.image}</code>} />
-                  <Definition label="호스트 이름" value={spec.hostname ?? "—"} />
-                  <Definition label="재시작 정책" value={<code>{restartPolicy(detail)}</code>} />
-                  <Definition
-                    label="명령"
-                    value={
-                      spec.command.length > 0 ? (
-                        <code>{spec.command.join(" ")}</code>
-                      ) : (
-                        "지정되지 않음"
-                      )
-                    }
-                  />
-                </dl>
-              </section>
-
-              <section className="overseer-detail-section">
-                <header>
-                  <div>
-                    <h3 className="city-text-subsection-title">리소스 제한</h3>
-                    <p>컨테이너가 사용할 수 있는 CPU와 메모리 한도입니다.</p>
-                  </div>
-                </header>
-                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-                  <Definition label="CPU" value={spec.resources.cpus ?? "제한 없음"} />
-                  <Definition
-                    label="메모리"
-                    value={
-                      spec.resources.memoryMiB === undefined
-                        ? "제한 없음"
-                        : `${spec.resources.memoryMiB} MiB`
-                    }
-                  />
-                </dl>
-              </section>
-
-              <section className="overseer-detail-section">
-                <header>
-                  <div>
-                    <h3 className="city-text-subsection-title">네트워크 및 저장소</h3>
-                    <p>외부 공개 포트, 연결 네트워크와 데이터 마운트입니다.</p>
-                  </div>
-                </header>
-                <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
-                  <Definition
-                    label="포트"
-                    value={
-                      ports.length > 0
-                        ? ports.map((port) => <code key={port}>{port}</code>)
-                        : "없음"
-                    }
-                  />
-                  <Definition
-                    label="네트워크"
-                    value={
-                      spec.networks.length > 0
-                        ? spec.networks.map((network) => <code key={network}>{network}</code>)
-                        : "없음"
-                    }
-                  />
-                  <Definition label="마운트" value={<Mounts mounts={detail.mounts} />} wide />
-                </dl>
-              </section>
-            </div>
-          ) : null}
-
-          {terminalVisible && terminalLoading ? (
-            <section aria-label="터미널 명령 확인 중" className="overseer-detail-loading">
-              <Skeleton />
-              <Skeleton className="overseer-loading-table" />
+              <div>
+                <span>이미지</span>
+                <strong>{summary?.image ?? spec.image}</strong>
+              </div>
+              <div>
+                <span>포트</span>
+                <strong>{summary?.ports || ports.join(" · ") || "—"}</strong>
+              </div>
             </section>
-          ) : null}
 
-          {terminalVisible && terminalError ? (
-            <Alert.Root tone="destructive">
-              <Alert.Title level={3}>터미널 명령을 확인하지 못했습니다.</Alert.Title>
-              <Alert.Description>{terminalError}</Alert.Description>
-              <Alert.Action>
-                <Button
-                  onClick={() => setTerminalAttempt((value) => value + 1)}
-                  size="sm"
-                  variant="outline"
-                >
-                  다시 시도
-                </Button>
-              </Alert.Action>
-            </Alert.Root>
-          ) : null}
-
-          {terminalVisible && terminal && !terminalError ? (
-            <TerminalAccess access={terminal} />
-          ) : null}
-
-          {inspectionVisible && inspectionError ? (
-            <Alert.Root tone="destructive">
-              <Alert.Title level={3}>원본 정보를 불러오지 못했습니다.</Alert.Title>
-              <Alert.Description>{inspectionError}</Alert.Description>
-              <Alert.Action>
-                <Button
-                  onClick={() => setInspectionAttempt((value) => value + 1)}
-                  size="sm"
-                  variant="outline"
-                >
-                  다시 시도
-                </Button>
-              </Alert.Action>
-            </Alert.Root>
-          ) : null}
-
-          {section === "health" && inspectionLoading ? (
-            <section aria-label="상태 검사 불러오는 중" className="overseer-detail-loading">
-              <Skeleton />
-              <Skeleton />
-              <Skeleton className="overseer-loading-table" />
-            </section>
-          ) : null}
-
-          {section === "health" && inspection && !inspectionError ? (
-            inspection.health ? (
-              <HealthCheckHistory health={inspection.health} />
-            ) : (
-              <EmptyState.Root>
-                <EmptyState.Icon>
-                  <Activity aria-hidden="true" />
-                </EmptyState.Icon>
-                <EmptyState.Title level={3}>상태 검사가 설정되지 않았습니다.</EmptyState.Title>
-                <EmptyState.Description>
-                  이미지 또는 Compose에 상태 검사를 추가하면 상태와 실행 이력을 확인할 수 있습니다.
-                </EmptyState.Description>
-              </EmptyState.Root>
-            )
-          ) : null}
-
-          {section === "inspect" && !inspectionError ? (
-            <section className="overseer-detail-section">
+            {detail.replacementBlockers.length > 0 ? (
               <Alert.Root appearance="subtle" tone="warning">
-                <Alert.Title level={3}>민감한 설정이 포함될 수 있습니다.</Alert.Title>
-                <Alert.Description>
-                  원본 JSON에는 환경 변수, 라벨과 호스트 경로가 그대로 표시됩니다.
-                </Alert.Description>
+                <Alert.Title level={3}>일부 설정은 읽기 전용입니다.</Alert.Title>
+                <Alert.Description>{detail.replacementBlockers.join(" ")}</Alert.Description>
               </Alert.Root>
-              <LogViewer
-                ariaLabel="Docker 원본 JSON"
-                context={<code>docker inspect {detail.id.slice(0, 12)}</code>}
-                emptyMessage="원본 정보가 없습니다."
-                height="expanded"
-                loading={inspectionLoading}
-                loadingMessage="원본 JSON을 불러오는 중…"
-                optionsLabel="원본 정보 보기 옵션"
-                value={inspection?.json ?? ""}
-              />
+            ) : null}
+
+            <section className="overseer-detail-section">
+              <header>
+                <div>
+                  <h3 className="city-text-subsection-title">식별 정보</h3>
+                </div>
+              </header>
+              <dl className="overseer-detail-definitions">
+                <Definition label="이름" value={spec.name ?? "—"} />
+                <Definition label="ID" value={<code>{detail.id}</code>} />
+                {composeProject ? (
+                  <Definition
+                    label="Compose 프로젝트"
+                    value={
+                      <a
+                        className="overseer-detail-link"
+                        href={composeProjectDetailPath(composeProject)}
+                        onClick={(event) => followComposeLink(event, composeProject, onOpenCompose)}
+                      >
+                        {composeProject}
+                        {summary.composeService ? ` / ${summary.composeService}` : ""}
+                      </a>
+                    }
+                  />
+                ) : null}
+              </dl>
             </section>
-          ) : null}
+          </>
+        ) : null}
 
-          {section === "environment" ? (
-            <KeyValues empty="환경 변수가 없습니다." values={spec.environment} />
-          ) : null}
+        {section === "runtime" ? (
+          <div className="overseer-detail-section-list">
+            <section className="overseer-detail-section">
+              <header>
+                <div>
+                  <h3 className="city-text-subsection-title">기본 정보</h3>
+                  <p>컨테이너가 시작될 때 적용되는 이미지와 프로세스 설정입니다.</p>
+                </div>
+              </header>
+              <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                <Definition label="이미지" value={<code>{spec.image}</code>} />
+                <Definition label="호스트 이름" value={spec.hostname ?? "—"} />
+                <Definition label="재시작 정책" value={<code>{restartPolicy(detail)}</code>} />
+                <Definition
+                  label="명령"
+                  value={
+                    spec.command.length > 0 ? (
+                      <code>{spec.command.join(" ")}</code>
+                    ) : (
+                      "지정되지 않음"
+                    )
+                  }
+                />
+              </dl>
+            </section>
 
-          {section === "labels" ? (
-            <KeyValues empty="사용자 라벨이 없습니다." values={spec.labels} />
-          ) : null}
-        </div>
-      </div>
+            <section className="overseer-detail-section">
+              <header>
+                <div>
+                  <h3 className="city-text-subsection-title">리소스 제한</h3>
+                  <p>컨테이너가 사용할 수 있는 CPU와 메모리 한도입니다.</p>
+                </div>
+              </header>
+              <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                <Definition label="CPU" value={spec.resources.cpus ?? "제한 없음"} />
+                <Definition
+                  label="메모리"
+                  value={
+                    spec.resources.memoryMiB === undefined
+                      ? "제한 없음"
+                      : `${spec.resources.memoryMiB} MiB`
+                  }
+                />
+              </dl>
+            </section>
+
+            <section className="overseer-detail-section">
+              <header>
+                <div>
+                  <h3 className="city-text-subsection-title">네트워크 및 저장소</h3>
+                  <p>외부 공개 포트, 연결 네트워크와 데이터 마운트입니다.</p>
+                </div>
+              </header>
+              <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
+                <Definition
+                  label="포트"
+                  value={
+                    ports.length > 0 ? ports.map((port) => <code key={port}>{port}</code>) : "없음"
+                  }
+                />
+                <Definition
+                  label="네트워크"
+                  value={
+                    spec.networks.length > 0
+                      ? spec.networks.map((network) => <code key={network}>{network}</code>)
+                      : "없음"
+                  }
+                />
+                <Definition label="마운트" value={<Mounts mounts={detail.mounts} />} wide />
+              </dl>
+            </section>
+          </div>
+        ) : null}
+
+        {terminalVisible && terminalLoading ? (
+          <section aria-label="터미널 명령 확인 중" className="overseer-detail-loading">
+            <Skeleton />
+            <Skeleton className="overseer-loading-table" />
+          </section>
+        ) : null}
+
+        {terminalVisible && terminalError ? (
+          <Alert.Root tone="destructive">
+            <Alert.Title level={3}>터미널 명령을 확인하지 못했습니다.</Alert.Title>
+            <Alert.Description>{terminalError}</Alert.Description>
+            <Alert.Action>
+              <Button
+                onClick={() => setTerminalAttempt((value) => value + 1)}
+                size="sm"
+                variant="outline"
+              >
+                다시 시도
+              </Button>
+            </Alert.Action>
+          </Alert.Root>
+        ) : null}
+
+        {terminalVisible && terminal && !terminalError ? (
+          <TerminalAccess access={terminal} />
+        ) : null}
+
+        {inspectionVisible && inspectionError ? (
+          <Alert.Root tone="destructive">
+            <Alert.Title level={3}>원본 정보를 불러오지 못했습니다.</Alert.Title>
+            <Alert.Description>{inspectionError}</Alert.Description>
+            <Alert.Action>
+              <Button
+                onClick={() => setInspectionAttempt((value) => value + 1)}
+                size="sm"
+                variant="outline"
+              >
+                다시 시도
+              </Button>
+            </Alert.Action>
+          </Alert.Root>
+        ) : null}
+
+        {section === "health" && inspectionLoading ? (
+          <section aria-label="상태 검사 불러오는 중" className="overseer-detail-loading">
+            <Skeleton />
+            <Skeleton />
+            <Skeleton className="overseer-loading-table" />
+          </section>
+        ) : null}
+
+        {section === "health" && inspection && !inspectionError ? (
+          inspection.health ? (
+            <HealthCheckHistory health={inspection.health} />
+          ) : (
+            <EmptyState.Root>
+              <EmptyState.Icon>
+                <Activity aria-hidden="true" />
+              </EmptyState.Icon>
+              <EmptyState.Title level={3}>상태 검사가 설정되지 않았습니다.</EmptyState.Title>
+              <EmptyState.Description>
+                이미지 또는 Compose에 상태 검사를 추가하면 상태와 실행 이력을 확인할 수 있습니다.
+              </EmptyState.Description>
+            </EmptyState.Root>
+          )
+        ) : null}
+
+        {section === "inspect" && !inspectionError ? (
+          <section className="overseer-detail-section">
+            <Alert.Root appearance="subtle" tone="warning">
+              <Alert.Title level={3}>민감한 설정이 포함될 수 있습니다.</Alert.Title>
+              <Alert.Description>
+                원본 JSON에는 환경 변수, 라벨과 호스트 경로가 그대로 표시됩니다.
+              </Alert.Description>
+            </Alert.Root>
+            <LogViewer
+              ariaLabel="Docker 원본 JSON"
+              context={<code>docker inspect {detail.id.slice(0, 12)}</code>}
+              emptyMessage="원본 정보가 없습니다."
+              height="expanded"
+              loading={inspectionLoading}
+              loadingMessage="원본 JSON을 불러오는 중…"
+              optionsLabel="원본 정보 보기 옵션"
+              value={inspection?.json ?? ""}
+            />
+          </section>
+        ) : null}
+
+        {section === "environment" ? (
+          <KeyValues empty="환경 변수가 없습니다." values={spec.environment} />
+        ) : null}
+
+        {section === "labels" ? (
+          <KeyValues empty="사용자 라벨이 없습니다." values={spec.labels} />
+        ) : null}
+      </SectionedWorkspace>
     </article>
   );
 }
