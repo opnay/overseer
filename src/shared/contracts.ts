@@ -346,6 +346,7 @@ export interface ComposeProjectSummary {
 
 export interface ComposeBuilderSource {
   configHash: string;
+  mode: ComposeBuilderInput["mode"];
 }
 
 export interface ComposeBuilderService {
@@ -368,15 +369,19 @@ export interface ComposeBuilderSpec {
   volumes: string[];
 }
 
+export type ComposeBuilderInput =
+  | { mode: "form"; spec: ComposeBuilderSpec }
+  | { mode: "yaml"; name: string; yaml: string };
+
 export interface ComposeBuilderProjectDetail {
   configHash: string;
-  spec: ComposeBuilderSpec;
+  input: ComposeBuilderInput;
   yaml: string;
 }
 
 export interface UpdateComposeBuilderInput {
   expectedConfigHash: string;
-  spec: ComposeBuilderSpec;
+  input: ComposeBuilderInput;
 }
 
 export interface ComposeRemoteSource {

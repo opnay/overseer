@@ -4,7 +4,7 @@ import { Checkbox } from "@opnay/city-ds-react/checkbox";
 import { Dialog } from "@opnay/city-ds-react/dialog";
 import { Field } from "@opnay/city-ds-react/field";
 import { Fieldset } from "@opnay/city-ds-react/fieldset";
-import { Input } from "@opnay/city-ds-react/input";
+import { Input, Textarea } from "@opnay/city-ds-react/input";
 import { NumberField } from "@opnay/city-ds-react/number-field";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
@@ -12,6 +12,7 @@ import { Tabs } from "@opnay/city-ds-react/tabs";
 import { Plus } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import type {
+  ComposeBuilderInput,
   ComposeBuilderProjectDetail,
   ComposeBuilderService,
   ComposeBuilderSpec,
@@ -25,6 +26,7 @@ import {
   emptyComposeBuilderSpec,
   validateComposeBuilderSpec,
 } from "@contracts/compose-builder.ts";
+import { isComposeProjectName } from "@contracts/validation.ts";
 import { ApiRequestError, apiRequest } from "@/shared/api";
 
 function SelectControl({
@@ -500,7 +502,7 @@ export function BuilderComposeDialog({
   projectName,
 }: {
   onOpenChange: (open: boolean) => void;
-  onSubmit: (spec: ComposeBuilderSpec, expectedConfigHash?: string) => Promise<void>;
+  onSubmit: (input: ComposeBuilderInput, expectedConfigHash?: string) => Promise<void>;
   open: boolean;
   projectName?: string;
 }) {
@@ -510,16 +512,21 @@ export function BuilderComposeDialog({
   const [loading, setLoading] = useState(false);
   const [spec, setSpec] = useState<ComposeBuilderSpec>(emptyComposeBuilderSpec);
   const [submitting, setSubmitting] = useState(false);
-  const [tab, setTab] = useState("form");
+  const [tab, setTab] = useState<ComposeBuilderInput["mode"]>("form");
+  const [yaml, setYaml] = useState("");
+  const [yamlAuthored, setYamlAuthored] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setErrors([]);
     setFormError(undefined);
-    setTab("form");
     if (!projectName) {
       setConfigHash(undefined);
-      setSpec(emptyComposeBuilderSpec());
+      const initial = emptyComposeBuilderSpec();
+      setSpec(initial);
+      setTab("form");
+      setYaml(composeBuilderYaml(initial));
+      setYamlAuthored(false);
       return;
     }
     setLoading(true);
@@ -528,7 +535,16 @@ export function BuilderComposeDialog({
     )
       .then(({ project }) => {
         setConfigHash(project.configHash);
-        setSpec(project.spec);
+        if (project.input.mode === "form") {
+          setSpec(project.input.spec);
+          setTab("form");
+          setYamlAuthored(false);
+        } else {
+          setSpec({ ...emptyComposeBuilderSpec(), name: project.input.name });
+          setTab("yaml");
+          setYamlAuthored(true);
+        }
+        setYaml(project.yaml);
       })
       .catch((error) =>
         setFormError(
@@ -540,16 +556,28 @@ export function BuilderComposeDialog({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const issues = validateComposeBuilderSpec(spec).map(({ message }) => message);
+    const issues =
+      tab === "form"
+        ? validateComposeBuilderSpec(spec).map(({ message }) => message)
+        : [
+            ...(!isComposeProjectName(spec.name)
+              ? ["프로젝트 이름은 소문자·숫자로 시작하고 밑줄·하이픈만 사용할 수 있습니다."]
+              : []),
+            ...(yaml.trim().length === 0 || new TextEncoder().encode(yaml).byteLength > 1024 * 1024
+              ? ["Compose YAML은 1MB 이하로 입력하십시오."]
+              : []),
+          ];
     setErrors([...new Set(issues)]);
     if (issues.length > 0) {
-      setTab("form");
       return;
     }
     setSubmitting(true);
     setFormError(undefined);
     try {
-      await onSubmit(spec, configHash);
+      await onSubmit(
+        tab === "form" ? { mode: "form", spec } : { mode: "yaml", name: spec.name, yaml },
+        configHash,
+      );
       onOpenChange(false);
     } catch (error) {
       setFormError(
@@ -562,8 +590,6 @@ export function BuilderComposeDialog({
     }
   };
 
-  const previewIssues = validateComposeBuilderSpec(spec);
-
   return (
     <Dialog.Root onOpenChange={onOpenChange} open={open}>
       <Dialog.Portal>
@@ -572,9 +598,9 @@ export function BuilderComposeDialog({
           <Dialog.Popup className="overseer-container-dialog" scroll="body" size="xl">
             <Dialog.Header>
               <div>
-                <Dialog.Title>{projectName ? "폼 Compose 수정" : "폼 Compose 추가"}</Dialog.Title>
+                <Dialog.Title>{projectName ? "Compose 수정" : "Compose 추가"}</Dialog.Title>
                 <Dialog.Description>
-                  서비스와 리소스를 입력하고 생성될 compose.yaml을 확인합니다.
+                  폼으로 구성하거나 compose.yaml을 직접 작성합니다. 저장 시 선택한 탭을 사용합니다.
                 </Dialog.Description>
               </div>
             </Dialog.Header>
@@ -586,141 +612,163 @@ export function BuilderComposeDialog({
                     <Skeleton className="overseer-loading-table" />
                   </div>
                 ) : (
-                  <Tabs.Root onValueChange={(value) => setTab(String(value))} value={tab}>
-                    <Tabs.List aria-label="Compose 입력 방식">
-                      <Tabs.Tab value="form">폼</Tabs.Tab>
-                      <Tabs.Tab value="yaml">YAML 미리보기</Tabs.Tab>
-                      <Tabs.Indicator />
-                    </Tabs.List>
-                    <Tabs.Panel className="overseer-compose-builder-panel" value="form">
-                      {formError ? (
-                        <Alert.Root tone="destructive">
-                          <Alert.Title level={3}>Compose 구성을 저장하지 못했습니다.</Alert.Title>
-                          <Alert.Description>{formError}</Alert.Description>
-                        </Alert.Root>
-                      ) : null}
-                      {errors.length > 0 ? (
-                        <Alert.Root tone="destructive">
-                          <Alert.Title level={3}>입력값을 확인하십시오.</Alert.Title>
-                          <Alert.Description>
-                            <ul>
-                              {errors.slice(0, 6).map((message) => (
-                                <li key={message}>{message}</li>
-                              ))}
-                            </ul>
-                          </Alert.Description>
-                        </Alert.Root>
-                      ) : null}
-                      <Fieldset.Root appearance="plain">
-                        <Fieldset.Legend>프로젝트</Fieldset.Legend>
-                        <Fieldset.Content>
-                          <Field.Root>
-                            <Field.Label>프로젝트 이름</Field.Label>
-                            <Input
-                              aria-label="Compose 프로젝트 이름"
-                              disabled={Boolean(projectName)}
-                              onValueChange={(name) => setSpec((current) => ({ ...current, name }))}
-                              placeholder="demo-stack"
-                              value={spec.name}
-                            />
-                            <Field.Description>
-                              저장 후 프로젝트 이름은 변경할 수 없습니다.
-                            </Field.Description>
-                          </Field.Root>
-                        </Fieldset.Content>
-                      </Fieldset.Root>
-                      <div className="overseer-form-section-grid">
-                        <Fieldset.Root appearance="plain">
-                          <Fieldset.Legend>네트워크</Fieldset.Legend>
-                          <Fieldset.Description>
-                            기본 bridge 네트워크를 만듭니다.
-                          </Fieldset.Description>
-                          <Fieldset.Content>
-                            <StringRows
-                              addLabel="네트워크 추가"
-                              ariaLabel="Compose 네트워크 이름"
-                              onChange={(networks) =>
-                                setSpec((current) => ({ ...current, networks }))
-                              }
-                              placeholder="frontend"
-                              values={spec.networks}
-                            />
-                          </Fieldset.Content>
-                        </Fieldset.Root>
-                        <Fieldset.Root appearance="plain">
-                          <Fieldset.Legend>이름 있는 볼륨</Fieldset.Legend>
-                          <Fieldset.Description>
-                            Docker가 관리하는 볼륨을 만듭니다.
-                          </Fieldset.Description>
-                          <Fieldset.Content>
-                            <StringRows
-                              addLabel="볼륨 추가"
-                              ariaLabel="Compose 볼륨 이름"
-                              onChange={(volumes) =>
-                                setSpec((current) => ({ ...current, volumes }))
-                              }
-                              placeholder="app-data"
-                              values={spec.volumes}
-                            />
-                          </Fieldset.Content>
-                        </Fieldset.Root>
-                      </div>
-                      <div className="overseer-compose-services">
-                        {spec.services.map((service, index) => (
-                          <ServiceFields
-                            index={index}
-                            key={index}
-                            onChange={(nextService) =>
-                              setSpec((current) => ({
-                                ...current,
-                                services: current.services.map((item, itemIndex) =>
-                                  itemIndex === index ? nextService : item,
-                                ),
-                              }))
-                            }
-                            onRemove={() =>
-                              setSpec((current) => ({
-                                ...current,
-                                services: current.services.filter(
-                                  (_, itemIndex) => itemIndex !== index,
-                                ),
-                              }))
-                            }
-                            service={service}
+                  <div className="overseer-compose-builder-stack">
+                    {formError ? (
+                      <Alert.Root tone="destructive">
+                        <Alert.Title level={3}>Compose 구성을 저장하지 못했습니다.</Alert.Title>
+                        <Alert.Description>{formError}</Alert.Description>
+                      </Alert.Root>
+                    ) : null}
+                    {errors.length > 0 ? (
+                      <Alert.Root tone="destructive">
+                        <Alert.Title level={3}>입력값을 확인하십시오.</Alert.Title>
+                        <Alert.Description>
+                          <ul>
+                            {errors.slice(0, 6).map((message) => (
+                              <li key={message}>{message}</li>
+                            ))}
+                          </ul>
+                        </Alert.Description>
+                      </Alert.Root>
+                    ) : null}
+                    <Fieldset.Root appearance="plain">
+                      <Fieldset.Legend>프로젝트</Fieldset.Legend>
+                      <Fieldset.Content>
+                        <Field.Root>
+                          <Field.Label>프로젝트 이름</Field.Label>
+                          <Input
+                            aria-label="Compose 프로젝트 이름"
+                            disabled={Boolean(projectName)}
+                            onValueChange={(name) => setSpec((current) => ({ ...current, name }))}
+                            placeholder="demo-stack"
+                            value={spec.name}
                           />
-                        ))}
-                        <Button
-                          onClick={() =>
-                            setSpec((current) => ({
-                              ...current,
-                              services: [
-                                ...current.services,
-                                emptyComposeBuilderService(current.services.length + 1),
-                              ],
-                            }))
-                          }
-                          type="button"
-                          variant="outline"
+                          <Field.Description>
+                            저장 후 프로젝트 이름은 변경할 수 없습니다.
+                          </Field.Description>
+                        </Field.Root>
+                      </Fieldset.Content>
+                    </Fieldset.Root>
+                    <Tabs.Root
+                      onValueChange={(value) => {
+                        const nextTab = String(value) as ComposeBuilderInput["mode"];
+                        if (nextTab === "yaml" && tab === "form" && !yamlAuthored) {
+                          setYaml(composeBuilderYaml(spec));
+                        }
+                        setErrors([]);
+                        setTab(nextTab);
+                      }}
+                      value={tab}
+                    >
+                      <Tabs.List aria-label="Compose 입력 방식">
+                        <Tabs.Tab value="form">폼</Tabs.Tab>
+                        <Tabs.Tab value="yaml">YAML로 작성</Tabs.Tab>
+                        <Tabs.Indicator />
+                      </Tabs.List>
+                      <Tabs.Panel className="overseer-compose-builder-panel" value="form">
+                        <div className="overseer-form-section-grid">
+                          <Fieldset.Root appearance="plain">
+                            <Fieldset.Legend>네트워크</Fieldset.Legend>
+                            <Fieldset.Description>
+                              기본 bridge 네트워크를 만듭니다.
+                            </Fieldset.Description>
+                            <Fieldset.Content>
+                              <StringRows
+                                addLabel="네트워크 추가"
+                                ariaLabel="Compose 네트워크 이름"
+                                onChange={(networks) =>
+                                  setSpec((current) => ({ ...current, networks }))
+                                }
+                                placeholder="frontend"
+                                values={spec.networks}
+                              />
+                            </Fieldset.Content>
+                          </Fieldset.Root>
+                          <Fieldset.Root appearance="plain">
+                            <Fieldset.Legend>이름 있는 볼륨</Fieldset.Legend>
+                            <Fieldset.Description>
+                              Docker가 관리하는 볼륨을 만듭니다.
+                            </Fieldset.Description>
+                            <Fieldset.Content>
+                              <StringRows
+                                addLabel="볼륨 추가"
+                                ariaLabel="Compose 볼륨 이름"
+                                onChange={(volumes) =>
+                                  setSpec((current) => ({ ...current, volumes }))
+                                }
+                                placeholder="app-data"
+                                values={spec.volumes}
+                              />
+                            </Fieldset.Content>
+                          </Fieldset.Root>
+                        </div>
+                        <div className="overseer-compose-services">
+                          {spec.services.map((service, index) => (
+                            <ServiceFields
+                              index={index}
+                              key={index}
+                              onChange={(nextService) =>
+                                setSpec((current) => ({
+                                  ...current,
+                                  services: current.services.map((item, itemIndex) =>
+                                    itemIndex === index ? nextService : item,
+                                  ),
+                                }))
+                              }
+                              onRemove={() =>
+                                setSpec((current) => ({
+                                  ...current,
+                                  services: current.services.filter(
+                                    (_, itemIndex) => itemIndex !== index,
+                                  ),
+                                }))
+                              }
+                              service={service}
+                            />
+                          ))}
+                          <Button
+                            onClick={() =>
+                              setSpec((current) => ({
+                                ...current,
+                                services: [
+                                  ...current.services,
+                                  emptyComposeBuilderService(current.services.length + 1),
+                                ],
+                              }))
+                            }
+                            type="button"
+                            variant="outline"
+                          >
+                            <Plus aria-hidden="true" size={14} />
+                            서비스 추가
+                          </Button>
+                        </div>
+                      </Tabs.Panel>
+                      <Tabs.Panel className="overseer-compose-builder-panel" value="yaml">
+                        <section
+                          aria-label="Compose YAML 편집기"
+                          className="overseer-compose-yaml-editor"
                         >
-                          <Plus aria-hidden="true" size={14} />
-                          서비스 추가
-                        </Button>
-                      </div>
-                    </Tabs.Panel>
-                    <Tabs.Panel className="overseer-compose-builder-panel" value="yaml">
-                      {previewIssues.length > 0 ? (
-                        <Alert.Root tone="warning">
-                          <Alert.Title level={3}>미완성된 입력이 있습니다.</Alert.Title>
-                          <Alert.Description>
-                            저장 전 폼 탭에서 {previewIssues.length}개 항목을 확인하십시오.
-                          </Alert.Description>
-                        </Alert.Root>
-                      ) : null}
-                      <pre className="overseer-compose-yaml-preview">
-                        <code>{composeBuilderYaml(spec)}</code>
-                      </pre>
-                    </Tabs.Panel>
-                  </Tabs.Root>
+                          <div className="overseer-log-viewer-toolbar">
+                            <div className="overseer-log-viewer-context">
+                              <code>compose.yaml</code>
+                              <span>YAML 직접 작성</span>
+                            </div>
+                          </div>
+                          <Textarea
+                            aria-label="Compose YAML"
+                            className="overseer-compose-yaml-editor-input"
+                            onValueChange={(value) => {
+                              setYaml(value);
+                              setYamlAuthored(true);
+                            }}
+                            spellCheck={false}
+                            value={yaml}
+                          />
+                        </section>
+                      </Tabs.Panel>
+                    </Tabs.Root>
+                  </div>
                 )}
               </Dialog.Body>
               <Dialog.Footer>
@@ -744,18 +792,18 @@ export function CreateBuilderComposeDialog({
   onSubmit,
 }: {
   disabled?: boolean;
-  onSubmit: (spec: ComposeBuilderSpec) => Promise<void>;
+  onSubmit: (input: ComposeBuilderInput) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Button disabled={disabled} onClick={() => setOpen(true)} size="sm">
         <Plus aria-hidden="true" size={14} />
-        폼으로 추가
+        직접 작성
       </Button>
       <BuilderComposeDialog
         onOpenChange={setOpen}
-        onSubmit={(spec) => onSubmit(spec)}
+        onSubmit={(input) => onSubmit(input)}
         open={open}
       />
     </>

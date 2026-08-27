@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import type {
   ComposeBuilderProjectDetail,
-  ComposeBuilderSpec,
+  ComposeBuilderInput,
   ComposeProjectAction,
   ComposeProjectDetail,
   ComposeProjectSummary,
@@ -89,7 +89,7 @@ export class ComposeProjectService {
       const active = discoveredByName.get(project.name);
       discoveredByName.delete(project.name);
       return {
-        builder: { configHash: project.configHash },
+        builder: { configHash: project.configHash, mode: project.input.mode },
         configFiles: [project.configFile],
         name: project.name,
         status: active?.status ?? "registered",
@@ -161,7 +161,7 @@ export class ComposeProjectService {
       if (!builder) {
         throw new ExpectedError(
           "builder_compose_not_found",
-          "폼 Compose 프로젝트를 찾을 수 없습니다.",
+          "Compose 프로젝트를 찾을 수 없습니다.",
           404,
         );
       }
@@ -179,11 +179,11 @@ export class ComposeProjectService {
     if (!project) {
       throw new ExpectedError(
         "builder_compose_not_found",
-        "폼 Compose 프로젝트를 찾을 수 없습니다.",
+        "Compose 프로젝트를 찾을 수 없습니다.",
         404,
       );
     }
-    return { configHash: project.configHash, spec: project.spec, yaml: project.yaml };
+    return { configHash: project.configHash, input: project.input, yaml: project.yaml };
   }
 
   async logs(name: string): Promise<string> {
@@ -233,10 +233,10 @@ export class ComposeProjectService {
     );
   }
 
-  async registerBuilder(spec: ComposeBuilderSpec, progress?: OperationProgress): Promise<void> {
+  async registerBuilder(input: ComposeBuilderInput, progress?: OperationProgress): Promise<void> {
     const [discovered, remote] = await Promise.all([this.discovered(), this.remoteCompose.list()]);
     await this.builderCompose.register(
-      spec,
+      input,
       [...discovered, ...remote].map(({ name }) => name),
       progress,
     );
@@ -250,7 +250,7 @@ export class ComposeProjectService {
     if ((await this.discovered()).some((project) => project.name === name)) {
       throw new ExpectedError(
         "builder_compose_active",
-        "폼 Compose 프로젝트를 먼저 내린 뒤 수정하십시오.",
+        "Compose 프로젝트를 먼저 내린 뒤 수정하십시오.",
         409,
       );
     }
@@ -274,7 +274,7 @@ export class ComposeProjectService {
         409,
       );
     }
-    progress?.step("URL Compose 등록 해제 중");
+    progress?.step("URL Compose 삭제 중");
     await this.remoteCompose.remove(name);
   }
 
@@ -282,11 +282,11 @@ export class ComposeProjectService {
     if ((await this.discovered()).some((project) => project.name === name)) {
       throw new ExpectedError(
         "builder_compose_active",
-        "폼 Compose 프로젝트의 컨테이너와 네트워크를 먼저 내리십시오.",
+        "Compose 프로젝트의 컨테이너와 네트워크를 먼저 내리십시오.",
         409,
       );
     }
-    progress?.step("폼 Compose 등록 해제 중");
+    progress?.step("Compose 삭제 중");
     await this.builderCompose.remove(name);
   }
 

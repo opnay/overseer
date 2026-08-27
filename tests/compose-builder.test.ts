@@ -100,7 +100,7 @@ describe("BuilderComposeService", () => {
       store,
       validate,
     });
-    const registered = await service.register(fixture(), []);
+    const registered = await service.register({ mode: "form", spec: fixture() }, []);
     expect(registered.configHash).toMatch(/^[a-f0-9]{64}$/);
     expect(await readFile(registered.configFile, "utf8")).toBe(registered.yaml);
     expect(validate).toHaveBeenCalledWith("demo-stack", registered.yaml);
@@ -109,14 +109,14 @@ describe("BuilderComposeService", () => {
     changed.services[0]!.tag = "1.30-alpine";
     const updated = await service.update("demo-stack", {
       expectedConfigHash: registered.configHash,
-      spec: changed,
+      input: { mode: "form", spec: changed },
     });
     expect(updated.configHash).not.toBe(registered.configHash);
     expect(updated.yaml).toContain('image: "nginx:1.30-alpine"');
     await expect(
       service.update("demo-stack", {
         expectedConfigHash: registered.configHash,
-        spec: changed,
+        input: { mode: "form", spec: changed },
       }),
     ).rejects.toThrow("다시 불러온 뒤");
 
@@ -125,7 +125,10 @@ describe("BuilderComposeService", () => {
       dataDirectory: directory,
       databasePath: join(directory, "overseer.sqlite"),
     });
-    expect(reopenedStore.get("demo-stack")?.spec.services[0]?.tag).toBe("1.30-alpine");
+    expect(reopenedStore.get("demo-stack")?.input).toMatchObject({
+      mode: "form",
+      spec: { services: [{ tag: "1.30-alpine" }] },
+    });
     reopenedStore.close();
 
     const removalStore = new BuilderComposeStore({
@@ -139,5 +142,23 @@ describe("BuilderComposeService", () => {
     await removalService.remove("demo-stack");
     expect(await removalService.get("demo-stack")).toBeUndefined();
     removalStore.close();
+  });
+
+  it("persists directly authored YAML without rewriting it", async () => {
+    const { store } = await temporaryStore();
+    const validate = vi.fn(async () => undefined);
+    const service = new BuilderComposeService(vi.fn() as unknown as CommandRunner, {
+      store,
+      validate,
+    });
+    const yaml = "services:\n  web:\n    image: nginx:alpine\n# keep this comment\n";
+
+    const registered = await service.register({ mode: "yaml", name: "yaml-stack", yaml }, []);
+
+    expect(registered.input).toEqual({ mode: "yaml", name: "yaml-stack", yaml });
+    expect(registered.yaml).toBe(yaml);
+    expect(await readFile(registered.configFile, "utf8")).toBe(yaml);
+    expect(validate).toHaveBeenCalledWith("yaml-stack", yaml);
+    store.close();
   });
 });

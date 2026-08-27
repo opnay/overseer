@@ -5,6 +5,7 @@ export {
   type BuilderComposeRegistry,
 } from "./builder-compose.ts";
 export {
+  parseComposeBuilderInput,
   parseComposeBuilderSpec,
   parseUpdateComposeBuilderInput,
 } from "./compose-builder-input.ts";

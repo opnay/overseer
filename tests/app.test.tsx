@@ -888,7 +888,7 @@ describe("App", () => {
         level: 2,
       }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "폼으로 추가" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "직접 작성" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Docker Compose 설치" }));
     await waitFor(() =>
@@ -3435,7 +3435,7 @@ describe("App", () => {
     const dashboard: DashboardSnapshot = {
       composeProjects: [
         {
-          builder: { configHash: "a".repeat(64) },
+          builder: { configHash: "a".repeat(64), mode: "form" },
           configFiles: ["/host/form-stack/compose.yaml"],
           name: "form-stack",
           status: "registered",
@@ -3460,7 +3460,7 @@ describe("App", () => {
           return jsonResponse({
             project: {
               configHash: "a".repeat(64),
-              spec,
+              input: { mode: "form", spec },
               yaml: 'services:\n  web:\n    image: "nginx:latest"\n',
             },
           });
@@ -3487,13 +3487,13 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "Compose 상세 메뉴" });
     const group = within(navigation).getByRole("group", { name: "Compose 프로젝트" });
-    expect(within(group).getByRole("button", { name: "폼 설정" })).toBeEnabled();
+    expect(within(group).getByRole("button", { name: "작성 설정" })).toBeEnabled();
     expect(within(group).queryByRole("button", { name: "업데이트" })).not.toBeInTheDocument();
 
-    await user.click(within(group).getByRole("button", { name: "폼 설정" }));
-    await user.click(screen.getByRole("button", { name: "폼 설정 편집" }));
+    await user.click(within(group).getByRole("button", { name: "작성 설정" }));
+    await user.click(screen.getByRole("button", { name: "구성 편집" }));
 
-    expect(await screen.findByRole("dialog", { name: "폼 Compose 수정" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Compose 수정" })).toBeInTheDocument();
   });
 
   it("registers a raw HTTPS Compose URL through the async operation API", async () => {
@@ -3554,7 +3554,7 @@ describe("App", () => {
     });
   });
 
-  it("builds multiple services in a form and previews the generated YAML", async () => {
+  it("generates editable YAML from the form and submits the YAML source", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -3596,8 +3596,8 @@ describe("App", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "Compose", level: 1 });
 
-    await user.click(await screen.findByRole("button", { name: "폼으로 추가" }));
-    const dialog = await screen.findByRole("dialog", { name: "폼 Compose 추가" });
+    await user.click(await screen.findByRole("button", { name: "직접 작성" }));
+    const dialog = await screen.findByRole("dialog", { name: "Compose 추가" });
     await user.type(within(dialog).getByRole("textbox", { name: "프로젝트 이름" }), "demo-stack");
     const serviceOne = within(dialog).getByRole("region", { name: "서비스 1" });
     await user.type(within(serviceOne).getByRole("textbox", { name: "이미지" }), "nginx");
@@ -3617,22 +3617,20 @@ describe("App", () => {
     await user.clear(within(serviceTwo).getByRole("textbox", { name: "태그" }));
     await user.type(within(serviceTwo).getByRole("textbox", { name: "태그" }), "22-alpine");
 
-    await user.click(within(dialog).getByRole("tab", { name: "YAML 미리보기" }));
-    const yaml = dialog.querySelector(".overseer-compose-yaml-preview code");
-    expect(yaml).toHaveTextContent('image: "nginx:latest"');
-    expect(yaml).toHaveTextContent('image: "node:22-alpine"');
-    expect(yaml?.textContent).toContain("networks:\n  frontend:");
+    await user.click(within(dialog).getByRole("tab", { name: "YAML로 작성" }));
+    const yaml = within(dialog).getByRole("textbox", { name: "Compose YAML" });
+    expect((yaml as HTMLTextAreaElement).value).toContain('image: "nginx:latest"');
+    expect((yaml as HTMLTextAreaElement).value).toContain('image: "node:22-alpine"');
+    expect((yaml as HTMLTextAreaElement).value).toContain("networks:\n  frontend:");
+    await user.type(yaml, "\n# 직접 작성한 YAML\n");
     await user.click(within(dialog).getByRole("button", { name: "Compose 저장" }));
 
-    await waitFor(() => expect(submittedBody).toMatchObject({ name: "demo-stack" }));
+    await waitFor(() => expect(submittedBody).toMatchObject({ name: "demo-stack", mode: "yaml" }));
     expect(submittedBody).toMatchObject({
-      networks: ["frontend"],
-      services: [
-        { image: "nginx", name: "service-1", tag: "latest" },
-        { image: "node", name: "service-2", tag: "22-alpine" },
-      ],
-      volumes: ["app-data"],
+      mode: "yaml",
+      name: "demo-stack",
     });
+    expect((submittedBody as { yaml: string }).yaml).toContain("# 직접 작성한 YAML");
   });
 
   it("loads and updates a persisted form Compose project", async () => {
@@ -3645,7 +3643,7 @@ describe("App", () => {
     const dashboard: DashboardSnapshot = {
       composeProjects: [
         {
-          builder: { configHash: "a".repeat(64) },
+          builder: { configHash: "a".repeat(64), mode: "form" },
           configFiles: ["/data/compose/form-stack/compose.yaml"],
           name: "form-stack",
           status: "registered",
@@ -3686,7 +3684,7 @@ describe("App", () => {
           return jsonResponse({
             project: {
               configHash: "a".repeat(64),
-              spec,
+              input: { mode: "form", spec },
               yaml: 'services:\n  web:\n    image: "nginx:latest"\n',
             },
           });
@@ -3696,12 +3694,10 @@ describe("App", () => {
     );
     window.history.replaceState(null, "", "/compose");
     render(<App />);
-    expect(await screen.findByText("폼 등록")).toBeInTheDocument();
-    await user.click(
-      await screen.findByRole("button", { name: "form-stack 폼 Compose 관리 메뉴" }),
-    );
+    expect(await screen.findByText("폼 작성")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "form-stack Compose 관리 메뉴" }));
     await user.click(await screen.findByRole("menuitem", { name: "구성 편집" }));
-    const dialog = await screen.findByRole("dialog", { name: "폼 Compose 수정" });
+    const dialog = await screen.findByRole("dialog", { name: "Compose 수정" });
     const tag = within(within(dialog).getByRole("region", { name: "서비스 1" })).getByRole(
       "textbox",
       { name: "태그" },
@@ -3713,8 +3709,65 @@ describe("App", () => {
     await waitFor(() => expect(updateBody).toBeTruthy());
     expect(updateBody).toMatchObject({
       expectedConfigHash: "a".repeat(64),
-      spec: { services: [{ tag: "1.29-alpine" }] },
+      input: { mode: "form", spec: { services: [{ tag: "1.29-alpine" }] } },
     });
+  });
+
+  it("keeps persisted YAML when switching between authoring tabs", async () => {
+    const user = userEvent.setup();
+    const yaml = "services:\n  web:\n    image: nginx:alpine\n# keep me\n";
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [
+        {
+          builder: { configHash: "a".repeat(64), mode: "yaml" },
+          configFiles: ["/data/compose/yaml-stack/compose.yaml"],
+          name: "yaml-stack",
+          status: "registered",
+        },
+      ],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith("/api/compose/projects/yaml-stack/builder")) {
+          return jsonResponse({
+            project: {
+              configHash: "a".repeat(64),
+              input: { mode: "yaml", name: "yaml-stack", yaml },
+              yaml,
+            },
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/compose");
+    render(<App />);
+
+    expect(await screen.findByText("YAML 작성")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "yaml-stack Compose 관리 메뉴" }));
+    await user.click(await screen.findByRole("menuitem", { name: "구성 편집" }));
+    const dialog = await screen.findByRole("dialog", { name: "Compose 수정" });
+    expect(within(dialog).getByRole("tab", { name: "YAML로 작성" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(within(dialog).getByRole("tab", { name: "폼" }));
+    await user.click(within(dialog).getByRole("tab", { name: "YAML로 작성" }));
+
+    expect(within(dialog).getByRole("textbox", { name: "Compose YAML" })).toHaveValue(yaml);
   });
 
   it("shows remote update and build context states with URL management actions", async () => {
@@ -3767,18 +3820,25 @@ describe("App", () => {
     expect(screen.getByText("URL 등록").closest(".overseer-primary-meta")).toBeInTheDocument();
     expect(screen.getByText("build context")).toBeInTheDocument();
     expect(screen.getByText("업데이트 있음")).toBeInTheDocument();
-    await user.click(
-      await screen.findByRole("button", { name: "remote-build URL Compose 관리 메뉴" }),
-    );
-    await user.click(await screen.findByRole("menuitem", { name: "등록 해제" }));
+    await user.click(await screen.findByRole("button", { name: "remote-build Compose 관리 메뉴" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Compose Down" }));
     expect(
-      await screen.findByRole("alertdialog", { name: "URL Compose 등록을 해제하시겠습니까?" }),
+      await screen.findByRole("alertdialog", {
+        name: "remote-build 프로젝트를 내리시겠습니까?",
+      }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "취소" }));
 
-    await user.click(
-      await screen.findByRole("button", { name: "remote-build URL Compose 관리 메뉴" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "remote-build Compose 관리 메뉴" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Compose 삭제" }));
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "remote-build Compose를 삭제하시겠습니까?",
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "취소" }));
+
+    await user.click(await screen.findByRole("button", { name: "remote-build Compose 관리 메뉴" }));
     await user.click(await screen.findByRole("menuitem", { name: "업데이트 적용" }));
     await waitFor(() =>
       expect(

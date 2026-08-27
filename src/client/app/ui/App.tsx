@@ -38,7 +38,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type {
   ComposeProjectAction,
-  ComposeBuilderSpec,
+  ComposeBuilderInput,
   ComposeProjectSummary,
   ContainerDetail,
   ContainerSpecInput,
@@ -1408,12 +1408,12 @@ function AppContent() {
       <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
         <CreateBuilderComposeDialog
           disabled={Boolean(submitting) || runtimeBusy}
-          onSubmit={(spec: ComposeBuilderSpec) =>
+          onSubmit={(input: ComposeBuilderInput) =>
             mutate({
               key: "compose-builder-register",
               request: () =>
                 apiRequest<OperationAccepted>("/compose/builder", {
-                  body: JSON.stringify(spec),
+                  body: JSON.stringify(input),
                   method: "POST",
                 }),
             })
@@ -1908,14 +1908,14 @@ function AppContent() {
               <ComposeProjectDetailPage
                 busy={runtimeBusy || targetBusy("compose", currentDetail.identifier)}
                 name={currentDetail.identifier}
-                onBuilderUpdate={(spec, expectedConfigHash) =>
+                onBuilderUpdate={(input, expectedConfigHash) =>
                   mutate({
                     key: `compose-${currentDetail.identifier}-builder-update`,
                     request: () =>
                       apiRequest<OperationAccepted>(
                         `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/builder`,
                         {
-                          body: JSON.stringify({ expectedConfigHash, spec }),
+                          body: JSON.stringify({ expectedConfigHash, input }),
                           method: "PATCH",
                         },
                       ),
@@ -2032,14 +2032,14 @@ function AppContent() {
                         ),
                     })
                   }
-                  onBuilderUpdate={(project, spec, expectedConfigHash) =>
+                  onBuilderUpdate={(project, input, expectedConfigHash) =>
                     mutate({
                       key: `compose-${project.name}-builder-update`,
                       request: () =>
                         apiRequest<OperationAccepted>(
                           `/compose/projects/${encodeURIComponent(project.name)}/builder`,
                           {
-                            body: JSON.stringify({ expectedConfigHash, spec }),
+                            body: JSON.stringify({ expectedConfigHash, input }),
                             method: "PATCH",
                           },
                         ),

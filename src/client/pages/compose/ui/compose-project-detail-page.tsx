@@ -7,7 +7,7 @@ import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
 import { Boxes } from "lucide-react";
 import { useEffect, useState, type MouseEvent } from "react";
-import type { ComposeBuilderSpec, ComposeProjectDetail } from "@contracts/contracts.ts";
+import type { ComposeBuilderInput, ComposeProjectDetail } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
 import { BuilderComposeDialog } from "./builder-compose-dialog.tsx";
 import { formatDateTime } from "@/shared/lib/date-time";
@@ -19,7 +19,7 @@ import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 interface ComposeProjectDetailPageProps {
   busy: boolean;
   name: string;
-  onBuilderUpdate(spec: ComposeBuilderSpec, expectedConfigHash: string): Promise<void>;
+  onBuilderUpdate(input: ComposeBuilderInput, expectedConfigHash: string): Promise<void>;
   onOpenContainer(id: string): void;
   onRemoteCheck(): Promise<void>;
   onRemoteUpdate(): Promise<void>;
@@ -42,8 +42,8 @@ const sectionPresentation: Record<ComposeDetailSection, { description: string; l
     label: "구성",
   },
   form: {
-    description: "폼 입력으로 관리되는 Compose 구성을 확인하고 편집합니다.",
-    label: "폼 설정",
+    description: "직접 작성하여 관리하는 Compose 구성을 확인하고 편집합니다.",
+    label: "작성 설정",
   },
   logs: {
     description: "프로젝트 전체 서비스의 최근 로그를 확인합니다.",
@@ -177,7 +177,13 @@ export function ComposeProjectDetailPage({
   }
 
   const running = detail.status.startsWith("running");
-  const source = detail.remote ? "URL Compose" : detail.builder ? "폼 Compose" : "Docker Compose";
+  const source = detail.remote
+    ? "URL Compose"
+    : detail.builder?.mode === "yaml"
+      ? "YAML 작성"
+      : detail.builder
+        ? "폼 작성"
+        : "Docker Compose";
   const sourceReference = detail.remote?.url ?? detail.configFiles.join(" · ");
   const sections: Array<{ label: string; value: ComposeDetailSection }> = [
     { label: "개요", value: "overview" },
@@ -188,7 +194,7 @@ export function ComposeProjectDetailPage({
       ? [{ label: "업데이트", value: "updates" as const }]
       : []),
     ...(detail.configuration.kind === "builder"
-      ? [{ label: "폼 설정", value: "form" as const }]
+      ? [{ label: "작성 설정", value: "form" as const }]
       : []),
   ];
   const presentation = sectionPresentation[section];
@@ -439,7 +445,7 @@ export function ComposeProjectDetailPage({
             </pre>
             <div className="overseer-detail-actions">
               <Button disabled={busy} onClick={() => setEditOpen(true)}>
-                폼 설정 편집
+                구성 편집
               </Button>
             </div>
           </section>
@@ -447,9 +453,9 @@ export function ComposeProjectDetailPage({
       </SectionedWorkspace>
       <BuilderComposeDialog
         onOpenChange={setEditOpen}
-        onSubmit={(spec, expectedConfigHash) => {
+        onSubmit={(input, expectedConfigHash) => {
           if (!expectedConfigHash) throw new Error("Compose config hash를 찾을 수 없습니다.");
-          return onBuilderUpdate(spec, expectedConfigHash);
+          return onBuilderUpdate(input, expectedConfigHash);
         }}
         open={editOpen}
         projectName={detail.configuration.kind === "builder" ? detail.name : undefined}

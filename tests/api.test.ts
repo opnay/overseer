@@ -30,7 +30,7 @@ function createController(): RuntimeController {
     createVolume: vi.fn(async () => undefined),
     getBuilderComposeProject: vi.fn(async (name) => ({
       configHash: "a".repeat(64),
-      spec: { name, networks: [], services: [], volumes: [] },
+      input: { mode: "form" as const, spec: { name, networks: [], services: [], volumes: [] } },
       yaml: "services: {}\n",
     })),
     getContainer: vi.fn(async (id) => ({
@@ -1147,14 +1147,20 @@ describe("API boundary", () => {
     });
     expect(register.status).toBe(202);
     await vi.waitFor(() => expect(controller.registerBuilderCompose).toHaveBeenCalled());
-    expect(controller.registerBuilderCompose).toHaveBeenCalledWith(spec, expect.any(Object));
+    expect(controller.registerBuilderCompose).toHaveBeenCalledWith(
+      { mode: "form", spec },
+      expect.any(Object),
+    );
 
     const detail = await app.request("/compose/projects/form-stack/builder", {
       headers: localHeaders,
     });
     expect(detail.status).toBe(200);
     const update = await app.request("/compose/projects/form-stack/builder", {
-      body: JSON.stringify({ expectedConfigHash: "a".repeat(64), spec }),
+      body: JSON.stringify({
+        expectedConfigHash: "a".repeat(64),
+        input: { mode: "form", spec },
+      }),
       headers: { ...localHeaders, "content-type": "application/json" },
       method: "PATCH",
     });
@@ -1164,6 +1170,26 @@ describe("API boundary", () => {
     });
     expect([update.status, remove.status]).toEqual([202, 202]);
     await vi.waitFor(() => expect(controller.removeBuilderCompose).toHaveBeenCalled());
+  });
+
+  it("accepts directly authored Compose YAML", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const input = {
+      mode: "yaml",
+      name: "yaml-stack",
+      yaml: "services:\n  web:\n    image: nginx:alpine\n",
+    };
+
+    const response = await app.request("/compose/builder", {
+      body: JSON.stringify(input),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(controller.registerBuilderCompose).toHaveBeenCalled());
+    expect(controller.registerBuilderCompose).toHaveBeenCalledWith(input, expect.any(Object));
   });
 
   it("rejects an insecure remote Compose URL before queueing", async () => {

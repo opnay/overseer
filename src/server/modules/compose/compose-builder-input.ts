@@ -1,4 +1,5 @@
 import type {
+  ComposeBuilderInput,
   ComposeBuilderService,
   ComposeBuilderSpec,
   ContainerKeyValue,
@@ -8,6 +9,7 @@ import type {
   UpdateComposeBuilderInput,
 } from "../../../shared/contracts.ts";
 import { validateComposeBuilderSpec } from "../../../shared/compose-builder.ts";
+import { isComposeProjectName } from "../../../shared/validation.ts";
 import { ExpectedError } from "../../core/errors.ts";
 
 function record(value: unknown, message: string): Record<string, unknown> {
@@ -129,6 +131,33 @@ export function parseComposeBuilderSpec(value: unknown): ComposeBuilderSpec {
   return spec;
 }
 
+export function parseComposeBuilderInput(value: unknown): ComposeBuilderInput {
+  const input = record(value, "Compose 작성 설정을 확인하십시오.");
+  if (input.mode === "yaml") {
+    const name = string(input.name, "프로젝트 이름을 확인하십시오.");
+    const yaml = string(input.yaml, "Compose YAML을 입력하십시오.", false);
+    if (!isComposeProjectName(name)) {
+      throw new ExpectedError(
+        "invalid_compose_builder",
+        "프로젝트 이름은 소문자·숫자로 시작하고 밑줄·하이픈만 사용할 수 있습니다.",
+        400,
+      );
+    }
+    if (yaml.trim().length === 0 || Buffer.byteLength(yaml, "utf8") > 1024 * 1024) {
+      throw new ExpectedError(
+        "invalid_compose_builder",
+        "Compose YAML은 1MB 이하로 입력하십시오.",
+        400,
+      );
+    }
+    return { mode: "yaml", name, yaml };
+  }
+  if (input.mode === "form") {
+    return { mode: "form", spec: parseComposeBuilderSpec(input.spec) };
+  }
+  return { mode: "form", spec: parseComposeBuilderSpec(input) };
+}
+
 export function parseUpdateComposeBuilderInput(value: unknown): UpdateComposeBuilderInput {
   const input = record(value, "Compose 수정 요청을 확인하십시오.");
   if (
@@ -139,6 +168,6 @@ export function parseUpdateComposeBuilderInput(value: unknown): UpdateComposeBui
   }
   return {
     expectedConfigHash: input.expectedConfigHash,
-    spec: parseComposeBuilderSpec(input.spec),
+    input: parseComposeBuilderInput(input.input ?? input.spec),
   };
 }

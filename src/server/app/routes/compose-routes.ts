@@ -7,7 +7,7 @@ import type { ComposeController } from "../../application/overseer-controller.ts
 import { ExpectedError } from "../../core/errors.ts";
 import {
   deriveRemoteComposeProjectName,
-  parseComposeBuilderSpec,
+  parseComposeBuilderInput,
   parseUpdateComposeBuilderInput,
 } from "../../modules/compose/index.ts";
 import {
@@ -26,18 +26,19 @@ export function registerComposeRoutes(
     context.json({ projects: await controller.getComposeProjects() }),
   );
   app.post("/compose/builder", async (context) => {
-    const spec = parseComposeBuilderSpec(await readObject(context));
+    const input = parseComposeBuilderInput(await readObject(context));
+    const name = input.mode === "form" ? input.spec.name : input.name;
     const operation = enqueue(
       context,
       {
         kind: "compose.builder.register",
-        locks: [`compose:${spec.name}`],
-        run: (progress) => controller.registerBuilderCompose(spec, progress),
-        successMessage: `${spec.name} 폼 Compose 프로젝트를 등록했습니다.`,
-        target: { name: spec.name, resource: "compose" },
-        title: "폼 Compose 등록",
+        locks: [`compose:${name}`],
+        run: (progress) => controller.registerBuilderCompose(input, progress),
+        successMessage: `${name} Compose 프로젝트를 등록했습니다.`,
+        target: { name, resource: "compose" },
+        title: "Compose 등록",
       },
-      spec,
+      input,
     );
     return context.json({ operation }, 202);
   });
@@ -56,9 +57,9 @@ export function registerComposeRoutes(
         kind: "compose.builder.update",
         locks: [`compose:${name}`],
         run: (progress) => controller.updateBuilderCompose(name, input, progress),
-        successMessage: `${name} 폼 Compose 구성을 수정했습니다.`,
+        successMessage: `${name} Compose 구성을 수정했습니다.`,
         target: { name, resource: "compose" },
-        title: "폼 Compose 수정",
+        title: "Compose 수정",
       },
       input,
     );
@@ -70,9 +71,9 @@ export function registerComposeRoutes(
       kind: "compose.builder.remove",
       locks: [`compose:${name}`],
       run: (progress) => controller.removeBuilderCompose(name, progress),
-      successMessage: `${name} 폼 Compose 등록을 해제했습니다.`,
+      successMessage: `${name} Compose 프로젝트를 삭제했습니다.`,
       target: { name, resource: "compose" },
-      title: "폼 Compose 등록 해제",
+      title: "Compose 삭제",
     });
     return context.json({ operation }, 202);
   });
@@ -128,9 +129,9 @@ export function registerComposeRoutes(
       kind: "compose.remote.remove",
       locks: [`compose:${name}`],
       run: (progress) => controller.removeRemoteCompose(name, progress),
-      successMessage: `${name} URL Compose 등록을 해제했습니다.`,
+      successMessage: `${name} Compose 프로젝트를 삭제했습니다.`,
       target: { name, resource: "compose" },
-      title: "URL Compose 등록 해제",
+      title: "Compose 삭제",
     });
     return context.json({ operation }, 202);
   });

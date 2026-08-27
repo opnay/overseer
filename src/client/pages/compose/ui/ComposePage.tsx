@@ -4,16 +4,16 @@ import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
-import { FileText, Layers3, ListTree, Play, RotateCcw, Square, Trash2 } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { Tooltip } from "@opnay/city-ds-react/tooltip";
+import { FileText, Layers3, ListTree, Play, RotateCcw, Square } from "lucide-react";
+import { lazy, Suspense, type ReactNode } from "react";
 import type {
-  ComposeBuilderSpec,
+  ComposeBuilderInput,
   ComposeProjectAction,
   ComposeProjectSummary,
 } from "@contracts/contracts.ts";
 import { followLink } from "@/shared/lib/follow-link";
 import { composeProjectDetailPath } from "@/shared/routes";
-import { ConfirmAction } from "@/shared/ui/confirm-action";
 import {
   composeFileName,
   composeIsRunning,
@@ -21,16 +21,47 @@ import {
   composeStatusTone,
 } from "../lib/compose-presentation.ts";
 
-const RemoteComposeActions = lazy(() =>
-  import("./remote-compose-actions.tsx").then((module) => ({
-    default: module.RemoteComposeActions,
+const ComposeProjectActions = lazy(() =>
+  import("./compose-project-actions.tsx").then((module) => ({
+    default: module.ComposeProjectActions,
   })),
 );
-const BuilderComposeActions = lazy(() =>
-  import("./builder-compose-actions.tsx").then((module) => ({
-    default: module.BuilderComposeActions,
-  })),
-);
+
+function IconAction({
+  children,
+  disabled,
+  label,
+  onClick,
+}: {
+  children: ReactNode;
+  disabled: boolean;
+  label: string;
+  onClick(): void;
+}) {
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger
+        render={
+          <Button
+            aria-label={label}
+            disabled={disabled}
+            iconOnly
+            onClick={onClick}
+            size="sm"
+            variant="ghost"
+          />
+        }
+      >
+        {children}
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Positioner side="top" sideOffset={6}>
+          <Tooltip.Popup>{label}</Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
 
 export function ComposePage({
   isBusy,
@@ -49,7 +80,7 @@ export function ComposePage({
   onBuilderRemove: (project: ComposeProjectSummary) => Promise<void>;
   onBuilderUpdate: (
     project: ComposeProjectSummary,
-    spec: ComposeBuilderSpec,
+    input: ComposeBuilderInput,
     expectedConfigHash: string,
   ) => Promise<void>;
   onInspect: (project: ComposeProjectSummary) => void;
@@ -118,7 +149,7 @@ export function ComposePage({
                           {project.remote ? (
                             <span>URL 등록</span>
                           ) : project.builder ? (
-                            <span>폼 등록</span>
+                            <span>{project.builder.mode === "yaml" ? "YAML 작성" : "폼 작성"}</span>
                           ) : null}
                           <code
                             className="overseer-compose-config"
@@ -171,101 +202,68 @@ export function ComposePage({
                     </Table.Cell>
                     <Table.Cell>
                       <div className="overseer-row-actions">
-                        <Button
-                          aria-label={`${project.name} 서비스 보기`}
+                        <IconAction
                           disabled={rowBusy}
-                          iconOnly
+                          label={`${project.name} 서비스 보기`}
                           onClick={() => onInspect(project)}
-                          size="sm"
-                          variant="ghost"
                         >
                           <ListTree aria-hidden="true" size={14} />
-                        </Button>
+                        </IconAction>
                         {running ? (
-                          <Button
-                            aria-label={`${project.name} 중지`}
+                          <IconAction
                             disabled={rowBusy}
-                            iconOnly
+                            label={`${project.name} 중지`}
                             onClick={() => void onAction(project, "stop").catch(() => undefined)}
-                            size="sm"
-                            variant="ghost"
                           >
                             <Square aria-hidden="true" size={14} />
-                          </Button>
+                          </IconAction>
                         ) : (
-                          <Button
-                            aria-label={`${project.name} 실행`}
+                          <IconAction
                             disabled={rowBusy}
-                            iconOnly
+                            label={`${project.name} 실행`}
                             onClick={() => void onAction(project, "up").catch(() => undefined)}
-                            size="sm"
-                            variant="ghost"
                           >
                             <Play aria-hidden="true" size={14} />
-                          </Button>
+                          </IconAction>
                         )}
                         {running ? (
-                          <Button
-                            aria-label={`${project.name} 재시작`}
+                          <IconAction
                             disabled={rowBusy}
-                            iconOnly
+                            label={`${project.name} 재시작`}
                             onClick={() => void onAction(project, "restart").catch(() => undefined)}
-                            size="sm"
-                            variant="ghost"
                           >
                             <RotateCcw aria-hidden="true" size={14} />
-                          </Button>
+                          </IconAction>
                         ) : null}
-                        <Button
-                          aria-label={`${project.name} 로그 보기`}
+                        <IconAction
                           disabled={rowBusy}
-                          iconOnly
+                          label={`${project.name} 로그 보기`}
                           onClick={() => onLogs(project)}
-                          size="sm"
-                          variant="ghost"
                         >
                           <FileText aria-hidden="true" size={14} />
-                        </Button>
-                        <ConfirmAction
-                          actionLabel="프로젝트 내리기"
-                          ariaLabel={`${project.name} 프로젝트 내리기`}
-                          disabled={rowBusy}
-                          description="프로젝트 컨테이너와 기본 네트워크를 제거합니다. named volume과 구성 파일은 유지됩니다."
-                          onConfirm={() => void onAction(project, "down").catch(() => undefined)}
-                          iconOnly
-                          title={`${project.name} 프로젝트를 내리시겠습니까?`}
+                        </IconAction>
+                        <Suspense
+                          fallback={<Skeleton className="overseer-loading-topbar-action" />}
                         >
-                          <Trash2 aria-hidden="true" size={14} />
-                        </ConfirmAction>
-                        {project.remote ? (
-                          <Suspense
-                            fallback={<Skeleton className="overseer-loading-topbar-action" />}
-                          >
-                            <RemoteComposeActions
-                              busy={rowBusy}
-                              onApply={() => onAction(project, "up")}
-                              onCheck={() => onRemoteCheck(project)}
-                              onRemove={() => onRemoteRemove(project)}
-                              onUpdate={() => onRemoteUpdate(project)}
-                              project={project}
-                            />
-                          </Suspense>
-                        ) : null}
-                        {project.builder ? (
-                          <Suspense
-                            fallback={<Skeleton className="overseer-loading-topbar-action" />}
-                          >
-                            <BuilderComposeActions
-                              busy={rowBusy}
-                              onApply={() => onAction(project, "up")}
-                              onRemove={() => onBuilderRemove(project)}
-                              onUpdate={(spec, expectedConfigHash) =>
-                                onBuilderUpdate(project, spec, expectedConfigHash)
-                              }
-                              project={project}
-                            />
-                          </Suspense>
-                        ) : null}
+                          <ComposeProjectActions
+                            busy={rowBusy}
+                            onApply={() => onAction(project, "up")}
+                            onBuilderUpdate={(input, expectedConfigHash) =>
+                              onBuilderUpdate(project, input, expectedConfigHash)
+                            }
+                            onCheck={() => onRemoteCheck(project)}
+                            onDelete={() =>
+                              project.remote
+                                ? onRemoteRemove(project)
+                                : project.builder
+                                  ? onBuilderRemove(project)
+                                  : Promise.resolve()
+                            }
+                            onDown={() => onAction(project, "down")}
+                            onRemoteUpdate={() => onRemoteUpdate(project)}
+                            project={project}
+                          />
+                        </Suspense>
                       </div>
                     </Table.Cell>
                   </Table.Row>

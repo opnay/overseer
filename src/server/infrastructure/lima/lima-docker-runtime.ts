@@ -3,7 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import type {
   ComposeProjectAction,
   ComposeBuilderProjectDetail,
-  ComposeBuilderSpec,
+  ComposeBuilderInput,
   ComposeProjectDetail,
   ComposeProjectSummary,
   ContainerDetail,
@@ -718,10 +718,10 @@ export class LimaDockerRuntime implements OverseerController {
   }
 
   async registerBuilderCompose(
-    spec: ComposeBuilderSpec,
+    input: ComposeBuilderInput,
     progress?: OperationProgress,
   ): Promise<void> {
-    await this.composeProjects.registerBuilder(spec, progress);
+    await this.composeProjects.registerBuilder(input, progress);
   }
 
   async updateBuilderCompose(

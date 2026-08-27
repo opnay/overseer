@@ -1,6 +1,6 @@
 import type {
   ComposeBuilderProjectDetail,
-  ComposeBuilderSpec,
+  ComposeBuilderInput,
   ComposeProjectAction,
   ComposeProjectDetail,
   ComposeProjectSummary,
@@ -95,7 +95,7 @@ export interface ComposeController {
   getComposeProject(name: string): Promise<ComposeProjectDetail>;
   getComposeProjectLogs(name: string): Promise<string>;
   getComposeProjects(): Promise<ComposeProjectSummary[]>;
-  registerBuilderCompose(spec: ComposeBuilderSpec, progress?: OperationProgress): Promise<void>;
+  registerBuilderCompose(input: ComposeBuilderInput, progress?: OperationProgress): Promise<void>;
   registerRemoteCompose(
     input: RegisterRemoteComposeInput,
     progress?: OperationProgress,

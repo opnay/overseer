@@ -936,16 +936,22 @@ describe("LimaDockerRuntime form Compose", () => {
       get: vi.fn(async () => ({
         configFile: "/host/compose/form-stack/compose.yaml",
         configHash: "a".repeat(64),
+        input: {
+          mode: "form" as const,
+          spec: { name: "form-stack", networks: [], services: [], volumes: [] },
+        },
         name: "form-stack",
-        spec: { name: "form-stack", networks: [], services: [], volumes: [] },
         yaml: "services: {}\n",
       })),
       list: vi.fn(async () => [
         {
           configFile: "/host/compose/form-stack/compose.yaml",
           configHash: "a".repeat(64),
+          input: {
+            mode: "form" as const,
+            spec: { name: "form-stack", networks: [], services: [], volumes: [] },
+          },
           name: "form-stack",
-          spec: { name: "form-stack", networks: [], services: [], volumes: [] },
           yaml: "services: {}\n",
         },
       ]),
@@ -960,7 +966,11 @@ describe("LimaDockerRuntime form Compose", () => {
     const runtime = new LimaDockerRuntime(command, remote, builder);
 
     await expect(runtime.getComposeProjects()).resolves.toMatchObject([
-      { builder: { configHash: "a".repeat(64) }, name: "form-stack", status: "registered" },
+      {
+        builder: { configHash: "a".repeat(64), mode: "form" },
+        name: "form-stack",
+        status: "registered",
+      },
     ]);
     await expect(runtime.getComposeProject("form-stack")).resolves.toMatchObject({
       configuration: {

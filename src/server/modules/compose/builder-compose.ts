@@ -3,8 +3,13 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ComposeBuilderSpec, UpdateComposeBuilderInput } from "../../../shared/contracts.ts";
+import type {
+  ComposeBuilderInput,
+  ComposeBuilderSpec,
+  UpdateComposeBuilderInput,
+} from "../../../shared/contracts.ts";
 import { composeBuilderYaml, validateComposeBuilderSpec } from "../../../shared/compose-builder.ts";
+import { isComposeProjectName } from "../../../shared/validation.ts";
 import { ExpectedError } from "../../core/errors.ts";
 import { type CommandRunner, runCommand } from "../../infrastructure/process.ts";
 import { openSqliteDatabase, type SqliteDatabase } from "../../infrastructure/sqlite.ts";
@@ -14,8 +19,8 @@ import { validateComposeContent } from "./remote-compose.ts";
 export interface BuilderComposeProject {
   configFile: string;
   configHash: string;
+  input: ComposeBuilderInput;
   name: string;
-  spec: ComposeBuilderSpec;
   yaml: string;
 }
 
@@ -30,7 +35,7 @@ export interface BuilderComposeRegistry {
   get(name: string): Promise<BuilderComposeProject | undefined>;
   list(): Promise<BuilderComposeProject[]>;
   register(
-    spec: ComposeBuilderSpec,
+    input: ComposeBuilderInput,
     conflictingNames: readonly string[],
     progress?: OperationProgress,
   ): Promise<BuilderComposeProject>;
@@ -42,16 +47,27 @@ export interface BuilderComposeRegistry {
   ): Promise<BuilderComposeProject>;
 }
 
-function specHash(spec: ComposeBuilderSpec): string {
-  return createHash("sha256").update(JSON.stringify(spec)).digest("hex");
+function inputHash(input: ComposeBuilderInput): string {
+  return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+}
+
+function projectName(input: ComposeBuilderInput): string {
+  return input.mode === "form" ? input.spec.name : input.name;
+}
+
+function storedInput(value: string): ComposeBuilderInput {
+  const parsed = JSON.parse(value) as ComposeBuilderInput | ComposeBuilderSpec;
+  if ("mode" in parsed) return parsed;
+  return { mode: "form", spec: parsed };
 }
 
 function mapRow(row: BuilderComposeRow, configFile: string): BuilderComposeProject {
+  const input = storedInput(row.spec_json);
   return {
     configFile,
     configHash: row.config_hash,
+    input,
     name: row.name,
-    spec: JSON.parse(row.spec_json) as ComposeBuilderSpec,
     yaml: row.yaml,
   };
 }
@@ -96,7 +112,8 @@ export class BuilderComposeStore {
     return row ? mapRow(row, this.configFile(name)) : undefined;
   }
 
-  insert(spec: ComposeBuilderSpec, yaml: string): void {
+  insert(input: ComposeBuilderInput, yaml: string): void {
+    const name = projectName(input);
     const now = new Date().toISOString();
     try {
       this.db
@@ -105,12 +122,12 @@ export class BuilderComposeStore {
             name, spec_json, config_hash, yaml, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?)`,
         )
-        .run(spec.name, JSON.stringify(spec), specHash(spec), yaml, now, now);
+        .run(name, JSON.stringify(input), inputHash(input), yaml, now, now);
     } catch (error) {
       if (error instanceof Error && error.message.includes("UNIQUE")) {
         throw new ExpectedError(
           "builder_compose_conflict",
-          "같은 이름의 폼 Compose 프로젝트가 이미 있습니다.",
+          "같은 이름의 Compose 프로젝트가 이미 있습니다.",
           409,
         );
       }
@@ -123,7 +140,7 @@ export class BuilderComposeStore {
     if (!current) {
       throw new ExpectedError(
         "builder_compose_not_found",
-        "폼 Compose 프로젝트를 찾을 수 없습니다.",
+        "Compose 프로젝트를 찾을 수 없습니다.",
         404,
       );
     }
@@ -140,7 +157,13 @@ export class BuilderComposeStore {
          SET spec_json = ?, config_hash = ?, yaml = ?, updated_at = ?
          WHERE name = ?`,
       )
-      .run(JSON.stringify(input.spec), specHash(input.spec), yaml, new Date().toISOString(), name);
+      .run(
+        JSON.stringify(input.input),
+        inputHash(input.input),
+        yaml,
+        new Date().toISOString(),
+        name,
+      );
   }
 
   delete(name: string): void {
@@ -148,7 +171,7 @@ export class BuilderComposeStore {
     if (result.changes === 0) {
       throw new ExpectedError(
         "builder_compose_not_found",
-        "폼 Compose 프로젝트를 찾을 수 없습니다.",
+        "Compose 프로젝트를 찾을 수 없습니다.",
         404,
       );
     }
@@ -231,23 +254,24 @@ export class BuilderComposeService implements BuilderComposeRegistry {
   }
 
   async register(
-    spec: ComposeBuilderSpec,
+    input: ComposeBuilderInput,
     conflictingNames: readonly string[],
     progress?: OperationProgress,
   ): Promise<BuilderComposeProject> {
-    this.assertSpec(spec);
-    if (conflictingNames.includes(spec.name)) {
+    this.assertInput(input);
+    const name = projectName(input);
+    if (conflictingNames.includes(name)) {
       throw new ExpectedError(
         "builder_compose_conflict",
         "같은 이름의 Compose 프로젝트가 이미 있습니다.",
         409,
       );
     }
-    const yaml = composeBuilderYaml(spec);
+    const yaml = this.yaml(input);
     progress?.step("Compose YAML 검증 중");
-    await this.validate(spec.name, yaml);
-    this.store.insert(spec, yaml);
-    const project = this.require(spec.name);
+    await this.validate(name, yaml);
+    this.store.insert(input, yaml);
+    const project = this.require(name);
     progress?.step("Compose 파일 저장 중");
     return this.materialized(project);
   }
@@ -257,15 +281,15 @@ export class BuilderComposeService implements BuilderComposeRegistry {
     input: UpdateComposeBuilderInput,
     progress?: OperationProgress,
   ): Promise<BuilderComposeProject> {
-    if (name !== input.spec.name) {
+    if (name !== projectName(input.input)) {
       throw new ExpectedError(
         "builder_compose_name_immutable",
         "프로젝트 이름은 수정할 수 없습니다.",
         409,
       );
     }
-    this.assertSpec(input.spec);
-    const yaml = composeBuilderYaml(input.spec);
+    this.assertInput(input.input);
+    const yaml = this.yaml(input.input);
     progress?.step("Compose YAML 검증 중");
     await this.validate(name, yaml);
     this.store.update(name, input, yaml);
@@ -279,9 +303,30 @@ export class BuilderComposeService implements BuilderComposeRegistry {
     this.store.delete(name);
   }
 
-  private assertSpec(spec: ComposeBuilderSpec): void {
-    const issue = validateComposeBuilderSpec(spec)[0];
-    if (issue) throw new ExpectedError("invalid_compose_builder", issue.message, 400);
+  private assertInput(input: ComposeBuilderInput): void {
+    if (input.mode === "form") {
+      const issue = validateComposeBuilderSpec(input.spec)[0];
+      if (issue) throw new ExpectedError("invalid_compose_builder", issue.message, 400);
+      return;
+    }
+    if (!isComposeProjectName(input.name)) {
+      throw new ExpectedError(
+        "invalid_compose_builder",
+        "프로젝트 이름은 소문자·숫자로 시작하고 밑줄·하이픈만 사용할 수 있습니다.",
+        400,
+      );
+    }
+    if (input.yaml.trim().length === 0 || Buffer.byteLength(input.yaml, "utf8") > 1024 * 1024) {
+      throw new ExpectedError(
+        "invalid_compose_builder",
+        "Compose YAML은 1MB 이하로 입력하십시오.",
+        400,
+      );
+    }
+  }
+
+  private yaml(input: ComposeBuilderInput): string {
+    return input.mode === "form" ? composeBuilderYaml(input.spec) : input.yaml;
   }
 
   private require(name: string): BuilderComposeProject {
@@ -289,7 +334,7 @@ export class BuilderComposeService implements BuilderComposeRegistry {
     if (!project) {
       throw new ExpectedError(
         "builder_compose_not_found",
-        "폼 Compose 프로젝트를 찾을 수 없습니다.",
+        "Compose 프로젝트를 찾을 수 없습니다.",
         404,
       );
     }
