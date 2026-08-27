@@ -2382,11 +2382,14 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("전체 25개 · 1 / 2페이지")).toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: "작업 검색" })).toBeInTheDocument();
+    const operationSearch = screen.getByRole("searchbox", { name: "작업 검색" });
+    const statusFilter = screen.getByRole("combobox", { name: "상태" });
+    const resourceFilter = screen.getByRole("combobox", { name: "리소스" });
+    expect(operationSearch.closest(".overseer-operation-search-filter")).toBeInTheDocument();
+    expect(statusFilter.closest(".overseer-operation-select-filter")).toBeInTheDocument();
+    expect(resourceFilter.closest(".overseer-operation-select-filter")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "검색" })).toHaveAttribute("data-city-icon-only");
     expect(screen.queryByText("작업 검색")).not.toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "상태" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "리소스" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "2페이지" }));
     expect(await screen.findByText("작업 24")).toBeInTheDocument();
     expect(screen.getByText("전체 25개 · 2 / 2페이지")).toBeInTheDocument();

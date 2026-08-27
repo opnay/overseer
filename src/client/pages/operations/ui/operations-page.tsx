@@ -66,31 +66,33 @@ function OperationFilterSelect<Value extends string>({
   value: Value;
 }) {
   return (
-    <Select.Root
-      items={Object.fromEntries(options.map((option) => [option.value, option.label]))}
-      onValueChange={(nextValue) => nextValue && onChange(String(nextValue) as Value)}
-      size="sm"
-      value={value}
-    >
-      <Select.Trigger aria-label={label}>
-        <Select.Value />
-        <Select.Icon />
-      </Select.Trigger>
-      <Select.Portal>
-        <Select.Positioner>
-          <Select.Popup>
-            <Select.List>
-              {options.map((option) => (
-                <Select.Item key={option.value} value={option.value}>
-                  <Select.ItemIndicator />
-                  <Select.ItemText>{option.label}</Select.ItemText>
-                </Select.Item>
-              ))}
-            </Select.List>
-          </Select.Popup>
-        </Select.Positioner>
-      </Select.Portal>
-    </Select.Root>
+    <div className="overseer-operation-select-filter">
+      <Select.Root
+        items={Object.fromEntries(options.map((option) => [option.value, option.label]))}
+        onValueChange={(nextValue) => nextValue && onChange(String(nextValue) as Value)}
+        size="sm"
+        value={value}
+      >
+        <Select.Trigger aria-label={label}>
+          <Select.Value />
+          <Select.Icon />
+        </Select.Trigger>
+        <Select.Portal>
+          <Select.Positioner>
+            <Select.Popup>
+              <Select.List>
+                {options.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    <Select.ItemIndicator />
+                    <Select.ItemText>{option.label}</Select.ItemText>
+                  </Select.Item>
+                ))}
+              </Select.List>
+            </Select.Popup>
+          </Select.Positioner>
+        </Select.Portal>
+      </Select.Root>
+    </div>
   );
 }
 
@@ -187,31 +189,33 @@ export function OperationsPage({
           className="overseer-operation-filters"
           density="compact"
         >
-          <SearchField.Root
-            loading={loading}
-            onSubmit={(value) => {
-              setQuery(value.trim());
-              setPage(1);
-            }}
-            onValueChange={setDraftQuery}
-            size="sm"
-            value={draftQuery}
-          >
-            <SearchField.Group>
-              <SearchField.Input aria-label="작업 검색" placeholder="작업명 또는 대상" />
-              <SearchField.Clear
-                aria-label="검색어 지우기"
-                onClick={() => {
-                  setDraftQuery("");
-                  setQuery("");
-                  setPage(1);
-                }}
-              />
-              <SearchField.Submit aria-label="검색" iconOnly>
-                <Search aria-hidden="true" size={14} />
-              </SearchField.Submit>
-            </SearchField.Group>
-          </SearchField.Root>
+          <div className="overseer-operation-search-filter">
+            <SearchField.Root
+              loading={loading}
+              onSubmit={(value) => {
+                setQuery(value.trim());
+                setPage(1);
+              }}
+              onValueChange={setDraftQuery}
+              size="sm"
+              value={draftQuery}
+            >
+              <SearchField.Group>
+                <SearchField.Input aria-label="작업 검색" placeholder="작업명 또는 대상" />
+                <SearchField.Clear
+                  aria-label="검색어 지우기"
+                  onClick={() => {
+                    setDraftQuery("");
+                    setQuery("");
+                    setPage(1);
+                  }}
+                />
+                <SearchField.Submit aria-label="검색" iconOnly>
+                  <Search aria-hidden="true" size={14} />
+                </SearchField.Submit>
+              </SearchField.Group>
+            </SearchField.Root>
+          </div>
           <OperationFilterSelect
             label="상태"
             onChange={(value) => {

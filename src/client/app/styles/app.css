@@ -1336,9 +1336,19 @@
     border-bottom: 1px solid var(--city-color-border);
   }
 
-  .overseer-operation-filters [data-city-filter-bar-content] > form {
+  .overseer-operation-search-filter {
     min-width: min(100%, 18rem);
     flex: 1;
+  }
+
+  .overseer-operation-select-filter {
+    width: 10rem;
+    min-width: 0;
+    flex: none;
+  }
+
+  .overseer-operation-select-filter > [role="combobox"] {
+    width: 100%;
   }
 
   .overseer-operation-load-state {
@@ -2374,6 +2384,13 @@
   }
 
   @media (max-width: 42rem) {
+    .overseer-operation-search-filter,
+    .overseer-operation-select-filter {
+      width: 100%;
+      min-width: 0;
+      flex: none;
+    }
+
     .overseer-startup-shell {
       padding: var(--city-space-4);
     }
