@@ -485,10 +485,7 @@ export interface ImageRepositoryTags {
   tags: ImageRepositoryTag[];
 }
 
-export type ImageRepositoryProvider = "docker-hub";
-
 export interface AddImageRepositoryInput {
-  provider: ImageRepositoryProvider;
   repository: string;
 }
 
@@ -496,7 +493,6 @@ export interface ImageRepositorySummary {
   createdAt: string;
   id: string;
   lastSyncedAt?: string;
-  provider: ImageRepositoryProvider;
   repository: string;
   tagCount?: number;
 }

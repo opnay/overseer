@@ -2478,7 +2478,7 @@ describe("App", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Compose");
   });
 
-  it("adds Docker Hub repositories from the external provider page", async () => {
+  it("adds registry addresses without a provider selection", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
@@ -2496,7 +2496,6 @@ describe("App", () => {
     const repositories: Array<{
       createdAt: string;
       id: string;
-      provider: "docker-hub";
       repository: string;
     }> = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -2507,10 +2506,7 @@ describe("App", () => {
         const repository = {
           createdAt: "2026-08-27T01:00:00.000Z",
           id: "11111111-1111-4111-8111-111111111111",
-          provider: "docker-hub" as const,
-          repository: body.repository.includes("/")
-            ? body.repository
-            : `library/${body.repository}`,
+          repository: body.repository,
         };
         repositories.push(repository);
         return jsonResponse({ repository });
@@ -2522,7 +2518,7 @@ describe("App", () => {
             kind: "image.repository.sync",
             target: {
               id: "11111111-1111-4111-8111-111111111111",
-              name: "library/nginx",
+              name: "ghcr.io/opnay/overseer",
               resource: "imageRepository",
             },
             title: "이미지 저장소 동기화",
@@ -2542,19 +2538,23 @@ describe("App", () => {
     expect(await screen.findByText("등록된 이미지 저장소가 없습니다.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "저장소 추가" }));
     const dialog = await screen.findByRole("dialog", { name: "이미지 저장소 추가" });
-    expect(within(dialog).getByRole("textbox", { name: "공급자" })).toBeDisabled();
-    await user.type(within(dialog).getByRole("textbox", { name: "저장소" }), "nginx");
+    expect(within(dialog).queryByRole("textbox", { name: "공급자" })).not.toBeInTheDocument();
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "저장소 주소" }),
+      "ghcr.io/opnay/overseer",
+    );
     await user.click(within(dialog).getByRole("button", { name: "추가" }));
 
-    expect(await screen.findByText("library/nginx")).toBeInTheDocument();
+    expect(await screen.findByText("ghcr.io/opnay/overseer")).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "공급자" })).not.toBeInTheDocument();
     expect(screen.getByText("동기화 필요")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "library/nginx 동기화" }));
+    await user.click(screen.getByRole("button", { name: "ghcr.io/opnay/overseer 동기화" }));
     expect(
       fetchMock.mock.calls.some(
         ([input, init]) =>
           String(input).endsWith("/api/image-repositories") &&
           init?.method === "POST" &&
-          init.body === JSON.stringify({ provider: "docker-hub", repository: "nginx" }),
+          init.body === JSON.stringify({ repository: "ghcr.io/opnay/overseer" }),
       ),
     ).toBe(true);
     expect(

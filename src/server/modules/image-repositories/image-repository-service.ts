@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { AddImageRepositoryInput, ImageRepositorySummary } from "../../../shared/contracts.ts";
+import { parseImageRepository } from "../../../shared/validation.ts";
 import { ExpectedError } from "../../core/errors.ts";
 import { getDockerHubRepositoryTags } from "../images/index.ts";
 import type { OperationProgress } from "../operations/index.ts";
 import { MemoryImageRepositoryStore, type ImageRepositoryStore } from "./image-repository-store.ts";
+import { getRegistryRepositoryTagCount } from "./registry-tags.ts";
 
 export interface ImageRepositoryController {
   add(input: AddImageRepositoryInput): ImageRepositorySummary;
@@ -37,7 +39,6 @@ export class ImageRepositoryService implements ImageRepositoryController {
     const repository: ImageRepositorySummary = {
       createdAt: this.now(),
       id: this.id(),
-      provider: input.provider,
       repository: input.repository,
     };
     this.store.add(repository);
@@ -67,10 +68,21 @@ export class ImageRepositoryService implements ImageRepositoryController {
         404,
       );
     }
-    progress?.step("Docker Hub 태그 확인 중");
-    const tags = await getDockerHubRepositoryTags(repository.repository, 1, this.fetcher);
+    const parsed = parseImageRepository(repository.repository);
+    if (!parsed) {
+      throw new ExpectedError(
+        "invalid_image_repository",
+        "등록된 이미지 저장소 주소가 유효하지 않습니다.",
+        409,
+      );
+    }
+    progress?.step(`${parsed.registry} 태그 확인 중`);
+    const tagCount =
+      parsed.registry === "docker.io"
+        ? (await getDockerHubRepositoryTags(parsed.name, 1, this.fetcher)).count
+        : await getRegistryRepositoryTagCount(parsed, this.fetcher);
     const syncedAt = this.now();
-    this.store.updateSync(id, syncedAt, tags.count);
-    progress?.output(`${repository.repository}: 태그 ${tags.count}개`);
+    this.store.updateSync(id, syncedAt, tagCount);
+    progress?.output(`${repository.repository}: 태그 ${tagCount}개`);
   }
 }

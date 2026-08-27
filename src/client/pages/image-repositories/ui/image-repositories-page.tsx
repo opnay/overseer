@@ -11,7 +11,7 @@ import { Table } from "@opnay/city-ds-react/table";
 import { Cloud, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import type { AddImageRepositoryInput, ImageRepositorySummary } from "@contracts/contracts.ts";
-import { isDockerHubRepository } from "@contracts/validation.ts";
+import { normalizeImageRepository } from "@contracts/validation.ts";
 import { ApiRequestError, apiRequest } from "@/shared/api";
 import { formatDateTime } from "@/shared/lib/date-time";
 import { ConfirmAction } from "@/shared/ui/confirm-action";
@@ -34,15 +34,13 @@ export function AddImageRepositoryDialog({
     event.preventDefault();
     setError(undefined);
     const form = new FormData(event.currentTarget);
-    const repository = String(form.get("repository") ?? "")
-      .trim()
-      .toLowerCase();
-    if (!isDockerHubRepository(repository)) {
-      setError("저장소는 namespace/name 형식으로 입력하십시오.");
+    const repository = normalizeImageRepository(String(form.get("repository") ?? ""));
+    if (!repository) {
+      setError("저장소 주소는 Docker 이미지 이름과 같은 형식으로 입력하십시오.");
       return;
     }
     try {
-      await onSubmit({ provider: "docker-hub", repository });
+      await onSubmit({ repository });
       setOpen(false);
     } catch (submitError) {
       setError(
@@ -70,28 +68,24 @@ export function AddImageRepositoryDialog({
         <Dialog.Viewport>
           <Dialog.Popup size="sm">
             <Dialog.Title>이미지 저장소 추가</Dialog.Title>
-            <Dialog.Description>공개 Docker Hub 저장소를 등록합니다.</Dialog.Description>
+            <Dialog.Description>Docker 이미지 저장소 주소를 등록합니다.</Dialog.Description>
             <form onSubmit={submit}>
               <Dialog.Body className="overseer-form-stack">
-                <Field.Root>
-                  <Field.Label>공급자</Field.Label>
-                  <Input aria-label="공급자" disabled value="Docker Hub" />
-                </Field.Root>
                 <Field.Root invalid={Boolean(error)}>
                   <Field.Label>
-                    저장소 <span aria-hidden="true">*</span>
+                    저장소 주소 <span aria-hidden="true">*</span>
                   </Field.Label>
                   <Input
-                    aria-label="저장소"
+                    aria-label="저장소 주소"
                     autoComplete="off"
                     autoFocus
                     name="repository"
                     onValueChange={() => setError(undefined)}
-                    placeholder="library/nginx"
+                    placeholder="ghcr.io/opnay/overseer"
                     required
                   />
                   <Field.Description>
-                    공식 이미지는 library/name, 사용자 이미지는 namespace/name 형식입니다.
+                    nginx, namespace/name, registry.example.com/team/image 형식을 지원합니다.
                   </Field.Description>
                   <Field.Error match>{error}</Field.Error>
                 </Field.Root>
@@ -163,8 +157,7 @@ export function ImageRepositoriesPage({
         <Table.Root aria-label="이미지 저장소 목록" className="overseer-table" size="sm">
           <Table.Header>
             <Table.Row>
-              <Table.Head className="overseer-table-column-wide">저장소</Table.Head>
-              <Table.Head>공급자</Table.Head>
+              <Table.Head className="overseer-table-column-wide">저장소 주소</Table.Head>
               <Table.Head>태그</Table.Head>
               <Table.Head>마지막 동기화</Table.Head>
               <Table.Head aria-label="작업" />
@@ -172,7 +165,7 @@ export function ImageRepositoriesPage({
           </Table.Header>
           <Table.Body>
             {repositories.length === 0 ? (
-              <Table.StateRow colSpan={5}>
+              <Table.StateRow colSpan={4}>
                 <EmptyState.Root density="compact">
                   <EmptyState.Icon>
                     <Cloud aria-hidden="true" />
@@ -189,7 +182,6 @@ export function ImageRepositoriesPage({
                   <Table.Cell className="overseer-table-column-wide">
                     <strong>{repository.repository}</strong>
                   </Table.Cell>
-                  <Table.Cell>Docker Hub</Table.Cell>
                   <Table.Cell>{repository.tagCount ?? "—"}</Table.Cell>
                   <Table.Cell>
                     {repository.lastSyncedAt ? (
@@ -218,7 +210,7 @@ export function ImageRepositoriesPage({
                         actionLabel="저장소 제거"
                         ariaLabel={`${repository.repository} 저장소 제거`}
                         disabled={isBusy(repository)}
-                        description="Overseer의 등록 정보만 제거하며 Docker Hub의 이미지는 변경하지 않습니다."
+                        description="Overseer의 등록 정보만 제거하며 원격 저장소의 이미지는 변경하지 않습니다."
                         iconOnly
                         onConfirm={() => onRemove(repository)}
                         title={`${repository.repository} 저장소를 제거하시겠습니까?`}

@@ -3,29 +3,29 @@ import {
   isContainerPort,
   isContainerReference,
   isComposeProjectName,
-  isDockerHubRepository,
   isImageIdentifier,
   isImageReference,
   isResourceName,
+  normalizeImageRepository,
 } from "../../shared/validation.ts";
 
-export function requireDockerHubRepository(value: unknown): string {
+export function requireImageRepository(value: unknown): string {
   if (typeof value !== "string") {
     throw new ExpectedError(
       "invalid_image_repository",
-      "유효한 Docker Hub 저장소를 입력하십시오.",
+      "유효한 이미지 저장소 주소를 입력하십시오.",
       400,
     );
   }
-  const repository = value.trim().toLowerCase();
-  if (!isDockerHubRepository(repository)) {
+  const repository = normalizeImageRepository(value);
+  if (!repository) {
     throw new ExpectedError(
       "invalid_image_repository",
-      "저장소는 namespace/name 형식으로 입력하십시오.",
+      "저장소 주소는 Docker 이미지 이름과 같은 형식으로 입력하십시오.",
       400,
     );
   }
-  return repository.includes("/") ? repository : `library/${repository}`;
+  return repository;
 }
 
 export function requireContainerReference(value: string): string {

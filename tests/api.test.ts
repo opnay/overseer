@@ -964,22 +964,22 @@ describe("API boundary", () => {
     const app = createApi(controller, undefined, undefined, repositories);
 
     const added = await app.request("/image-repositories", {
-      body: JSON.stringify({ provider: "docker-hub", repository: "nginx" }),
+      body: JSON.stringify({ repository: "nginx" }),
       headers: { ...localHeaders, "content-type": "application/json" },
       method: "POST",
     });
     expect(added.status).toBe(201);
     await expect(added.json()).resolves.toMatchObject({
-      repository: { repository: "library/nginx" },
+      repository: { repository: "docker.io/library/nginx" },
     });
     const duplicate = await app.request("/image-repositories", {
-      body: JSON.stringify({ provider: "docker-hub", repository: "library/nginx" }),
+      body: JSON.stringify({ repository: "docker.io/library/nginx" }),
       headers: { ...localHeaders, "content-type": "application/json" },
       method: "POST",
     });
     expect(duplicate.status).toBe(409);
     const invalid = await app.request("/image-repositories", {
-      body: JSON.stringify({ provider: "docker-hub", repository: "nginx:latest" }),
+      body: JSON.stringify({ repository: "nginx:latest" }),
       headers: { ...localHeaders, "content-type": "application/json" },
       method: "POST",
     });
@@ -994,7 +994,7 @@ describe("API boundary", () => {
 
     const listed = await app.request("/image-repositories", { headers: localHeaders });
     await expect(listed.json()).resolves.toMatchObject({
-      repositories: [{ repository: "library/nginx", tagCount: 3 }],
+      repositories: [{ repository: "docker.io/library/nginx", tagCount: 3 }],
     });
 
     const removed = await app.request("/image-repositories/11111111-1111-4111-8111-111111111111", {

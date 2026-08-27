@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import type { AddImageRepositoryInput } from "../../../shared/contracts.ts";
 import type { ImageRepositoryController } from "../../modules/image-repositories/index.ts";
 import { ExpectedError } from "../../core/errors.ts";
-import { requireDockerHubRepository } from "../../core/validation.ts";
+import { requireImageRepository } from "../../core/validation.ts";
 import { readObject, type EnqueueApiOperation } from "../http.ts";
 
 function requireRepositoryId(value: string): string {
@@ -24,16 +24,8 @@ export function registerImageRepositoryRoutes(
   app.get("/image-repositories", (context) => context.json({ repositories: repositories.list() }));
   app.post("/image-repositories", async (context) => {
     const body = await readObject(context);
-    if (body.provider !== "docker-hub") {
-      throw new ExpectedError(
-        "invalid_image_repository_provider",
-        "지원하지 않는 이미지 저장소 공급자입니다.",
-        400,
-      );
-    }
     const input: AddImageRepositoryInput = {
-      provider: body.provider,
-      repository: requireDockerHubRepository(body.repository),
+      repository: requireImageRepository(body.repository),
     };
     return context.json({ repository: repositories.add(input) }, 201);
   });
