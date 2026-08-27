@@ -1,8 +1,8 @@
 export const APP_ROUTE_GROUPS = [
   { id: "workloads", label: "워크로드" },
   { id: "resources", label: "리소스" },
-  { id: "operations", label: "운영" },
   { id: "virtualization", label: "가상화" },
+  { id: "operations", label: "운영" },
 ] as const;
 
 export type AppRouteGroup = (typeof APP_ROUTE_GROUPS)[number]["id"] | "utility";

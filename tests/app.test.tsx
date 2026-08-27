@@ -2427,6 +2427,9 @@ describe("App", () => {
       "href",
       "/instances",
     );
+    expect(
+      virtualization.compareDocumentPosition(operations) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(within(navigation).queryByRole("link", { name: "설정" })).not.toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "유틸리티 메뉴" })).toHaveTextContent("설정");
   });
