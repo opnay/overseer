@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { ContainerKeyValue, VolumeDetail } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
 import { formatDateTime } from "@/shared/lib/date-time";
+import { useUrlSection } from "@/shared/lib/url-section";
 import { LogViewer } from "@/shared/ui/log-viewer";
 import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 
@@ -72,9 +73,11 @@ function KeyValues({ empty, values }: { empty: string; values: ContainerKeyValue
 export function VolumeDetailPage({ name, refreshToken }: VolumeDetailPageProps) {
   const [detail, setDetail] = useState<VolumeDetail>();
   const [error, setError] = useState<string>();
-  const [section, setSection] = useState<VolumeDetailSection>("overview");
-
-  useEffect(() => setSection("overview"), [name]);
+  const [section, setSection] = useUrlSection({
+    defaultValue: "overview",
+    locationKey: name,
+    values: sectionOrder,
+  });
 
   useEffect(() => {
     let active = true;

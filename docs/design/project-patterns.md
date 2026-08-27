@@ -44,6 +44,7 @@
 - 페이지 액션 그룹에는 대표 `primary` 액션을 하나만 둡니다.
 - 뒤로가기와 새로고침은 대표 액션보다 먼저 읽히는 utility 그룹에 둡니다.
 - 행 액션은 `sm`, 폼과 일반 페이지 액션은 같은 그룹 안에서 같은 크기를 사용합니다.
+- 행에서 바로 이해되는 상세·시작·중지·재시작·로그·설정·삭제 아이콘은 빠른 작업으로 유지할 수 있습니다. 텍스트 설명 없이는 결과를 예측하기 어려운 명령과 여러 관리 명령은 `Menu`로 묶습니다.
 - 페이지 배경은 flat입니다. 독립된 데이터·상태·작업 경계만 raised 또는 outline surface를 사용합니다.
 - 하위 섹션은 카드 중첩 대신 제목, 간격과 divider로 구분합니다.
 - 요약 surface는 사용자가 다음 행동을 결정하는 현재 상태에만 사용합니다.
@@ -64,7 +65,7 @@
 
 ### 구성과 레이아웃
 
-`Page Header > Feedback > DataTableRegion > Table` 순서를 사용합니다. 필터가 생기면 같은 데이터 영역 안에서 `FilterBar > Table > Pagination` 순서로 추가합니다.
+`Page Header > Feedback > DataTableRegion > Table` 순서를 사용합니다. 큰 결과 집합은 같은 데이터 영역 안에서 `FilterBar > Table > Pagination` 순서로 구성하고 서버 조회도 같은 필터·페이지 계약을 사용합니다.
 
 - 데이터 영역은 outline 또는 raised surface 하나만 사용합니다.
 - Table은 `sm` 크기와 compact 정보 밀도를 사용합니다.
@@ -91,7 +92,7 @@
 `Page Header > Feedback > Sectioned Workspace`를 사용합니다. Sectioned Workspace 안의 DOM 순서는 `Section Navigation > Content Header > Content Body`입니다.
 
 - 데스크톱은 `11rem` 서브 사이드바와 유동 콘텐츠를 사용합니다.
-- 작은 화면은 탐색을 콘텐츠 위로 이동하고 항목을 가로 스크롤할 수 있게 합니다.
+- 52rem 이하에서는 탐색을 콘텐츠 위로 이동합니다. 42rem 이하에서는 전체 항목을 발견할 수 있는 `Select`로 전환합니다.
 - Content Header는 리소스 종류, 현재 섹션 제목과 필요한 짧은 설명만 표시합니다.
 - 개요의 핵심 상태 2~3개만 Summary surface에 표시합니다.
 - 독립 섹션 사이는 `space-8`, 섹션 제목과 내용 사이는 `space-4`를 사용합니다.
@@ -101,6 +102,7 @@
 
 - 상세 로딩, 리소스 없음, 섹션별 로딩, 오류, 정상, 명령 비활성을 구분합니다.
 - 현재 섹션은 `aria-current="page"`와 시각 상태를 함께 표시합니다.
+- 섹션 선택은 URL에 반영하여 새로고침·뒤로가기·링크 공유에서 현재 위치를 복원합니다.
 - navigation label, heading 순서와 키보드 포커스 순서가 시각 순서와 같아야 합니다.
 - 긴 식별자와 경로는 콘텐츠 영역 안에서 줄바꿈하며 페이지 폭을 늘리지 않아야 합니다.
 
@@ -126,6 +128,7 @@ ResourceDetail과 같은 `Sectioned Workspace` 레이아웃을 사용하지만 �
 - 초기 로딩, 조회 오류와 재시도, 사용 불가, 변경 없음, 변경됨, 저장 중, 저장 실패와 성공을 구분합니다.
 - 일부 섹션 저장 실패가 다른 섹션의 draft를 제거하지 않아야 합니다.
 - 모바일에서도 탐색, 입력, 초기화, 저장 순서가 DOM과 같아야 합니다.
+- 설정 섹션 선택은 URL에 반영하여 새로고침·뒤로가기·링크 공유에서 현재 위치를 복원합니다.
 - 오류는 해당 설정 섹션 가까이에서 원인과 복구 방법을 알려야 합니다.
 
 ## GuidedSetup

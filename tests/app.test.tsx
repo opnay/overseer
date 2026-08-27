@@ -1160,17 +1160,20 @@ describe("App", () => {
 
     const navigation = screen.getByRole("navigation", { name: "VM 인스턴스 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "VM 설정" }));
+    expect(window.location.search).toBe("?section=settings");
     expect(screen.getByText("Lima VM")).toBeInTheDocument();
     expect(screen.getByText("Apple Virtualization (VZ)")).toBeInTheDocument();
     expect(screen.getByText("100GiB")).toBeInTheDocument();
 
     await user.click(within(navigation).getByRole("button", { name: "터미널" }));
+    expect(window.location.search).toBe("?section=terminal");
     expect(screen.getByLabelText("VM 인스턴스 터미널 명령")).toHaveTextContent(
       "limactl shell overseer",
     );
     expect(screen.getByRole("button", { name: "터미널 명령 복사" })).toBeEnabled();
 
     await user.click(within(navigation).getByRole("button", { name: "Docker 연결" }));
+    expect(window.location.search).toBe("?section=connection");
     expect(screen.getByText("현재 사용 중")).toBeInTheDocument();
     expect(screen.getByText("29.7.2")).toBeInTheDocument();
     expect(screen.getByText("읽기/쓰기")).toBeInTheDocument();
@@ -1222,6 +1225,7 @@ describe("App", () => {
       within(navigation).queryByRole("button", { name: "인스턴스 설정" }),
     ).not.toBeInTheDocument();
     await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
+    expect(window.location.search).toBe("?section=engine");
     const liveRestore = await screen.findByRole("switch", { name: "컨테이너 실행 유지" });
     expect(liveRestore).not.toBeChecked();
     expect(liveRestore.children).toHaveLength(1);
@@ -1299,6 +1303,7 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     await user.click(within(navigation).getByRole("button", { name: "네트워크 설정" }));
+    expect(window.location.search).toBe("?section=network");
     expect(await screen.findByLabelText("DNS 서버")).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "컨테이너 실행 유지" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "추가 daemon.json 설정" })).not.toBeInTheDocument();
@@ -2062,7 +2067,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByRole("row", { name: /web/ });
 
-    await user.click(screen.getByRole("button", { name: "설정" }));
+    await user.click(screen.getByRole("button", { name: "web 설정" }));
     expect(await screen.findByRole("dialog", { name: "web 설정" })).toBeInTheDocument();
     expect(screen.getByText("일부 설정은 읽기 전용입니다.")).toBeInTheDocument();
     expect(screen.getByLabelText("이미지")).toBeDisabled();
@@ -2168,6 +2173,17 @@ describe("App", () => {
         );
       }
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: history });
+      if (url.includes("/api/operations?")) {
+        return jsonResponse({
+          operations: history,
+          pagination: {
+            page: 1,
+            pageSize: 20,
+            total: history.length,
+            totalPages: 1,
+          },
+        });
+      }
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -2293,6 +2309,74 @@ describe("App", () => {
         ),
       ).toBe(true),
     );
+  });
+
+  it("paginates and searches persistent operation history", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const history = Array.from({ length: 25 }, (_, index) =>
+      operation("succeeded", {
+        id: `operation-${index}`,
+        target: { name: `service-${index}`, resource: "container" },
+        title: `작업 ${index}`,
+      }),
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: history });
+      if (url.includes("/api/operations?")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        const query = params.get("query") ?? "";
+        const page = Number(params.get("page") ?? "1");
+        const pageSize = Number(params.get("pageSize") ?? "20");
+        const filtered = history.filter(
+          (item) => item.title.includes(query) || item.target.name.includes(query),
+        );
+        return jsonResponse({
+          operations: filtered.slice((page - 1) * pageSize, page * pageSize),
+          pagination: {
+            page,
+            pageSize,
+            total: filtered.length,
+            totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+          },
+        });
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/operations");
+    render(<App />);
+
+    expect(await screen.findByText("전체 25개 · 1 / 2페이지")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "작업 검색" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "상태" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "리소스" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "2페이지" }));
+    expect(await screen.findByText("작업 24")).toBeInTheDocument();
+    expect(screen.getByText("전체 25개 · 2 / 2페이지")).toBeInTheDocument();
+
+    await user.type(screen.getByRole("searchbox", { name: "작업 검색" }), "작업 24");
+    await user.click(screen.getByRole("button", { name: "검색" }));
+    expect(await screen.findByText("전체 1개 · 1 / 1페이지")).toBeInTheDocument();
+    expect(screen.getByText("작업 24")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes("query=%EC%9E%91%EC%97%85+24")),
+    ).toBe(true);
+    await user.click(screen.getByRole("button", { name: "검색어 지우기" }));
+    expect(await screen.findByText("전체 25개 · 1 / 2페이지")).toBeInTheDocument();
   });
 
   it("groups desktop navigation and keeps settings as a utility", async () => {
@@ -3025,8 +3109,10 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "Compose", level: 1 })).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /demo-stack/ })).toBeInTheDocument();
+    const composeRow = screen.getByRole("row", { name: /demo-stack/ });
+    expect(composeRow).toBeInTheDocument();
     expect(screen.getByText("1개 실행 중")).toBeInTheDocument();
+    expect(within(composeRow).queryByRole("img", { name: "1개 실행 중" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "demo-stack 서비스 보기" }));
 
@@ -3454,7 +3540,9 @@ describe("App", () => {
     window.history.replaceState(null, "", "/compose");
     render(<App />);
     expect(await screen.findByText("폼 등록")).toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "폼 관리" }));
+    await user.click(
+      await screen.findByRole("button", { name: "form-stack 폼 Compose 관리 메뉴" }),
+    );
     await user.click(await screen.findByRole("menuitem", { name: "구성 편집" }));
     const dialog = await screen.findByRole("dialog", { name: "폼 Compose 수정" });
     const tag = within(within(dialog).getByRole("region", { name: "서비스 1" })).getByRole(
@@ -3522,14 +3610,18 @@ describe("App", () => {
     expect(screen.getByText("URL 등록").closest(".overseer-primary-meta")).toBeInTheDocument();
     expect(screen.getByText("build context")).toBeInTheDocument();
     expect(screen.getByText("업데이트 있음")).toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "URL 관리" }));
+    await user.click(
+      await screen.findByRole("button", { name: "remote-build URL Compose 관리 메뉴" }),
+    );
     await user.click(await screen.findByRole("menuitem", { name: "등록 해제" }));
     expect(
       await screen.findByRole("alertdialog", { name: "URL Compose 등록을 해제하시겠습니까?" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "취소" }));
 
-    await user.click(await screen.findByRole("button", { name: "URL 관리" }));
+    await user.click(
+      await screen.findByRole("button", { name: "remote-build URL Compose 관리 메뉴" }),
+    );
     await user.click(await screen.findByRole("menuitem", { name: "업데이트 적용" }));
     await waitFor(() =>
       expect(

@@ -894,6 +894,9 @@ function AppContent() {
   const hasActiveOperations = operations.some(
     ({ status }) => status === "queued" || status === "running",
   );
+  const operationsRefreshToken = operations
+    .map(({ id, status, step }) => `${id}:${status}:${step}`)
+    .join("|");
 
   useEffect(() => {
     if (!hasActiveOperations) return;
@@ -1273,16 +1276,16 @@ function AppContent() {
     : currentRoute.label;
   const pageDescription = currentDetail
     ? currentDetail.type === "compose"
-      ? "프로젝트 구성, 서비스, 로그와 소스별 설정을 관리합니다."
+      ? "서비스 운영과 Compose 구성을 한곳에서 관리합니다."
       : currentDetail.type === "container"
-        ? "컨테이너 실행 상태와 전체 구성을 확인합니다."
+        ? "실행 중인 컨테이너의 운영·진단 정보를 관리합니다."
         : currentDetail.type === "image"
-          ? "이미지의 실행 설정, 메타데이터와 파일 시스템 레이어를 확인합니다."
+          ? "이미지의 출처, 실행 기본값과 레이어를 탐색합니다."
           : currentDetail.type === "instance"
-            ? "VM 상태, 리소스와 Docker 연결 정보를 확인합니다."
+            ? "Lima VM과 Docker Engine 연결을 관리합니다."
             : currentDetail.type === "network"
-              ? "네트워크의 IP 주소 관리, 연결 컨테이너와 Docker 원본 정보를 확인합니다."
-              : "볼륨의 드라이버, 저장 위치와 Docker 원본 정보를 확인합니다."
+              ? "Docker 네트워크의 연결 관계와 원본 구성을 탐색합니다."
+              : "Docker 볼륨의 저장 위치와 원본 구성을 탐색합니다."
     : currentRoute.description;
   const runComposeAction = (name: string, action: ComposeProjectAction) =>
     mutate({
@@ -1479,7 +1482,11 @@ function AppContent() {
         본문으로 건너뛰기
       </a>
       {navigationMode !== "mobile" ? (
-        <aside className="overseer-sidebar" data-navigation-mode={navigationMode}>
+        <aside
+          aria-label="Overseer 주요 탐색"
+          className="overseer-sidebar"
+          data-navigation-mode={navigationMode}
+        >
           <AppBrand />
           <PrimaryNavigation
             currentPath={currentRoute.path}
@@ -1762,7 +1769,7 @@ function AppContent() {
                   submitting?.startsWith("operation-retry-") ? submitting.slice(16) : undefined
                 }
                 onRetry={retryOperation}
-                operations={operations}
+                refreshToken={operationsRefreshToken}
               />
             </Suspense>
           ) : null}

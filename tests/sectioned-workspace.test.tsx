@@ -34,6 +34,9 @@ describe("SectionedWorkspace", () => {
     );
 
     const navigation = screen.getByRole("navigation", { name: "설정 상세 메뉴" });
+    expect(screen.getByRole("complementary", { name: "설정 상세 메뉴 영역" })).toContainElement(
+      navigation,
+    );
     const heading = screen.getByRole("heading", { level: 2, name: "네트워크 설정" });
     const body = screen.getByText("설정 본문");
     expect(navigation.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
@@ -49,5 +52,9 @@ describe("SectionedWorkspace", () => {
 
     await user.click(screen.getByRole("button", { name: "일반" }));
     expect(onSectionChange).toHaveBeenCalledWith("general");
+
+    await user.click(screen.getByRole("combobox", { name: "설정 상세 메뉴" }));
+    await user.click(await screen.findByRole("option", { name: "일반" }));
+    expect(onSectionChange).toHaveBeenLastCalledWith("general");
   });
 });

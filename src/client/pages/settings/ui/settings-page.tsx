@@ -1,7 +1,6 @@
 import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { ArrowRight, PackageCheck } from "lucide-react";
-import { useState } from "react";
 import type {
   DashboardSnapshot,
   OperationSnapshot,
@@ -9,6 +8,7 @@ import type {
   ToolUpdateId,
   UpdateDockerDaemonConfigurationSectionInput,
 } from "@contracts/contracts.ts";
+import { useUrlSection } from "@/shared/lib/url-section";
 import { SectionedWorkspace, type SectionedWorkspaceGroup } from "@/shared/ui/sectioned-workspace";
 import { DockerDaemonSettings } from "./docker-daemon-settings.tsx";
 import { ToolUpdatesSection } from "./tool-updates-section.tsx";
@@ -25,6 +25,7 @@ interface SettingsPageProps {
 }
 
 type SettingsSection = "engine" | "general" | "network";
+const settingsSections: SettingsSection[] = ["general", "engine", "network"];
 
 const settingsNavigation = [
   {
@@ -83,9 +84,10 @@ export function SettingsPage({
   toolOperation,
   toolRequestPending,
 }: SettingsPageProps) {
-  const [section, setSection] = useState<SettingsSection>(() =>
-    dashboard.runtime.phase === "running" ? "general" : "engine",
-  );
+  const [section, setSection] = useUrlSection({
+    defaultValue: dashboard.runtime.phase === "running" ? "general" : "engine",
+    values: settingsSections,
+  });
 
   const status = runtimeStatus[dashboard.runtime.phase];
   const presentation = sectionPresentation[section];

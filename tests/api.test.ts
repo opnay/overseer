@@ -435,6 +435,50 @@ describe("API boundary", () => {
     });
   });
 
+  it("filters and paginates operation history query parameters", async () => {
+    const operations = new OperationQueue(30);
+    for (let index = 0; index < 25; index += 1) {
+      operations.enqueue({
+        kind: "container.start",
+        locks: [`container:worker-${index}`],
+        run: async () => undefined,
+        successMessage: "완료",
+        target: { name: `worker-${index}`, resource: "container" },
+        title: index % 2 === 0 ? "컨테이너 시작" : "컨테이너 중지",
+      });
+    }
+    await vi.waitFor(() =>
+      expect(operations.list().filter(({ status }) => status === "succeeded")).toHaveLength(25),
+    );
+    const app = createApi(createController(), operations);
+
+    const secondPage = await app.request("/operations?page=2&pageSize=10", {
+      headers: localHeaders,
+    });
+    expect(secondPage.status).toBe(200);
+    await expect(secondPage.json()).resolves.toMatchObject({
+      operations: expect.arrayContaining([expect.objectContaining({ status: "succeeded" })]),
+      pagination: { page: 2, pageSize: 10, total: 25, totalPages: 3 },
+    });
+
+    const filtered = await app.request(
+      "/operations?page=1&pageSize=10&query=worker-24&resource=container&status=succeeded",
+      { headers: localHeaders },
+    );
+    await expect(filtered.json()).resolves.toMatchObject({
+      operations: [{ target: { name: "worker-24" } }],
+      pagination: { page: 1, total: 1, totalPages: 1 },
+    });
+
+    const invalidStatus = await app.request("/operations?status=unknown", {
+      headers: localHeaders,
+    });
+    const oversizedPage = await app.request("/operations?pageSize=101", {
+      headers: localHeaders,
+    });
+    expect([invalidStatus.status, oversizedPage.status]).toEqual([400, 400]);
+  });
+
   it("validates and creates a named Lima instance without retry", async () => {
     const controller = createController();
     const app = createApi(controller);

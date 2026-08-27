@@ -14,6 +14,7 @@ import type {
 import { apiRequest } from "@/shared/api";
 import { containerDetailPath } from "@/shared/routes";
 import { formatDateTime } from "@/shared/lib/date-time";
+import { useUrlSection } from "@/shared/lib/url-section";
 import { LogViewer } from "@/shared/ui/log-viewer";
 import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 
@@ -175,9 +176,11 @@ function Containers({
 export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: NetworkDetailPageProps) {
   const [detail, setDetail] = useState<NetworkDetail>();
   const [error, setError] = useState<string>();
-  const [section, setSection] = useState<NetworkDetailSection>("overview");
-
-  useEffect(() => setSection("overview"), [name]);
+  const [section, setSection] = useUrlSection({
+    defaultValue: "overview",
+    locationKey: name,
+    values: sectionOrder,
+  });
 
   useEffect(() => {
     let active = true;

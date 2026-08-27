@@ -20,6 +20,7 @@ import { apiRequest } from "@/shared/api";
 import { CommandBlock } from "@/shared/ui/command-block";
 import { composeProjectDetailPath } from "@/shared/routes";
 import { formatDateTime } from "@/shared/lib/date-time";
+import { useUrlSection } from "@/shared/lib/url-section";
 import { LogViewer } from "@/shared/ui/log-viewer";
 import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 
@@ -341,7 +342,11 @@ export function ContainerDetailPage({
   const [inspectionAttempt, setInspectionAttempt] = useState(0);
   const [inspectionError, setInspectionError] = useState<string>();
   const [inspectionLoading, setInspectionLoading] = useState(false);
-  const [section, setSection] = useState<ContainerDetailSection>("overview");
+  const [section, setSection] = useUrlSection({
+    defaultValue: "overview",
+    locationKey: id,
+    values: sectionOrder,
+  });
   const [terminal, setTerminal] = useState<ContainerTerminalAccess>();
   const [terminalAttempt, setTerminalAttempt] = useState(0);
   const [terminalError, setTerminalError] = useState<string>();
@@ -351,7 +356,6 @@ export function ContainerDetailPage({
     setInspection(undefined);
     setInspectionAttempt(0);
     setInspectionError(undefined);
-    setSection("overview");
     setTerminal(undefined);
     setTerminalAttempt(0);
     setTerminalError(undefined);

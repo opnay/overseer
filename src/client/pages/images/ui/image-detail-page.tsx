@@ -16,6 +16,7 @@ import type {
 } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
 import { formatDateTime } from "@/shared/lib/date-time";
+import { useUrlSection } from "@/shared/lib/url-section";
 import { LogViewer } from "@/shared/ui/log-viewer";
 import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 import { reconstructDockerfileLayers } from "../lib/image-history-presentation.ts";
@@ -192,14 +193,17 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
   const [history, setHistory] = useState<ImageHistoryEntry[]>();
   const [historyError, setHistoryError] = useState<string>();
   const [repositoryTags, setRepositoryTags] = useState<ImageRepositoryTags>();
-  const [section, setSection] = useState<ImageDetailSection>("overview");
+  const [section, setSection] = useUrlSection({
+    defaultValue: "overview",
+    locationKey: id,
+    values: sectionOrder,
+  });
   const [tagError, setTagError] = useState<string>();
   const [tagPage, setTagPage] = useState(1);
 
   useEffect(() => {
     setHistory(undefined);
     setRepositoryTags(undefined);
-    setSection("overview");
     setTagPage(1);
   }, [id]);
 

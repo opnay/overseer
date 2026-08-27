@@ -164,6 +164,36 @@ describe("OperationQueue", () => {
     expect(queue.list()).toHaveLength(120);
   });
 
+  it("filters and paginates operation history without trimming stored records", async () => {
+    const queue = new OperationQueue(30);
+    for (let index = 0; index < 25; index += 1) {
+      queue.enqueue({
+        ...operation(async () => undefined, [`container:worker-${index}`]),
+        target: { name: `worker-${index}`, resource: "container" },
+        title: index % 2 === 0 ? "컨테이너 시작" : "컨테이너 중지",
+      });
+    }
+    await vi.waitFor(() =>
+      expect(queue.list().filter(({ status }) => status === "succeeded")).toHaveLength(25),
+    );
+
+    expect(queue.query({ page: 2, pageSize: 10 })).toMatchObject({
+      operations: expect.any(Array),
+      page: 2,
+      pageSize: 10,
+      total: 25,
+      totalPages: 3,
+    });
+    expect(queue.query({ page: 2, pageSize: 10 }).operations).toHaveLength(10);
+    expect(queue.query({ page: 1, pageSize: 10, query: "worker-24" })).toMatchObject({
+      operations: [{ target: { name: "worker-24" } }],
+      total: 1,
+      totalPages: 1,
+    });
+    expect(queue.query({ page: 1, pageSize: 10, status: "failed" }).operations).toHaveLength(0);
+    expect(queue.list()).toHaveLength(25);
+  });
+
   it("persists failed history and retry metadata across queue instances", async () => {
     const store = await historyStore();
     const queue = new OperationQueue(3, store);

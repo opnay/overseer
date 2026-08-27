@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
 import type {
   OperationKind,
+  OperationResource,
   OperationSnapshot,
+  OperationStatus,
   OperationTarget,
 } from "../../../shared/contracts.ts";
 import { ExpectedError } from "../../core/errors.ts";
@@ -32,6 +34,22 @@ export interface EnqueueOperation {
   successMessage: string;
   target: OperationTarget;
   title: string;
+}
+
+export interface OperationListQuery {
+  page: number;
+  pageSize: number;
+  query?: string;
+  resource?: OperationResource;
+  status?: OperationStatus;
+}
+
+export interface OperationListResult {
+  operations: OperationSnapshot[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }
 
 interface StoredOperation extends OperationSnapshot {
@@ -117,9 +135,34 @@ export class OperationQueue {
   }
 
   list(): OperationSnapshot[] {
-    return [...this.operations.values()]
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-      .map(clone);
+    return this.sorted().map(clone);
+  }
+
+  query(input: OperationListQuery): OperationListResult {
+    const query = input.query?.trim().toLowerCase();
+    const filtered = this.sorted().filter((operation) => {
+      if (input.status && operation.status !== input.status) return false;
+      if (input.resource && operation.target.resource !== input.resource) return false;
+      if (!query) return true;
+      return [
+        operation.error?.message,
+        operation.kind,
+        operation.step,
+        operation.target.name,
+        operation.title,
+      ].some((value) => value?.toLowerCase().includes(query));
+    });
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / input.pageSize));
+    const page = Math.min(input.page, totalPages);
+    const offset = (page - 1) * input.pageSize;
+    return {
+      operations: filtered.slice(offset, offset + input.pageSize).map(clone),
+      page,
+      pageSize: input.pageSize,
+      total,
+      totalPages,
+    };
   }
 
   get(id: string): OperationSnapshot | undefined {
@@ -192,6 +235,12 @@ export class OperationQueue {
       if (this.running >= this.maxConcurrent) return;
       index -= 1;
     }
+  }
+
+  private sorted(): StoredOperation[] {
+    return [...this.operations.values()].sort((left, right) =>
+      right.createdAt.localeCompare(left.createdAt),
+    );
   }
 
   private start(operation: StoredOperation): void {

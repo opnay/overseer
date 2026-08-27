@@ -103,9 +103,9 @@ pnpm check
 
 ## 비동기 작업
 
-모든 생성·수정·동작·삭제 요청은 `202 Accepted`와 작업 ID를 즉시 반환합니다. 상단의 **작업** Drawer에는 대기·진행·실패 작업만 표시하고, `/operations` 페이지에는 Overseer에서 요청한 모든 작업과 전체 작업 출력을 SQLite에 계속 저장합니다. Drawer의 출력은 6줄 높이에서 스크롤하며 크게 보기에서는 같은 전체 출력을 표시합니다. 서버 재시작 당시 대기·실행 중이던 작업은 중단 실패로 기록하며, 실패 작업은 저장된 원래 요청을 다시 검증해 새 작업으로 재시도할 수 있습니다. Docker CLI에서 직접 실행한 작업은 기록하지 않습니다.
+모든 생성·수정·동작·삭제 요청은 `202 Accepted`와 작업 ID를 즉시 반환합니다. 상단의 **작업** Drawer에는 대기·진행·실패 작업만 표시하고, `/operations` 페이지에는 Overseer에서 요청한 모든 작업과 전체 작업 출력을 SQLite에 계속 저장하며 검색·상태·리소스 필터와 페이지 이동을 제공합니다. Drawer의 출력은 6줄 높이에서 스크롤하며 크게 보기에서는 같은 전체 출력을 표시합니다. 서버 재시작 당시 대기·실행 중이던 작업은 중단 실패로 기록하며, 실패 작업은 저장된 원래 요청을 다시 검증해 새 작업으로 재시도할 수 있습니다. Docker CLI에서 직접 실행한 작업은 기록하지 않습니다.
 
-- `GET /api/operations`: 전체 작업 기록
+- `GET /api/operations`: 작업 기록. `page`, `pageSize`, `query`, `status`, `resource`로 조회하며 기본 응답은 최근 50개와 pagination 정보를 포함
 - `GET /api/operations/:id`: 단일 작업 상태
 - `DELETE /api/operations/:id`: 대기 작업 취소
 - `POST /api/operations/:id/retry`: 실패 작업을 새 작업으로 재접수

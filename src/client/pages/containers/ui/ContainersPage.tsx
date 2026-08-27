@@ -114,13 +114,14 @@ export function ContainersPage({
                   <Table.Cell>
                     <div className="overseer-row-actions">
                       <Button
+                        aria-label={`${container.name} 설정`}
                         disabled={rowBusy}
+                        iconOnly
                         onClick={() => onEdit(container)}
                         size="sm"
                         variant="ghost"
                       >
                         <Settings2 aria-hidden="true" size={14} />
-                        설정
                       </Button>
                       {running ? (
                         <>

@@ -5,4 +5,10 @@ export {
   type OperationRetryRequest,
   type PersistedOperation,
 } from "./operation-history.ts";
-export { OperationQueue, type EnqueueOperation, type OperationProgress } from "./operations.ts";
+export {
+  OperationQueue,
+  type EnqueueOperation,
+  type OperationListQuery,
+  type OperationListResult,
+  type OperationProgress,
+} from "./operations.ts";

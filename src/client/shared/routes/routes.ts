@@ -38,14 +38,14 @@ export const APP_ROUTES = [
   },
   {
     description: "컨테이너 간 통신에 사용하는 Docker 네트워크를 관리합니다.",
-    eyebrow: "네트워크",
+    eyebrow: "Docker 네트워크",
     group: "resources",
     label: "네트워크",
     path: "/networks",
   },
   {
     description: "Overseer에서 요청한 모든 Docker 작업과 결과를 확인합니다.",
-    eyebrow: "작업 기록",
+    eyebrow: "운영 기록",
     group: "operations",
     label: "작업 기록",
     path: "/operations",
@@ -58,7 +58,7 @@ export const APP_ROUTES = [
     path: "/instances",
   },
   {
-    description: "Overseer의 기본 동작과 Docker Engine 동작·네트워크를 구성합니다.",
+    description: "Overseer와 Docker Engine 설정을 관리합니다.",
     eyebrow: "시스템 설정",
     group: "utility",
     label: "설정",

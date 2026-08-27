@@ -1,10 +1,82 @@
 import type { Hono } from "hono";
-import type { OperationAccepted } from "../../../shared/contracts.ts";
+import type {
+  OperationAccepted,
+  OperationResource,
+  OperationStatus,
+} from "../../../shared/contracts.ts";
 import { ExpectedError } from "../../core/errors.ts";
 import type { OperationQueue } from "../../modules/operations/index.ts";
 
+const DEFAULT_OPERATION_PAGE_SIZE = 50;
+const MAX_OPERATION_PAGE_SIZE = 100;
+const operationResources = new Set<OperationResource>([
+  "compose",
+  "container",
+  "image",
+  "network",
+  "runtime",
+  "startup",
+  "volume",
+]);
+const operationStatuses = new Set<OperationStatus>([
+  "cancelled",
+  "failed",
+  "queued",
+  "running",
+  "succeeded",
+]);
+
+function positiveInteger(value: string | undefined, fallback: number, label: string): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  throw new ExpectedError("invalid_operation_query", `${label} 값이 올바르지 않습니다.`, 400);
+}
+
 export function registerOperationRoutes(app: Hono, operations: OperationQueue): void {
-  app.get("/operations", (context) => context.json({ operations: operations.list() }));
+  app.get("/operations", (context) => {
+    const page = positiveInteger(context.req.query("page"), 1, "페이지");
+    const pageSize = positiveInteger(
+      context.req.query("pageSize"),
+      DEFAULT_OPERATION_PAGE_SIZE,
+      "페이지 크기",
+    );
+    if (pageSize > MAX_OPERATION_PAGE_SIZE) {
+      throw new ExpectedError(
+        "invalid_operation_query",
+        `페이지 크기는 ${MAX_OPERATION_PAGE_SIZE} 이하여야 합니다.`,
+        400,
+      );
+    }
+    const query = context.req.query("query")?.trim();
+    if (query && query.length > 100) {
+      throw new ExpectedError("invalid_operation_query", "검색어는 100자 이하여야 합니다.", 400);
+    }
+    const statusValue = context.req.query("status");
+    const resourceValue = context.req.query("resource");
+    if (statusValue && !operationStatuses.has(statusValue as OperationStatus)) {
+      throw new ExpectedError("invalid_operation_query", "작업 상태가 올바르지 않습니다.", 400);
+    }
+    if (resourceValue && !operationResources.has(resourceValue as OperationResource)) {
+      throw new ExpectedError("invalid_operation_query", "리소스 종류가 올바르지 않습니다.", 400);
+    }
+    const result = operations.query({
+      page,
+      pageSize,
+      ...(query ? { query } : {}),
+      ...(resourceValue ? { resource: resourceValue as OperationResource } : {}),
+      ...(statusValue ? { status: statusValue as OperationStatus } : {}),
+    });
+    return context.json({
+      operations: result.operations,
+      pagination: {
+        page: result.page,
+        pageSize: result.pageSize,
+        total: result.total,
+        totalPages: result.totalPages,
+      },
+    });
+  });
   app.get("/operations/:id", (context) => {
     const operation = operations.get(context.req.param("id"));
     if (!operation) {

@@ -662,3 +662,13 @@ export interface OperationSnapshot {
 export interface OperationAccepted {
   operation: OperationSnapshot;
 }
+
+export interface OperationListResponse {
+  operations: OperationSnapshot[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}

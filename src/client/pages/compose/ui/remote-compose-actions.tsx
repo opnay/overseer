@@ -1,6 +1,7 @@
 import { AlertDialog } from "@opnay/city-ds-react/alert-dialog";
 import { Button } from "@opnay/city-ds-react/button";
 import { Menu } from "@opnay/city-ds-react/menu";
+import { Ellipsis } from "lucide-react";
 import { useState } from "react";
 import type { ComposeProjectSummary } from "@contracts/contracts.ts";
 
@@ -25,8 +26,18 @@ export function RemoteComposeActions({
   return (
     <>
       <Menu.Root density="compact">
-        <Menu.Trigger disabled={busy} render={<Button size="sm" variant="ghost" />}>
-          URL 관리
+        <Menu.Trigger
+          disabled={busy}
+          render={
+            <Button
+              aria-label={`${project.name} URL Compose 관리 메뉴`}
+              iconOnly
+              size="sm"
+              variant="ghost"
+            />
+          }
+        >
+          <Ellipsis aria-hidden="true" size={16} />
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Positioner sideOffset={6}>

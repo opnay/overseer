@@ -11,6 +11,7 @@ import type { ComposeBuilderSpec, ComposeProjectDetail } from "@contracts/contra
 import { apiRequest } from "@/shared/api";
 import { BuilderComposeDialog } from "./builder-compose-dialog.tsx";
 import { formatDateTime } from "@/shared/lib/date-time";
+import { useUrlSection } from "@/shared/lib/url-section";
 import { LogViewer } from "@/shared/ui/log-viewer";
 import { containerDetailPath } from "@/shared/routes";
 import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
@@ -26,6 +27,14 @@ interface ComposeProjectDetailPageProps {
 }
 
 type ComposeDetailSection = "configuration" | "form" | "logs" | "overview" | "services" | "updates";
+const sectionOrder: ComposeDetailSection[] = [
+  "overview",
+  "services",
+  "configuration",
+  "logs",
+  "updates",
+  "form",
+];
 
 const sectionPresentation: Record<ComposeDetailSection, { description: string; label: string }> = {
   configuration: {
@@ -91,9 +100,20 @@ export function ComposeProjectDetailPage({
   const [logs, setLogs] = useState<string>();
   const [logsError, setLogsError] = useState<string>();
   const [logsLoading, setLogsLoading] = useState(false);
-  const [section, setSection] = useState<ComposeDetailSection>("overview");
+  const [requestedSection, setSection] = useUrlSection({
+    defaultValue: "overview",
+    locationKey: name,
+    values: sectionOrder,
+  });
+  const section =
+    (requestedSection === "updates" && detail?.configuration.kind !== "remote") ||
+    (requestedSection === "form" && detail?.configuration.kind !== "builder")
+      ? "overview"
+      : requestedSection;
 
-  useEffect(() => setSection("overview"), [name]);
+  useEffect(() => {
+    if (detail && section !== requestedSection) setSection(section);
+  }, [detail, requestedSection, section, setSection]);
 
   useEffect(() => {
     if (section !== "logs") return;

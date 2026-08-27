@@ -136,7 +136,7 @@ export function ComposePage({
                       <div className="overseer-compose-status-stack">
                         <span className="overseer-container-status">
                           <Badge
-                            aria-label={composeStatusLabel(project.status)}
+                            aria-hidden="true"
                             dot
                             size="sm"
                             tone={composeStatusTone(project)}

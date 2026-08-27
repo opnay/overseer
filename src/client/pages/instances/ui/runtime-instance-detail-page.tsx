@@ -6,6 +6,7 @@ import { ServerCog, Terminal } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { RuntimeInstanceSummary, RuntimeInstancesSnapshot } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
+import { useUrlSection } from "@/shared/lib/url-section";
 import { CommandBlock } from "@/shared/ui/command-block";
 import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 import type { RuntimeInstanceHeaderState } from "./runtime-instance-header-actions.tsx";
@@ -79,9 +80,11 @@ export function RuntimeInstanceDetailPage({
 }) {
   const [snapshot, setSnapshot] = useState<RuntimeInstancesSnapshot>();
   const [error, setError] = useState<string>();
-  const [section, setSection] = useState<InstanceDetailSection>("overview");
-
-  useEffect(() => setSection("overview"), [name]);
+  const [section, setSection] = useUrlSection({
+    defaultValue: "overview",
+    locationKey: name,
+    values: sectionOrder,
+  });
 
   useEffect(() => {
     let active = true;
