@@ -1580,10 +1580,17 @@
     gap: var(--city-space-3);
   }
 
-  .overseer-operation-heading > div {
+  .overseer-operation-heading-copy {
     display: grid;
     min-width: 0;
     gap: var(--city-space-0-5);
+  }
+
+  .overseer-operation-heading-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--city-space-1);
   }
 
   .overseer-operation-heading span,

@@ -2188,7 +2188,7 @@ describe("App", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState(null, "", "/containers");
-    render(<App />);
+    const app = render(<App />);
     await screen.findByText("컨테이너가 없습니다.");
 
     await user.click(await screen.findByRole("button", { name: /^작업/ }));
@@ -2232,6 +2232,18 @@ describe("App", () => {
       within(drawerLogOptions).getByRole("menuitemradio", { name: "크게" }),
     ).toBeInTheDocument();
     await user.keyboard("{Escape}");
+
+    const dismissFailure = within(drawer).getByRole("button", {
+      name: "실패 작업 패널에서 지우기",
+    });
+    expect(dismissFailure).toHaveAttribute("data-city-icon-only");
+    await user.hover(dismissFailure);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("패널에서 지우기");
+    await user.click(dismissFailure);
+    expect(within(drawer).queryByText("실패 작업")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("overseer-dismissed-operation-failures")).toBe(
+      '["failed-id"]',
+    );
 
     const viewAllOperations = within(drawer).getByRole("button", { name: "전체 작업 보기" });
     expect(viewAllOperations).toHaveClass("bg-city-primary");
@@ -2309,6 +2321,15 @@ describe("App", () => {
         ),
       ).toBe(true),
     );
+
+    app.unmount();
+    window.history.replaceState(null, "", "/containers");
+    render(<App />);
+    await screen.findByText("컨테이너가 없습니다.");
+    await user.click(await screen.findByRole("button", { name: /^작업/ }));
+    const reopenedDrawer = await screen.findByRole("dialog", { name: "작업" });
+    expect(within(reopenedDrawer).queryByText("실패 작업")).not.toBeInTheDocument();
+    expect(within(reopenedDrawer).getByText("대기 작업")).toBeInTheDocument();
   });
 
   it("paginates and searches persistent operation history", async () => {
