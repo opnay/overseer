@@ -32,6 +32,7 @@ export const operationResourceLabel = {
   compose: "Compose",
   container: "컨테이너",
   image: "이미지",
+  imageRepository: "이미지 저장소",
   network: "네트워크",
   runtime: "런타임",
   startup: "시스템 도구",

@@ -1,1 +1,1 @@
-export { DockerImageService } from "./docker-image-service.ts";
+export { DockerImageService, getDockerHubRepositoryTags } from "./docker-image-service.ts";

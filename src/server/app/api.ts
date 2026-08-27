@@ -2,6 +2,11 @@ import { Hono, type Context } from "hono";
 import type { RuntimeController } from "../application/overseer-controller.ts";
 import { ExpectedError } from "../core/errors.ts";
 import { LimaDockerRuntime } from "../infrastructure/lima/lima-docker-runtime.ts";
+import {
+  ImageRepositoryService,
+  SqliteImageRepositoryStore,
+  type ImageRepositoryController,
+} from "../modules/image-repositories/index.ts";
 import { SqliteRuntimeInstanceStore } from "../modules/instances/index.ts";
 import {
   OperationQueue,
@@ -17,6 +22,7 @@ import { type EnqueueApiOperation } from "./http.ts";
 import { registerComposeRoutes } from "./routes/compose-routes.ts";
 import { registerContainerRoutes } from "./routes/container-routes.ts";
 import { registerImageRoutes } from "./routes/image-routes.ts";
+import { registerImageRepositoryRoutes } from "./routes/image-repository-routes.ts";
 import { registerNetworkRoutes } from "./routes/network-routes.ts";
 import { registerOperationRoutes } from "./routes/operation-routes.ts";
 import { registerRuntimeRoutes } from "./routes/runtime-routes.ts";
@@ -42,6 +48,7 @@ export function createApi(
   controller: RuntimeController,
   operations = new OperationQueue(),
   startup: StartupPrerequisiteController = new StartupPrerequisiteService(),
+  imageRepositories: ImageRepositoryController = new ImageRepositoryService(),
 ) {
   const app = new Hono();
   const enqueue: EnqueueApiOperation = (context, input, body, retryable = true) =>
@@ -60,6 +67,7 @@ export function createApi(
   registerOperationRoutes(app, operations);
   registerComposeRoutes(app, controller, enqueue);
   registerContainerRoutes(app, controller, enqueue);
+  registerImageRepositoryRoutes(app, imageRepositories, enqueue);
   registerImageRoutes(app, controller, enqueue);
   registerVolumeRoutes(app, controller, enqueue);
   registerNetworkRoutes(app, controller, enqueue);
@@ -81,9 +89,12 @@ export function createApi(
 export function createPersistentApi() {
   const history = new SqliteOperationHistoryStore();
   const instances = new SqliteRuntimeInstanceStore();
+  const imageRepositories = new ImageRepositoryService(new SqliteImageRepositoryStore());
   return createApi(
     new LimaDockerRuntime(undefined, undefined, undefined, undefined, instances),
     new OperationQueue(3, history),
+    undefined,
+    imageRepositories,
   );
 }
 

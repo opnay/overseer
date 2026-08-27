@@ -8,6 +8,10 @@ import {
 import type { RuntimeController } from "../src/server/application/overseer-controller.ts";
 import { ExpectedError } from "../src/server/core/errors.ts";
 import { OperationQueue } from "../src/server/modules/operations/index.ts";
+import {
+  ImageRepositoryService,
+  MemoryImageRepositoryStore,
+} from "../src/server/modules/image-repositories/index.ts";
 import type { StartupPrerequisiteController } from "../src/server/modules/startup/index.ts";
 import type { StartupSnapshot } from "../src/shared/contracts.ts";
 
@@ -947,6 +951,58 @@ describe("API boundary", () => {
       headers: localHeaders,
     });
     expect(invalidPage.status).toBe(400);
+  });
+
+  it("manages and synchronizes image repository registrations", async () => {
+    const controller = createController();
+    const repositories = new ImageRepositoryService(
+      new MemoryImageRepositoryStore(),
+      vi.fn(async () => new Response(JSON.stringify({ count: 3, results: [] }), { status: 200 })),
+      () => "2026-08-27T01:00:00.000Z",
+      () => "11111111-1111-4111-8111-111111111111",
+    );
+    const app = createApi(controller, undefined, undefined, repositories);
+
+    const added = await app.request("/image-repositories", {
+      body: JSON.stringify({ provider: "docker-hub", repository: "nginx" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(added.status).toBe(201);
+    await expect(added.json()).resolves.toMatchObject({
+      repository: { repository: "library/nginx" },
+    });
+    const duplicate = await app.request("/image-repositories", {
+      body: JSON.stringify({ provider: "docker-hub", repository: "library/nginx" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(duplicate.status).toBe(409);
+    const invalid = await app.request("/image-repositories", {
+      body: JSON.stringify({ provider: "docker-hub", repository: "nginx:latest" }),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(invalid.status).toBe(400);
+
+    const sync = await app.request(
+      "/image-repositories/11111111-1111-4111-8111-111111111111/sync",
+      { headers: localHeaders, method: "POST" },
+    );
+    expect(sync.status).toBe(202);
+    await vi.waitFor(() => expect(repositories.list()[0]?.tagCount).toBe(3));
+
+    const listed = await app.request("/image-repositories", { headers: localHeaders });
+    await expect(listed.json()).resolves.toMatchObject({
+      repositories: [{ repository: "library/nginx", tagCount: 3 }],
+    });
+
+    const removed = await app.request("/image-repositories/11111111-1111-4111-8111-111111111111", {
+      headers: localHeaders,
+      method: "DELETE",
+    });
+    expect(removed.status).toBe(200);
+    expect(repositories.list()).toEqual([]);
   });
 
   it("returns volume and network inspect details for validated names", async () => {

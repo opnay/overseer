@@ -104,6 +104,103 @@ function dockerHubRepository(repositoryTags: string[]): string | undefined {
   return undefined;
 }
 
+export async function getDockerHubRepositoryTags(
+  repository: string,
+  page: number,
+  fetcher: typeof fetch = fetch,
+): Promise<ImageRepositoryTags> {
+  const [namespace, name] = repository.split("/");
+  if (!namespace || !name) {
+    throw new ExpectedError(
+      "image_tags_unsupported",
+      "Docker Hub 저장소를 확인할 수 없습니다.",
+      409,
+    );
+  }
+  const pageSize = 25;
+  const url = new URL(
+    `https://hub.docker.com/v2/namespaces/${encodeURIComponent(namespace)}/repositories/${encodeURIComponent(name)}/tags`,
+  );
+  url.searchParams.set("ordering", "last_updated");
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("page_size", String(pageSize));
+
+  let value: unknown;
+  try {
+    const response = await fetcher(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) {
+      throw new ExpectedError(
+        "image_tags_unavailable",
+        "Docker Hub 태그 목록을 불러오지 못했습니다.",
+        503,
+      );
+    }
+    value = await response.json();
+  } catch (error) {
+    if (error instanceof ExpectedError) throw error;
+    throw new ExpectedError(
+      "image_tags_unavailable",
+      "Docker Hub 태그 목록을 불러오지 못했습니다.",
+      503,
+    );
+  }
+
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ExpectedError(
+      "invalid_image_tags",
+      "Docker Hub 태그 응답을 해석하지 못했습니다.",
+      503,
+    );
+  }
+  const source = value as { count?: unknown; results?: unknown };
+  if (
+    typeof source.count !== "number" ||
+    !Number.isSafeInteger(source.count) ||
+    source.count < 0 ||
+    !Array.isArray(source.results)
+  ) {
+    throw new ExpectedError(
+      "invalid_image_tags",
+      "Docker Hub 태그 응답을 해석하지 못했습니다.",
+      503,
+    );
+  }
+  const results = (source.results as DockerHubTagResult[]).slice(0, pageSize);
+  return {
+    count: source.count,
+    page,
+    pageSize,
+    repository,
+    tags: results.flatMap((tag) => {
+      if (
+        typeof tag.name !== "string" ||
+        typeof tag.last_updated !== "string" ||
+        typeof tag.full_size !== "number" ||
+        !Number.isFinite(tag.full_size) ||
+        tag.full_size < 0
+      ) {
+        return [];
+      }
+      const platforms = (tag.images ?? [])
+        .flatMap(({ architecture, os, variant }) =>
+          architecture && architecture !== "unknown" && os && os !== "unknown"
+            ? [`${os}/${architecture}${variant ? `/${variant}` : ""}`]
+            : [],
+        )
+        .filter((platform, index, values) => values.indexOf(platform) === index)
+        .sort();
+      return [
+        {
+          lastUpdated: tag.last_updated,
+          name: tag.name,
+          platforms,
+          sizeBytes: tag.full_size,
+        },
+      ];
+    }),
+  };
+}
+
 export class DockerImageService {
   private readonly docker: DockerCommand;
   private readonly fetcher: typeof fetch;
@@ -179,96 +276,7 @@ export class DockerImageService {
       );
     }
 
-    const [namespace, name] = repository.split("/");
-    if (!namespace || !name) {
-      throw new ExpectedError(
-        "image_tags_unsupported",
-        "Docker Hub 저장소를 확인할 수 없습니다.",
-        409,
-      );
-    }
-    const pageSize = 25;
-    const url = new URL(
-      `https://hub.docker.com/v2/namespaces/${encodeURIComponent(namespace)}/repositories/${encodeURIComponent(name)}/tags`,
-    );
-    url.searchParams.set("ordering", "last_updated");
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("page_size", String(pageSize));
-
-    let value: unknown;
-    try {
-      const response = await this.fetcher(url, { signal: AbortSignal.timeout(10_000) });
-      if (!response.ok) {
-        throw new ExpectedError(
-          "image_tags_unavailable",
-          "Docker Hub 태그 목록을 불러오지 못했습니다.",
-          503,
-        );
-      }
-      value = await response.json();
-    } catch (error) {
-      if (error instanceof ExpectedError) throw error;
-      throw new ExpectedError(
-        "image_tags_unavailable",
-        "Docker Hub 태그 목록을 불러오지 못했습니다.",
-        503,
-      );
-    }
-
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      throw new ExpectedError(
-        "invalid_image_tags",
-        "Docker Hub 태그 응답을 해석하지 못했습니다.",
-        503,
-      );
-    }
-    const source = value as { count?: unknown; results?: unknown };
-    if (
-      typeof source.count !== "number" ||
-      !Number.isSafeInteger(source.count) ||
-      source.count < 0 ||
-      !Array.isArray(source.results)
-    ) {
-      throw new ExpectedError(
-        "invalid_image_tags",
-        "Docker Hub 태그 응답을 해석하지 못했습니다.",
-        503,
-      );
-    }
-    const results = (source.results as DockerHubTagResult[]).slice(0, pageSize);
-    return {
-      count: source.count,
-      page,
-      pageSize,
-      repository,
-      tags: results.flatMap((tag) => {
-        if (
-          typeof tag.name !== "string" ||
-          typeof tag.last_updated !== "string" ||
-          typeof tag.full_size !== "number" ||
-          !Number.isFinite(tag.full_size) ||
-          tag.full_size < 0
-        ) {
-          return [];
-        }
-        const platforms = (tag.images ?? [])
-          .flatMap(({ architecture, os, variant }) =>
-            architecture && architecture !== "unknown" && os && os !== "unknown"
-              ? [`${os}/${architecture}${variant ? `/${variant}` : ""}`]
-              : [],
-          )
-          .filter((platform, index, values) => values.indexOf(platform) === index)
-          .sort();
-        return [
-          {
-            lastUpdated: tag.last_updated,
-            name: tag.name,
-            platforms,
-            sizeBytes: tag.full_size,
-          },
-        ];
-      }),
-    };
+    return getDockerHubRepositoryTags(repository, page, this.fetcher);
   }
 
   async list(): Promise<ImageSummary[]> {

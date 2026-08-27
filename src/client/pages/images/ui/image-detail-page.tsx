@@ -1,17 +1,12 @@
 import { Alert } from "@opnay/city-ds-react/alert";
 import { Button } from "@opnay/city-ds-react/button";
-import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
-import { EmptyState } from "@opnay/city-ds-react/empty-state";
-import { Pagination } from "@opnay/city-ds-react/pagination";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
-import { Table } from "@opnay/city-ds-react/table";
 import { ExternalLink } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type {
   ContainerKeyValue,
   ImageDetail,
   ImageHistoryEntry,
-  ImageRepositoryTags,
   ImageSummary,
 } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
@@ -33,8 +28,7 @@ type ImageDetailSection =
   | "inspect"
   | "labels"
   | "layers"
-  | "overview"
-  | "tags";
+  | "overview";
 
 const sectionPresentation: Record<ImageDetailSection, { description: string; label: string }> = {
   configuration: {
@@ -61,15 +55,10 @@ const sectionPresentation: Record<ImageDetailSection, { description: string; lab
     description: "이미지의 참조 URL과 식별자, 플랫폼 정보를 확인합니다.",
     label: "개요",
   },
-  tags: {
-    description: "공개 Docker Hub 저장소에서 최근 태그와 지원 플랫폼을 확인합니다.",
-    label: "저장소 태그",
-  },
 };
 
 const sectionOrder: ImageDetailSection[] = [
   "overview",
-  "tags",
   "configuration",
   "environment",
   "labels",
@@ -83,17 +72,6 @@ const imageDetailNavigation = [
     label: "이미지",
   },
 ];
-
-const tagPaginationLabels = {
-  first: "첫 페이지",
-  last: "마지막 페이지",
-  navigation: "저장소 태그 페이지",
-  next: "다음 페이지",
-  nextGroup: (count: number) => `다음 ${count}개 페이지`,
-  page: (page: number) => `${page}페이지`,
-  previous: "이전 페이지",
-  previousGroup: (count: number) => `이전 ${count}개 페이지`,
-};
 
 function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value < 0) return "—";
@@ -192,19 +170,14 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
   const [error, setError] = useState<string>();
   const [history, setHistory] = useState<ImageHistoryEntry[]>();
   const [historyError, setHistoryError] = useState<string>();
-  const [repositoryTags, setRepositoryTags] = useState<ImageRepositoryTags>();
   const [section, setSection] = useUrlSection({
     defaultValue: "overview",
     locationKey: id,
     values: sectionOrder,
   });
-  const [tagError, setTagError] = useState<string>();
-  const [tagPage, setTagPage] = useState(1);
 
   useEffect(() => {
     setHistory(undefined);
-    setRepositoryTags(undefined);
-    setTagPage(1);
   }, [id]);
 
   useEffect(() => {
@@ -245,29 +218,6 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
       active = false;
     };
   }, [id, refreshToken, section]);
-
-  useEffect(() => {
-    if (section !== "tags") return;
-    let active = true;
-    setRepositoryTags(undefined);
-    setTagError(undefined);
-    void apiRequest<{ tags: ImageRepositoryTags }>(
-      `/images/${encodeURIComponent(id)}/tags?page=${tagPage}`,
-    )
-      .then(({ tags }) => active && setRepositoryTags(tags))
-      .catch(
-        (loadError: unknown) =>
-          active &&
-          setTagError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Docker Hub 태그 목록을 불러오지 못했습니다.",
-          ),
-      );
-    return () => {
-      active = false;
-    };
-  }, [id, refreshToken, section, tagPage]);
 
   if (error) {
     return (
@@ -368,89 +318,6 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
               </dl>
             </section>
           </>
-        ) : null}
-
-        {section === "tags" ? (
-          tagError ? (
-            <Alert.Root appearance="subtle" tone="destructive">
-              <Alert.Title level={3}>저장소 태그를 불러오지 못했습니다.</Alert.Title>
-              <Alert.Description>{tagError}</Alert.Description>
-            </Alert.Root>
-          ) : !repositoryTags ? (
-            <section aria-label="저장소 태그 불러오는 중" className="overseer-detail-loading">
-              <Skeleton />
-              <Skeleton className="overseer-loading-table" />
-            </section>
-          ) : (
-            <section className="overseer-detail-section">
-              <header>
-                <div>
-                  <h3 className="city-text-subsection-title">{repositoryTags.repository}</h3>
-                  <p className="city-text-supporting">총 {repositoryTags.count}개 태그</p>
-                </div>
-              </header>
-              <DataTableRegion
-                hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-                label={`${repositoryTags.repository} 태그 표`}
-              >
-                <Table.Root
-                  aria-label={`${repositoryTags.repository} 태그 목록`}
-                  className="overseer-table overseer-table--image-tags"
-                  size="sm"
-                >
-                  <Table.Caption className="overseer-table-caption">
-                    Docker Hub 공개 저장소의 최근 업데이트 태그
-                  </Table.Caption>
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.Head className="overseer-table-column-wide">태그</Table.Head>
-                      <Table.Head>플랫폼</Table.Head>
-                      <Table.Head>크기</Table.Head>
-                      <Table.Head>업데이트</Table.Head>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {repositoryTags.tags.length > 0 ? (
-                      repositoryTags.tags.map((tag) => (
-                        <Table.Row key={tag.name}>
-                          <Table.Cell className="overseer-table-column-wide">
-                            <strong>{tag.name}</strong>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <code>{tag.platforms.join(" · ") || "—"}</code>
-                          </Table.Cell>
-                          <Table.Cell>{formatBytes(tag.sizeBytes)}</Table.Cell>
-                          <Table.Cell>
-                            <time dateTime={tag.lastUpdated}>
-                              {formatDateTime(tag.lastUpdated)}
-                            </time>
-                          </Table.Cell>
-                        </Table.Row>
-                      ))
-                    ) : (
-                      <Table.StateRow colSpan={4}>
-                        <EmptyState.Root density="compact">
-                          <EmptyState.Title level={3}>표시할 태그가 없습니다.</EmptyState.Title>
-                          <EmptyState.Description>
-                            이 페이지에는 공개 태그가 없습니다.
-                          </EmptyState.Description>
-                        </EmptyState.Root>
-                      </Table.StateRow>
-                    )}
-                  </Table.Body>
-                </Table.Root>
-              </DataTableRegion>
-              {repositoryTags.count > repositoryTags.pageSize ? (
-                <Pagination.Root
-                  density="compact"
-                  labels={tagPaginationLabels}
-                  onPageChange={setTagPage}
-                  page={repositoryTags.page}
-                  totalPages={Math.ceil(repositoryTags.count / repositoryTags.pageSize)}
-                />
-              ) : null}
-            </section>
-          )
         ) : null}
 
         {section === "configuration" ? (

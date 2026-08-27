@@ -2,6 +2,7 @@ export const APP_ROUTE_GROUPS = [
   { id: "workloads", label: "워크로드" },
   { id: "resources", label: "리소스" },
   { id: "virtualization", label: "가상화" },
+  { id: "external", label: "외부 공급자" },
   { id: "operations", label: "운영" },
 ] as const;
 
@@ -23,7 +24,7 @@ export const APP_ROUTES = [
     path: "/containers",
   },
   {
-    description: "로컬 이미지와 태그, 크기를 확인하고 이미지를 관리합니다.",
+    description: "Docker Engine에 저장된 로컬 이미지와 크기를 확인하고 관리합니다.",
     eyebrow: "이미지 보관함",
     group: "resources",
     label: "이미지",
@@ -42,6 +43,13 @@ export const APP_ROUTES = [
     group: "resources",
     label: "네트워크",
     path: "/networks",
+  },
+  {
+    description: "외부 이미지 저장소를 등록하고 태그 정보를 동기화합니다.",
+    eyebrow: "외부 공급자",
+    group: "external",
+    label: "이미지 저장소",
+    path: "/image-repositories",
   },
   {
     description: "Overseer에서 요청한 모든 Docker 작업과 결과를 확인합니다.",

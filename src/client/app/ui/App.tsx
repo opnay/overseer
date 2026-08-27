@@ -13,6 +13,7 @@ import {
   ArrowDownToLine,
   Boxes,
   Check,
+  Cloud,
   Container,
   Copy,
   Database,
@@ -46,6 +47,7 @@ import type {
   DashboardSnapshot,
   DeleteRuntimeInstanceInput,
   DockerEngineConfiguration,
+  ImageRepositorySummary,
   ImageSummary,
   NetworkSummary,
   OperationAccepted,
@@ -98,6 +100,16 @@ const ImagesPage = lazy(() =>
 );
 const PullImageDialog = lazy(() =>
   import("@/pages/images").then((module) => ({ default: module.PullImageDialog })),
+);
+const ImageRepositoriesPage = lazy(() =>
+  import("@/pages/image-repositories").then((module) => ({
+    default: module.ImageRepositoriesPage,
+  })),
+);
+const AddImageRepositoryDialog = lazy(() =>
+  import("@/pages/image-repositories").then((module) => ({
+    default: module.AddImageRepositoryDialog,
+  })),
 );
 const NetworksPage = lazy(() =>
   import("@/pages/networks").then((module) => ({ default: module.NetworksPage })),
@@ -180,6 +192,7 @@ const resourceRouteIcon = {
   "/compose": Layers3,
   "/containers": Boxes,
   "/images": HardDrive,
+  "/image-repositories": Cloud,
   "/instances": Server,
   "/networks": NetworkIcon,
   "/operations": ListChecks,
@@ -694,6 +707,7 @@ function AppContent() {
   const [resourcePath, setResourcePath] = useState<AppLocationPath>(resourcePathFromLocation);
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
+  const [imageRepositoryRefreshRevision, setImageRepositoryRefreshRevision] = useState(0);
   const [runtimeInstanceHeaderState, setRuntimeInstanceHeaderState] = useState<{
     instance: RuntimeInstanceSummary;
     selectionLocked: boolean;
@@ -768,7 +782,9 @@ function AppContent() {
     (displayedStartup?.ready && dashboard?.runtime.phase !== "running" ? "engine" : undefined);
   const engineManagementRoute =
     detectedStartupStep === "engine" &&
-    (resourcePath === "/settings" || resourcePath.startsWith("/instances"));
+    (resourcePath === "/settings" ||
+      resourcePath === "/image-repositories" ||
+      resourcePath.startsWith("/instances"));
   const entryStartupStep =
     startupReviewMode && !startupPreview
       ? "homebrew"
@@ -807,7 +823,9 @@ function AppContent() {
       startupRoute ||
       !detectedStartupStep ||
       (detectedStartupStep === "engine" &&
-        (resourcePath === "/settings" || resourcePath.startsWith("/instances")))
+        (resourcePath === "/settings" ||
+          resourcePath === "/image-repositories" ||
+          resourcePath.startsWith("/instances")))
     ) {
       return;
     }
@@ -897,6 +915,13 @@ function AppContent() {
   const operationsRefreshToken = operations
     .map(({ id, status, step }) => `${id}:${status}:${step}`)
     .join("|");
+  const latestFinishedImageRepositoryOperation = operations.find(
+    ({ status, target }) =>
+      target.resource === "imageRepository" && status !== "queued" && status !== "running",
+  );
+  const imageRepositoryOperationRefreshToken = latestFinishedImageRepositoryOperation
+    ? `${latestFinishedImageRepositoryOperation.id}:${latestFinishedImageRepositoryOperation.status}`
+    : "";
 
   useEffect(() => {
     if (!hasActiveOperations) return;
@@ -1449,7 +1474,29 @@ function AppContent() {
     />
   ) : null;
   const pagePrimaryAction =
-    resourcePath === "/instances" ? (
+    resourcePath === "/image-repositories" ? (
+      <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+        <AddImageRepositoryDialog
+          busy={submitting === "image-repository-add"}
+          onSubmit={async (input) => {
+            setSubmitting("image-repository-add");
+            setOperationError(undefined);
+            try {
+              await apiRequest<{ repository: ImageRepositorySummary }>("/image-repositories", {
+                body: JSON.stringify(input),
+                method: "POST",
+              });
+              setImageRepositoryRefreshRevision((value) => value + 1);
+            } catch (error) {
+              setOperationError(actionError(error));
+              throw error;
+            } finally {
+              setSubmitting(undefined);
+            }
+          }}
+        />
+      </Suspense>
+    ) : resourcePath === "/instances" ? (
       <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
         <RuntimeInstanceCreateDialog
           busy={runtimeBusy || Boolean(submitting)}
@@ -1681,6 +1728,7 @@ function AppContent() {
           {runtime &&
           !runtimeRunning &&
           resourcePath !== "/settings" &&
+          resourcePath !== "/image-repositories" &&
           !resourcePath.startsWith("/instances") ? (
             <Alert.Root appearance="subtle" tone={runtimeStatus.tone}>
               <Alert.Title level={2}>Lima · {runtimeStatus.label}</Alert.Title>
@@ -1695,6 +1743,7 @@ function AppContent() {
           !runtimeRunning &&
           resourcePath !== "/operations" &&
           resourcePath !== "/settings" &&
+          resourcePath !== "/image-repositories" &&
           !resourcePath.startsWith("/instances") ? (
             <section className="overseer-runtime-empty">
               <EmptyState.Root>
@@ -1770,6 +1819,43 @@ function AppContent() {
                 }
                 onRetry={retryOperation}
                 refreshToken={operationsRefreshToken}
+              />
+            </Suspense>
+          ) : null}
+
+          {resourcePath === "/image-repositories" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <ImageRepositoriesPage
+                isBusy={(repository) =>
+                  targetBusy("imageRepository", repository.id) ||
+                  submitting === `image-repository-remove-${repository.id}`
+                }
+                onRemove={async (repository) => {
+                  setSubmitting(`image-repository-remove-${repository.id}`);
+                  setOperationError(undefined);
+                  try {
+                    await apiRequest(`/image-repositories/${encodeURIComponent(repository.id)}`, {
+                      method: "DELETE",
+                    });
+                    setImageRepositoryRefreshRevision((value) => value + 1);
+                  } catch (error) {
+                    setOperationError(actionError(error));
+                    throw error;
+                  } finally {
+                    setSubmitting(undefined);
+                  }
+                }}
+                onSync={(repository) =>
+                  mutate({
+                    key: `image-repository-sync-${repository.id}`,
+                    request: () =>
+                      apiRequest<OperationAccepted>(
+                        `/image-repositories/${encodeURIComponent(repository.id)}/sync`,
+                        { method: "POST" },
+                      ),
+                  })
+                }
+                refreshToken={`${imageRepositoryRefreshRevision}:${imageRepositoryOperationRefreshToken}`}
               />
             </Suspense>
           ) : null}
@@ -1889,6 +1975,7 @@ function AppContent() {
           runtimeRunning &&
           !currentDetail &&
           resourcePath !== "/operations" &&
+          resourcePath !== "/image-repositories" &&
           resourcePath !== "/settings" ? (
             <>
               {resourcePath === "/compose" && dockerComposeAvailable ? (

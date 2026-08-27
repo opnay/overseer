@@ -267,7 +267,7 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(7);
+    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(8);
     expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
   });
@@ -2409,6 +2409,7 @@ describe("App", () => {
     const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
     const workloads = within(navigation).getByRole("group", { name: "워크로드" });
     const resources = within(navigation).getByRole("group", { name: "리소스" });
+    const external = within(navigation).getByRole("group", { name: "외부 공급자" });
     const operations = within(navigation).getByRole("group", { name: "운영" });
     const virtualization = within(navigation).getByRole("group", { name: "가상화" });
     expect(
@@ -2429,9 +2430,13 @@ describe("App", () => {
       "href",
       "/instances",
     );
-    expect(
-      virtualization.compareDocumentPosition(operations) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(within(external).getByRole("link", { name: "이미지 저장소" })).toHaveAttribute(
+      "href",
+      "/image-repositories",
+    );
+    expect(external.compareDocumentPosition(operations) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(within(navigation).queryByRole("link", { name: "설정" })).not.toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "유틸리티 메뉴" })).toHaveTextContent("설정");
   });
@@ -2473,6 +2478,92 @@ describe("App", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Compose");
   });
 
+  it("adds Docker Hub repositories from the external provider page", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    const repositories: Array<{
+      createdAt: string;
+      id: string;
+      provider: "docker-hub";
+      repository: string;
+    }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/image-repositories") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { repository: string };
+        const repository = {
+          createdAt: "2026-08-27T01:00:00.000Z",
+          id: "11111111-1111-4111-8111-111111111111",
+          provider: "docker-hub" as const,
+          repository: body.repository.includes("/")
+            ? body.repository
+            : `library/${body.repository}`,
+        };
+        repositories.push(repository);
+        return jsonResponse({ repository });
+      }
+      if (url.includes("/api/image-repositories/") && url.endsWith("/sync")) {
+        return jsonResponse({
+          operation: operation("queued", {
+            id: "repository-sync",
+            kind: "image.repository.sync",
+            target: {
+              id: "11111111-1111-4111-8111-111111111111",
+              name: "library/nginx",
+              resource: "imageRepository",
+            },
+            title: "이미지 저장소 동기화",
+          }),
+        });
+      }
+      if (url.endsWith("/api/image-repositories")) return jsonResponse({ repositories });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/image-repositories");
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "이미지 저장소", level: 1 }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("등록된 이미지 저장소가 없습니다.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "저장소 추가" }));
+    const dialog = await screen.findByRole("dialog", { name: "이미지 저장소 추가" });
+    expect(within(dialog).getByRole("textbox", { name: "공급자" })).toBeDisabled();
+    await user.type(within(dialog).getByRole("textbox", { name: "저장소" }), "nginx");
+    await user.click(within(dialog).getByRole("button", { name: "추가" }));
+
+    expect(await screen.findByText("library/nginx")).toBeInTheDocument();
+    expect(screen.getByText("동기화 필요")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "library/nginx 동기화" }));
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith("/api/image-repositories") &&
+          init?.method === "POST" &&
+          init.body === JSON.stringify({ provider: "docker-hub", repository: "nginx" }),
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input).endsWith("/sync") && init?.method === "POST",
+      ),
+    ).toBe(true);
+  });
+
   it("opens all navigation groups from one mobile header", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
@@ -2509,6 +2600,7 @@ describe("App", () => {
     const navigation = within(drawer).getByRole("navigation", { name: "주요 메뉴" });
     expect(within(navigation).getByRole("group", { name: "워크로드" })).toBeInTheDocument();
     expect(within(navigation).getByRole("group", { name: "리소스" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "외부 공급자" })).toBeInTheDocument();
     expect(within(navigation).getByRole("group", { name: "운영" })).toBeInTheDocument();
     expect(within(navigation).getByRole("group", { name: "가상화" })).toBeInTheDocument();
     expect(within(navigation).getByRole("link", { name: "컨테이너" })).toHaveAttribute(
@@ -2689,25 +2781,6 @@ describe("App", () => {
             ],
           });
         }
-        if (url.includes("/api/images/3e24e96c89ef/tags")) {
-          const page = url.includes("page=2") ? 2 : 1;
-          return jsonResponse({
-            tags: {
-              count: 26,
-              page,
-              pageSize: 25,
-              repository: "louislam/uptime-kuma",
-              tags: [
-                {
-                  lastUpdated: "2026-08-24T02:32:04.000Z",
-                  name: page === 1 ? "latest" : "nightly",
-                  platforms: ["linux/amd64", "linux/arm64"],
-                  sizeBytes: 601_000_000,
-                },
-              ],
-            },
-          });
-        }
         if (url.endsWith("/api/images/3e24e96c89ef")) {
           return jsonResponse({
             image: {
@@ -2771,11 +2844,9 @@ describe("App", () => {
       "https://github.com/louislam/uptime-kuma",
     );
 
-    await user.click(within(imageGroup).getByRole("button", { name: "저장소 태그" }));
-    expect(await screen.findByText("latest")).toBeInTheDocument();
-    expect(screen.getByText("linux/amd64 · linux/arm64")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "2페이지" }));
-    expect(await screen.findByText("nightly")).toBeInTheDocument();
+    expect(
+      within(imageGroup).queryByRole("button", { name: "저장소 태그" }),
+    ).not.toBeInTheDocument();
 
     await user.click(within(imageGroup).getByRole("button", { name: "실행 설정" }));
     expect(screen.getByText("/app")).toBeInTheDocument();
