@@ -45,7 +45,7 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
-macOS 앱은 `src-tauri/target/release/bundle/macos/Overseer.app`에 생성되며 내부 `OverseerHelper.app`과 Bun으로 컴파일한 API sidecar를 포함합니다. 로그인 자동 시작되는 Helper가 메뉴바·sidecar·Docker 작업을 소유하고, launcher 창은 Tauri IPC로 같은 API를 사용합니다. 메뉴바에서는 활성 VM을 재시작하고 Compose별 시작·중지·재시작과 컨테이너 목록을 확인할 수 있으며, Compose나 컨테이너를 선택하면 launcher의 해당 상세 화면을 엽니다.
+macOS 앱은 `src-tauri/target/release/bundle/macos/Overseer.app`에 생성되며 Bun으로 컴파일한 API sidecar를 포함합니다. 단일 Tauri 프로세스가 로그인 후 백그라운드에서 메뉴바·sidecar·Docker 작업을 소유합니다. 앱을 처음 실행하면 메뉴바에 상주하며, 메뉴바의 **Overseer 열기**를 선택하거나 실행 중인 앱을 다시 열면 launcher 창과 Dock 아이콘이 나타납니다. 창을 닫거나 `Cmd+Q`를 누르면 launcher와 Dock 아이콘만 숨기며, 메뉴바의 **Overseer 종료**가 백그라운드 앱까지 완전히 종료합니다. 메뉴바에서는 활성 VM을 재시작하고 Compose별 시작·중지·재시작과 컨테이너 목록을 확인할 수 있으며, Compose나 컨테이너를 선택하면 launcher의 해당 상세 화면을 엽니다.
 
 배포 인증서 없이 로컬 설치할 때는 bundle 전체를 ad-hoc 서명한 뒤 `/Applications`로 복사하십시오.
 
