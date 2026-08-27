@@ -4,14 +4,13 @@ import { Button } from "@opnay/city-ds-react/button";
 import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
 import { Dialog } from "@opnay/city-ds-react/dialog";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
-import { Field } from "@opnay/city-ds-react/field";
 import { FilterBar } from "@opnay/city-ds-react/filter-bar";
 import { Pagination } from "@opnay/city-ds-react/pagination";
 import { SearchField } from "@opnay/city-ds-react/search-field";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
-import { History, RotateCcw } from "lucide-react";
+import { History, RotateCcw, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   OperationListResponse,
@@ -67,34 +66,31 @@ function OperationFilterSelect<Value extends string>({
   value: Value;
 }) {
   return (
-    <Field.Root>
-      <Field.Label>{label}</Field.Label>
-      <Select.Root
-        items={Object.fromEntries(options.map((option) => [option.value, option.label]))}
-        onValueChange={(nextValue) => nextValue && onChange(String(nextValue) as Value)}
-        size="sm"
-        value={value}
-      >
-        <Select.Trigger aria-label={label}>
-          <Select.Value />
-          <Select.Icon />
-        </Select.Trigger>
-        <Select.Portal>
-          <Select.Positioner>
-            <Select.Popup>
-              <Select.List>
-                {options.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    <Select.ItemIndicator />
-                    <Select.ItemText>{option.label}</Select.ItemText>
-                  </Select.Item>
-                ))}
-              </Select.List>
-            </Select.Popup>
-          </Select.Positioner>
-        </Select.Portal>
-      </Select.Root>
-    </Field.Root>
+    <Select.Root
+      items={Object.fromEntries(options.map((option) => [option.value, option.label]))}
+      onValueChange={(nextValue) => nextValue && onChange(String(nextValue) as Value)}
+      size="sm"
+      value={value}
+    >
+      <Select.Trigger aria-label={label}>
+        <Select.Value />
+        <Select.Icon />
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Positioner>
+          <Select.Popup>
+            <Select.List>
+              {options.map((option) => (
+                <Select.Item key={option.value} value={option.value}>
+                  <Select.ItemIndicator />
+                  <Select.ItemText>{option.label}</Select.ItemText>
+                </Select.Item>
+              ))}
+            </Select.List>
+          </Select.Popup>
+        </Select.Positioner>
+      </Select.Portal>
+    </Select.Root>
   );
 }
 
@@ -201,7 +197,6 @@ export function OperationsPage({
             size="sm"
             value={draftQuery}
           >
-            <SearchField.Label>작업 검색</SearchField.Label>
             <SearchField.Group>
               <SearchField.Input aria-label="작업 검색" placeholder="작업명 또는 대상" />
               <SearchField.Clear
@@ -212,7 +207,9 @@ export function OperationsPage({
                   setPage(1);
                 }}
               />
-              <SearchField.Submit>검색</SearchField.Submit>
+              <SearchField.Submit aria-label="검색" iconOnly>
+                <Search aria-hidden="true" size={14} />
+              </SearchField.Submit>
             </SearchField.Group>
           </SearchField.Root>
           <OperationFilterSelect
