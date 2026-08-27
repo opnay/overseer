@@ -1,5 +1,4 @@
 import { Alert } from "@opnay/city-ds-react/alert";
-import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
@@ -7,7 +6,8 @@ import { Menu } from "@opnay/city-ds-react/menu";
 import { Pagination } from "@opnay/city-ds-react/pagination";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
-import { ChevronDown, Download, Play, Star, Tags } from "lucide-react";
+import { Tooltip } from "@opnay/city-ds-react/tooltip";
+import { Download, Ellipsis, Play, Star, Tags } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   ImageRepositoryDetail,
@@ -50,36 +50,83 @@ function TagActions({
   tag: ImageRepositoryTagItem;
 }) {
   return (
-    <Menu.Root density="compact">
-      <Menu.Trigger render={<Button aria-label={`${tag.name} 작업`} size="sm" variant="ghost" />}>
-        작업
-        <ChevronDown aria-hidden="true" size={14} />
-      </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner sideOffset={6}>
-          <Menu.Popup>
-            <Menu.Item
+    <>
+      <Tooltip.Root>
+        <Tooltip.Trigger
+          render={
+            <Button
+              aria-label={`${tag.name} 이미지 다운로드`}
               disabled={!runtimeAvailable || imageBusy}
+              iconOnly
               onClick={() => void onDownload().catch(() => undefined)}
-            >
-              <Download aria-hidden="true" size={14} />
-              이미지 다운로드
-            </Menu.Item>
-            <Menu.Item
+              size="sm"
+              variant="ghost"
+            />
+          }
+        >
+          <Download aria-hidden="true" size={14} />
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Positioner side="top" sideOffset={6}>
+            <Tooltip.Popup>이미지 다운로드</Tooltip.Popup>
+          </Tooltip.Positioner>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+
+      <Tooltip.Root>
+        <Tooltip.Trigger
+          render={
+            <Button
+              aria-label={`${tag.name} ${tag.favorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}`}
+              aria-pressed={tag.favorite}
               disabled={favoriteBusy}
+              iconOnly
               onClick={() => void onFavorite().catch(() => undefined)}
-            >
-              <Star aria-hidden="true" fill={tag.favorite ? "currentColor" : "none"} size={14} />
-              {tag.favorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
-            </Menu.Item>
-            <Menu.Item disabled={!runtimeAvailable || imageBusy} onClick={onCreateContainer}>
-              <Play aria-hidden="true" size={14} />
-              컨테이너 생성
-            </Menu.Item>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
+              size="sm"
+              variant="ghost"
+            />
+          }
+        >
+          <Star aria-hidden="true" fill={tag.favorite ? "currentColor" : "none"} size={14} />
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Positioner side="top" sideOffset={6}>
+            <Tooltip.Popup>{tag.favorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}</Tooltip.Popup>
+          </Tooltip.Positioner>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+
+      <Menu.Root density="compact">
+        <Tooltip.Root>
+          <Tooltip.Trigger
+            render={
+              <Menu.Trigger
+                render={
+                  <Button aria-label={`${tag.name} 작업 메뉴`} iconOnly size="sm" variant="ghost" />
+                }
+              >
+                <Ellipsis aria-hidden="true" size={16} />
+              </Menu.Trigger>
+            }
+          />
+          <Tooltip.Portal>
+            <Tooltip.Positioner side="top" sideOffset={6}>
+              <Tooltip.Popup>작업 메뉴</Tooltip.Popup>
+            </Tooltip.Positioner>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+        <Menu.Portal>
+          <Menu.Positioner sideOffset={6}>
+            <Menu.Popup>
+              <Menu.Item disabled={!runtimeAvailable || imageBusy} onClick={onCreateContainer}>
+                <Play aria-hidden="true" size={14} />
+                컨테이너 생성
+              </Menu.Item>
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
+    </>
   );
 }
 
@@ -258,13 +305,12 @@ export function ImageRepositoryDetailPage({
               <Table.Header>
                 <Table.Row>
                   <Table.Head className="overseer-table-column-wide">태그</Table.Head>
-                  <Table.Head>즐겨찾기</Table.Head>
                   <Table.Head className="overseer-actions-column">작업</Table.Head>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
                 {tagList.tags.length === 0 ? (
-                  <Table.StateRow colSpan={3}>
+                  <Table.StateRow colSpan={2}>
                     <EmptyState.Root density="compact">
                       <EmptyState.Icon>
                         <Tags aria-hidden="true" />
@@ -289,16 +335,6 @@ export function ImageRepositoryDetailPage({
                               <code>{reference}</code>
                             </div>
                           </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          {tag.favorite ? (
-                            <Badge appearance="subtle" size="sm" tone="neutral">
-                              <Star aria-hidden="true" fill="currentColor" size={12} />
-                              즐겨찾기
-                            </Badge>
-                          ) : (
-                            "—"
-                          )}
                         </Table.Cell>
                         <Table.Cell>
                           <div className="overseer-row-actions">
