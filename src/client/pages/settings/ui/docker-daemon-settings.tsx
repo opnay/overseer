@@ -44,6 +44,14 @@ const sectionLabels: Record<DockerDaemonConfigurationSection, string> = {
   transfer: "전송",
 };
 
+const DOCKER_DAEMON_CONFIGURATION_TIMEOUT_MS = 15_000;
+
+function isTimeoutError(error: unknown) {
+  return (
+    typeof error === "object" && error !== null && "name" in error && error.name === "TimeoutError"
+  );
+}
+
 function SettingSwitch({
   checked,
   description,
@@ -150,6 +158,7 @@ export function DockerDaemonSettings({
     try {
       const next = await apiRequest<DockerDaemonConfigurationSnapshot>(
         "/runtime/engine/configuration",
+        { signal: AbortSignal.timeout(DOCKER_DAEMON_CONFIGURATION_TIMEOUT_MS) },
       );
       const fresh = dockerDaemonConfigurationToForm(next);
       setSnapshot(next);
@@ -162,7 +171,11 @@ export function DockerDaemonSettings({
       setSectionError(undefined);
     } catch (error) {
       setLoadError(
-        error instanceof Error ? error.message : "Docker Engine 설정을 불러오지 못했습니다.",
+        isTimeoutError(error)
+          ? "15초 안에 Docker Engine 설정 응답을 받지 못했습니다. VM 상태를 확인한 뒤 다시 시도하십시오."
+          : error instanceof Error
+            ? error.message
+            : "Docker Engine 설정을 불러오지 못했습니다.",
       );
     }
   }, []);

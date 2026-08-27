@@ -11,16 +11,45 @@ export class ApiRequestError extends Error {
   }
 }
 
+function abortReason(signal: AbortSignal) {
+  return signal.reason ?? new DOMException("요청이 취소되었습니다.", "AbortError");
+}
+
+function waitForTauriResponse<T>(request: Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  if (!signal) return request;
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      signal.removeEventListener("abort", abort);
+      reject(abortReason(signal));
+    };
+    const settle = (callback: () => void) => {
+      signal.removeEventListener("abort", abort);
+      callback();
+    };
+
+    signal.addEventListener("abort", abort, { once: true });
+    request.then(
+      (value) => settle(() => resolve(value)),
+      (error) => settle(() => reject(error)),
+    );
+  });
+}
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body) headers.set("content-type", "application/json");
 
   const response = isTauri()
-    ? await invoke<[number, string]>("api_request", {
-        body: typeof init?.body === "string" ? init.body : undefined,
-        method: init?.method ?? "GET",
-        path,
-      }).then(([status, body]) => ({ body, ok: status >= 200 && status < 300 }))
+    ? await waitForTauriResponse(
+        invoke<[number, string]>("api_request", {
+          body: typeof init?.body === "string" ? init.body : undefined,
+          method: init?.method ?? "GET",
+          path,
+        }).then(([status, body]) => ({ body, ok: status >= 200 && status < 300 })),
+        init?.signal,
+      )
     : await fetch(`/api${path}`, { ...init, headers }).then(async (value) => ({
         body: await value.text(),
         ok: value.ok,

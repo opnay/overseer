@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../src/client/app/index.ts";
@@ -1335,6 +1335,72 @@ describe("App", () => {
         dns: ["1.1.1.1"],
       },
     });
+  });
+
+  it("stops waiting for Docker network settings and retries after a timeout", async () => {
+    const user = userEvent.setup();
+    const firstRequest = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValueOnce(firstRequest.signal)
+      .mockImplementation(() => new AbortController().signal);
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    let configurationRequestCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+      if (url.endsWith("/api/runtime/configuration")) {
+        return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/runtime/engine/configuration")) {
+        configurationRequestCount += 1;
+        if (configurationRequestCount === 1) {
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+              once: true,
+            });
+          });
+        }
+        return jsonResponse(dockerDaemonSnapshot());
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/settings");
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(within(navigation).getByRole("button", { name: "네트워크 설정" }));
+    expect(await screen.findByLabelText("Docker Engine 설정 불러오는 중")).toBeInTheDocument();
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+
+    act(() => {
+      firstRequest.abort(new DOMException("요청 시간이 초과되었습니다.", "TimeoutError"));
+    });
+
+    expect(
+      await screen.findByText(
+        "15초 안에 Docker Engine 설정 응답을 받지 못했습니다. VM 상태를 확인한 뒤 다시 시도하십시오.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "다시 시도" }));
+
+    expect(await screen.findByLabelText("DNS 서버")).toBeInTheDocument();
+    expect(configurationRequestCount).toBe(2);
   });
 
   it("prepares a compatible Lima instance from Instance settings", async () => {
