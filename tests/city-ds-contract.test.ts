@@ -20,7 +20,7 @@ describe("City DS source contract", () => {
         "- 서버는 `docs/decisions/0007-server-modular-monolith.md`의 `app → application/modules → infrastructure/core` 책임 경계와 module `index.ts` 공개 API 규칙을 지키고 `tests/server-architecture.test.ts`로 검증해야 합니다.",
       ].join("\n"),
     );
-    expect(packageJson).toContain("opnay-city-ds-react-0.1.0-1dd3d58.tgz");
+    expect(packageJson).toContain('"@opnay/city-ds-react": "0.1.1"');
     expect(design).toContain("16px inline gutter");
     expect(styles).toContain(".city-text-page-title");
     expect(appStyles).toContain("@media (pointer: coarse)");

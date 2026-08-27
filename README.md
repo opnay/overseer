@@ -18,7 +18,13 @@ QEMU VM 드라이버를 사용하려면 QEMU도 설치하십시오. 기본 VZ �
 brew install qemu
 ```
 
-City DS는 `opnay/city-ds`의 `1dd3d58772831fb70562d88c752805a3b9d1ee59`에서 빌드한 패키지를 `vendor/opnay-city-ds-react-0.1.0-1dd3d58.tgz`로 고정합니다.
+City DS는 GitHub Packages의 `@opnay/city-ds-react@0.1.1`로 고정합니다. 최초 설치 전 `read:packages` 권한이 있는 GitHub 토큰을 사용자 npm 설정에 등록하십시오.
+
+```bash
+gh auth refresh -s read:packages
+npm config set //npm.pkg.github.com/:_authToken "$(gh auth token)" --location=user
+```
+
 운영 화면의 Table·상태·액션·로그 적용 규칙은 [`docs/decisions/0003-operation-interface-patterns.md`](docs/decisions/0003-operation-interface-patterns.md)를 따릅니다.
 
 ## 시작
