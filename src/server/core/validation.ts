@@ -100,8 +100,8 @@ export function requireImageReference(value: unknown): string {
   return value;
 }
 
-export function requireImageIdentifier(value: string): string {
-  if (!isImageIdentifier(value)) {
+export function requireImageIdentifier(value: unknown): string {
+  if (typeof value !== "string" || !isImageIdentifier(value)) {
     throw new ExpectedError("invalid_image", "유효하지 않은 이미지 식별자입니다.", 400);
   }
   return value;

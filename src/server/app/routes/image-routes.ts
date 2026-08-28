@@ -1,11 +1,7 @@
 import type { Hono } from "hono";
-import type { PullImageInput } from "../../../shared/contracts.ts";
+import type { PullImageInput, RemoveImageTagInput } from "../../../shared/contracts.ts";
 import type { ImageController } from "../../application/overseer-controller.ts";
-import {
-  requireContainerReference,
-  requireImageIdentifier,
-  requireImageReference,
-} from "../../core/validation.ts";
+import { requireImageIdentifier, requireImageReference } from "../../core/validation.ts";
 import { readObject, requirePageNumber, type EnqueueApiOperation } from "../http.ts";
 
 export function registerImageRoutes(
@@ -48,8 +44,28 @@ export function registerImageRoutes(
     );
     return context.json({ operation }, 202);
   });
+  app.post("/images/tags/remove", async (context) => {
+    const body = await readObject(context);
+    const input: RemoveImageTagInput = {
+      id: requireImageIdentifier(body.id),
+      reference: requireImageReference(body.reference),
+    };
+    const operation = enqueue(
+      context,
+      {
+        kind: "image.tag.remove",
+        locks: [`image:${input.id}`],
+        run: (progress) => controller.removeImageTag(input, progress),
+        successMessage: `${input.reference} 태그를 삭제했습니다.`,
+        target: { id: input.id, name: input.reference, resource: "image" },
+        title: "이미지 태그 삭제",
+      },
+      input,
+    );
+    return context.json({ operation }, 202);
+  });
   app.delete("/images/:id", (context) => {
-    const id = requireContainerReference(context.req.param("id"));
+    const id = requireImageIdentifier(context.req.param("id"));
     const operation = enqueue(context, {
       kind: "image.remove",
       locks: [`image:${id}`],

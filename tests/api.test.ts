@@ -222,6 +222,7 @@ function createController(): RuntimeController {
     removeBuilderCompose: vi.fn(async () => undefined),
     removeContainer: vi.fn(async () => undefined),
     removeImage: vi.fn(async () => undefined),
+    removeImageTag: vi.fn(async () => undefined),
     removeNetwork: vi.fn(async () => undefined),
     removeRemoteCompose: vi.fn(async () => undefined),
     removeVolume: vi.fn(async () => undefined),
@@ -951,6 +952,31 @@ describe("API boundary", () => {
       headers: localHeaders,
     });
     expect(invalidPage.status).toBe(400);
+  });
+
+  it("separates image tag removal from full image deletion", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const input = {
+      id: "3e24e96c89ef",
+      reference: "docker.io/louislam/uptime-kuma:2.5.3",
+    };
+
+    const removeTag = await app.request("/images/tags/remove", {
+      body: JSON.stringify(input),
+      headers: { ...localHeaders, "content-type": "application/json" },
+      method: "POST",
+    });
+    const removeImage = await app.request(`/images/${input.id}`, {
+      headers: localHeaders,
+      method: "DELETE",
+    });
+
+    expect([removeTag.status, removeImage.status]).toEqual([202, 202]);
+    await vi.waitFor(() => expect(controller.removeImageTag).toHaveBeenCalled());
+    await vi.waitFor(() => expect(controller.removeImage).toHaveBeenCalled());
+    expect(controller.removeImageTag).toHaveBeenCalledWith(input, expect.any(Object));
+    expect(controller.removeImage).toHaveBeenCalledWith(input.id, expect.any(Object));
   });
 
   it("manages and synchronizes image repository registrations", async () => {

@@ -103,6 +103,9 @@ const ImagesPage = lazy(() =>
 const PullImageDialog = lazy(() =>
   import("@/pages/images").then((module) => ({ default: module.PullImageDialog })),
 );
+const ImageViewToggle = lazy(() =>
+  import("@/pages/images").then((module) => ({ default: module.ImageViewToggle })),
+);
 const ImageRepositoriesPage = lazy(() =>
   import("@/pages/image-repositories").then((module) => ({
     default: module.ImageRepositoriesPage,
@@ -716,6 +719,7 @@ function AppContent() {
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
   const [imageRepositoryRefreshRevision, setImageRepositoryRefreshRevision] = useState(0);
+  const [imageView, setImageView] = useState<"id" | "tag">("tag");
   const [imageRepositoryHeader, setImageRepositoryHeader] = useState<ImageRepositoryDetail>();
   const [runtimeInstanceHeaderState, setRuntimeInstanceHeaderState] = useState<{
     instance: RuntimeInstanceSummary;
@@ -1705,6 +1709,11 @@ function AppContent() {
                   <RefreshCw aria-hidden="true" size={14} />
                   새로고침
                 </Button>
+                {resourcePath === "/images" ? (
+                  <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
+                    <ImageViewToggle onChange={setImageView} value={imageView} />
+                  </Suspense>
+                ) : null}
               </div>
               {pagePrimaryAction ? (
                 <div className="overseer-primary-action">{pagePrimaryAction}</div>
@@ -2132,15 +2141,26 @@ function AppContent() {
                     images={dashboard?.images ?? []}
                     isBusy={(image) => runtimeBusy || targetBusy("image", image.id)}
                     onInspect={(image) => selectResourcePath(imageDetailPath(image.id))}
-                    onRemove={(image) =>
+                    onRemoveImage={(id) =>
                       void mutate({
-                        key: `${image.id}-remove`,
+                        key: `${id}-remove`,
                         request: () =>
-                          apiRequest<OperationAccepted>(`/images/${image.id}`, {
+                          apiRequest<OperationAccepted>(`/images/${id}`, {
                             method: "DELETE",
                           }),
                       }).catch(() => undefined)
                     }
+                    onRemoveTag={(image) =>
+                      void mutate({
+                        key: `${image.id}-${image.url}-remove-tag`,
+                        request: () =>
+                          apiRequest<OperationAccepted>("/images/tags/remove", {
+                            body: JSON.stringify({ id: image.id, reference: image.url }),
+                            method: "POST",
+                          }),
+                      }).catch(() => undefined)
+                    }
+                    view={imageView}
                   />
                 </section>
               ) : null}

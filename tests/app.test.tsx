@@ -2828,7 +2828,7 @@ describe("App", () => {
 
     await user.click(screen.getByRole("link", { name: "이미지" }));
 
-    expect(screen.getByRole("heading", { name: "이미지", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "이미지", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("로컬 이미지가 없습니다.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "이미지" })).toHaveAttribute("aria-current", "page");
     expect(window.location.pathname).toBe("/images");
@@ -3963,7 +3963,7 @@ describe("App", () => {
     expect(within(containerTable).getByText("nginx:alpine")).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Compose" }));
-    expect(screen.getByText("1개 생성됨")).toBeInTheDocument();
+    expect(await screen.findByText("1개 생성됨")).toBeInTheDocument();
     expect(screen.getByText("URL 등록").closest(".overseer-primary-meta")).toBeInTheDocument();
     expect(screen.queryByText("최신")).not.toBeInTheDocument();
     const composeTable = screen.getByRole("table", { name: "Compose 프로젝트 목록" });
@@ -3976,22 +3976,115 @@ describe("App", () => {
     expect(within(composeTable).getByText("https://example.com/compose.yaml")).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "이미지" }));
-    expect(screen.getByRole("link", { name: "nginx:alpine" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "nginx:alpine" })).toBeInTheDocument();
     expect(screen.getByText("docker.io/library/nginx:alpine").tagName).toBe("CODE");
     expect(screen.queryByRole("columnheader", { name: "태그" })).not.toBeInTheDocument();
-    const imageTable = screen.getByRole("table", { name: "이미지 목록" });
+    const imageTable = screen.getByRole("table", { name: "이미지 태그 목록" });
     expect(imageTable.querySelectorAll("thead .overseer-table-column-wide")).toHaveLength(1);
     expect(
       within(imageTable).getByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "네트워크" }));
-    expect(screen.getByText("Docker 기본 네트워크")).toHaveClass("overseer-primary-meta");
+    expect(await screen.findByText("Docker 기본 네트워크")).toHaveClass("overseer-primary-meta");
     expect(
       screen
         .getByRole("table", { name: "네트워크 목록" })
         .querySelectorAll("thead .overseer-table-column-wide"),
     ).toHaveLength(1);
+  });
+
+  it("switches between tag and image ID views and removes a single tag by reference", async () => {
+    const user = userEvent.setup();
+    const imageId = "3e24e96c89ef";
+    const tags = ["2", "2.5.3", "next"];
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: tags.map((tag) => ({
+        createdAt: "2026-08-27T10:00:00.000Z",
+        createdSince: "today",
+        id: imageId,
+        platform: "linux/arm64",
+        repository: "louislam/uptime-kuma",
+        size: "601MB",
+        tag,
+        url: `docker.io/louislam/uptime-kuma:${tag}`,
+      })),
+      networks: [],
+      runtime: {
+        dockerVersion: "29.7.2",
+        instance: "overseer",
+        message: "정상",
+        phase: "running",
+      },
+      volumes: [],
+    };
+    let removeTagBody: unknown;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/images/tags/remove") && init?.method === "POST") {
+        removeTagBody = JSON.parse(String(init.body));
+        return jsonResponse(
+          {
+            operation: operation("queued", {
+              id: "remove-image-tag",
+              kind: "image.tag.remove",
+              target: { id: imageId, name: tags[1]!, resource: "image" },
+              title: "이미지 태그 삭제",
+            }),
+          },
+          202,
+        );
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/images");
+    render(<App />);
+
+    const viewToggle = await screen.findByRole("group", { name: "이미지 보기 기준" });
+    const refresh = screen.getByRole("button", { name: "새로고침" });
+    expect(viewToggle.parentElement).toBe(refresh.parentElement);
+    expect(within(viewToggle).getByRole("button", { name: "태그" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("table", { name: "이미지 태그 목록" })).toBeInTheDocument();
+
+    const deleteTag = screen.getByRole("button", {
+      name: "louislam/uptime-kuma:2.5.3 태그 삭제",
+    });
+    await user.hover(deleteTag);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "louislam/uptime-kuma:2.5.3 태그 삭제",
+    );
+    await user.click(deleteTag);
+    const tagDialog = await screen.findByRole("alertdialog", {
+      name: "louislam/uptime-kuma:2.5.3 태그를 삭제하시겠습니까?",
+    });
+    expect(tagDialog).toHaveTextContent("다른 태그는 유지");
+    await user.click(within(tagDialog).getByRole("button", { name: "태그 삭제" }));
+    await waitFor(() =>
+      expect(removeTagBody).toEqual({
+        id: imageId,
+        reference: "docker.io/louislam/uptime-kuma:2.5.3",
+      }),
+    );
+
+    await user.click(within(viewToggle).getByRole("button", { name: "이미지 ID" }));
+    expect(screen.getByRole("table", { name: "이미지 ID 목록" })).toBeInTheDocument();
+    expect(screen.getByText("3개 태그")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: imageId })).toHaveLength(1);
+    const deleteImage = screen.getByRole("button", { name: `${imageId} 이미지 삭제` });
+    await waitFor(() => expect(deleteImage).toBeEnabled());
+    await user.click(deleteImage);
+    const imageDialog = await screen.findByRole("alertdialog", {
+      name: `${imageId} 이미지와 모든 태그를 삭제하시겠습니까?`,
+    });
+    expect(imageDialog).toHaveTextContent("연결된 태그 3개와 이미지 데이터를 삭제");
+    expect(imageDialog).toHaveTextContent("uptime-kuma:2.5.3");
   });
 
   it("opens volume and network detail pages with raw information", async () => {

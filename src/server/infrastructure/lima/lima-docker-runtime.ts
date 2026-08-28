@@ -26,6 +26,7 @@ import type {
   NetworkDetail,
   NetworkSummary,
   PullImageInput,
+  RemoveImageTagInput,
   RegisterRemoteComposeInput,
   RunContainerInput,
   RuntimeInstancesSnapshot,
@@ -753,6 +754,10 @@ export class LimaDockerRuntime implements OverseerController {
 
   async removeImage(id: string, progress?: OperationProgress): Promise<void> {
     await this.images.remove(id, progress);
+  }
+
+  async removeImageTag(input: RemoveImageTagInput, progress?: OperationProgress): Promise<void> {
+    await this.images.removeTag(input, progress);
   }
 
   async getImage(id: string): Promise<ImageDetail> {

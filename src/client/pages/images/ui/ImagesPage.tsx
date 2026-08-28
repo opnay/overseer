@@ -6,6 +6,7 @@ import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Field } from "@opnay/city-ds-react/field";
 import { Input } from "@opnay/city-ds-react/input";
 import { Table } from "@opnay/city-ds-react/table";
+import { ToggleGroup } from "@opnay/city-ds-react/toggle-group";
 import { Download, HardDrive, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import type { ImageSummary } from "@contracts/contracts.ts";
@@ -19,6 +20,64 @@ import { imageDisplayReference } from "../lib/image-presentation.ts";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "요청을 완료하지 못했습니다.";
+}
+
+type ImageListView = "id" | "tag";
+
+interface ImageIdGroup {
+  image: ImageSummary;
+  references: string[];
+  rows: ImageSummary[];
+}
+
+function isTaggedImage(image: ImageSummary): boolean {
+  return image.repository !== "<none>" && image.tag !== "<none>";
+}
+
+function imageGroups(images: ImageSummary[]): ImageIdGroup[] {
+  const groups = new Map<string, ImageIdGroup>();
+  for (const image of images) {
+    const current = groups.get(image.id);
+    const reference = isTaggedImage(image) ? imageDisplayReference(image) : undefined;
+    if (current) {
+      current.rows.push(image);
+      if (reference) current.references.push(reference);
+      continue;
+    }
+    groups.set(image.id, {
+      image,
+      references: reference ? [reference] : [],
+      rows: [image],
+    });
+  }
+  return [...groups.values()];
+}
+
+function referenceSummary(references: string[]): string {
+  if (references.length === 0) return "태그 없음";
+  const visible = references.slice(0, 3).join(" · ");
+  return references.length > 3 ? `${visible} 외 ${references.length - 3}개` : visible;
+}
+
+export function ImageViewToggle({
+  onChange,
+  value,
+}: {
+  onChange: (value: ImageListView) => void;
+  value: ImageListView;
+}) {
+  return (
+    <ToggleGroup
+      aria-label="이미지 보기 기준"
+      onValueChange={(nextValue) => nextValue[0] && onChange(nextValue[0] as ImageListView)}
+      size="xsm"
+      value={[value]}
+      variant="ghost"
+    >
+      <ToggleGroup.Item value="tag">태그</ToggleGroup.Item>
+      <ToggleGroup.Item value="id">이미지 ID</ToggleGroup.Item>
+    </ToggleGroup>
+  );
 }
 
 export function PullImageDialog({
@@ -114,32 +173,42 @@ export function ImagesPage({
   images,
   isBusy,
   onInspect,
-  onRemove,
+  onRemoveImage,
+  onRemoveTag,
+  view,
 }: {
   images: ImageSummary[];
   isBusy: (image: ImageSummary) => boolean;
   onInspect: (image: ImageSummary) => void;
-  onRemove: (image: ImageSummary) => void;
+  onRemoveImage: (id: string) => void;
+  onRemoveTag: (image: ImageSummary) => void;
+  view: ImageListView;
 }) {
+  const groups = imageGroups(images);
+  const tagView = view === "tag";
+  const colSpan = tagView ? 6 : 5;
+
   return (
     <DataTableRegion
       className="overseer-data-table-region"
       hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-      label="이미지 표"
+      label={tagView ? "이미지 태그 표" : "이미지 ID 표"}
     >
       <Table.Root
-        aria-label="이미지 목록"
+        aria-label={tagView ? "이미지 태그 목록" : "이미지 ID 목록"}
         className="overseer-table overseer-table--images"
         size="sm"
       >
         <Table.Caption className="overseer-table-caption">
-          Lima overseer 인스턴스의 로컬 이미지
+          {tagView ? "로컬 이미지 태그" : "이미지 ID별 로컬 이미지"}
         </Table.Caption>
         <Table.Header>
           <Table.Row>
-            <Table.Head className="overseer-table-column-wide">이미지</Table.Head>
+            <Table.Head className="overseer-table-column-wide">
+              {tagView ? "이미지 태그" : "이미지 ID"}
+            </Table.Head>
             <Table.Head>플랫폼</Table.Head>
-            <Table.Head>이미지 ID</Table.Head>
+            {tagView ? <Table.Head>이미지 ID</Table.Head> : null}
             <Table.Head>생성</Table.Head>
             <Table.Head>크기</Table.Head>
             <Table.Head className="overseer-actions-column">작업</Table.Head>
@@ -147,7 +216,7 @@ export function ImagesPage({
         </Table.Header>
         <Table.Body>
           {images.length === 0 ? (
-            <Table.StateRow colSpan={6}>
+            <Table.StateRow colSpan={colSpan}>
               <EmptyState.Root className="overseer-table-empty-state" density="compact">
                 <EmptyState.Icon>
                   <HardDrive aria-hidden="true" />
@@ -158,7 +227,7 @@ export function ImagesPage({
                 </EmptyState.Description>
               </EmptyState.Root>
             </Table.StateRow>
-          ) : (
+          ) : tagView ? (
             images.map((image) => (
               <Table.Row key={`${image.id}-${image.repository}-${image.tag}`}>
                 <Table.Cell className="overseer-table-column-wide">
@@ -188,13 +257,69 @@ export function ImagesPage({
                 <Table.Cell>
                   <div className="overseer-row-actions">
                     <ConfirmAction
-                      actionLabel="이미지 삭제"
-                      ariaLabel={`${imageDisplayReference(image)} 이미지 삭제`}
+                      actionLabel={isTaggedImage(image) ? "태그 삭제" : "이미지 삭제"}
+                      ariaLabel={`${imageDisplayReference(image)} ${isTaggedImage(image) ? "태그" : "이미지"} 삭제`}
                       disabled={isBusy(image)}
-                      description="이 이미지를 사용하는 컨테이너가 있으면 삭제되지 않습니다."
-                      onConfirm={() => onRemove(image)}
+                      description={
+                        isTaggedImage(image)
+                          ? "이 태그 연결을 제거합니다. 다른 태그는 유지되며 마지막 태그라면 이미지 데이터도 제거됩니다."
+                          : "태그 없는 이미지 데이터를 삭제합니다. 사용하는 컨테이너가 있으면 삭제되지 않습니다."
+                      }
+                      onConfirm={() =>
+                        isTaggedImage(image) ? onRemoveTag(image) : onRemoveImage(image.id)
+                      }
                       iconOnly
-                      title={`${imageDisplayReference(image)} 이미지를 삭제하시겠습니까?`}
+                      title={`${imageDisplayReference(image)} ${isTaggedImage(image) ? "태그를" : "이미지를"} 삭제하시겠습니까?`}
+                    >
+                      <Trash2 aria-hidden="true" size={14} />
+                    </ConfirmAction>
+                  </div>
+                </Table.Cell>
+              </Table.Row>
+            ))
+          ) : (
+            groups.map((group) => (
+              <Table.Row key={group.image.id}>
+                <Table.Cell className="overseer-table-column-wide">
+                  <div className="overseer-primary-cell">
+                    <a
+                      className="overseer-detail-link"
+                      href={imageDetailPath(group.image.id)}
+                      onClick={(event) => followLink(event, () => onInspect(group.image))}
+                    >
+                      {group.image.id}
+                    </a>
+                    <div className="overseer-primary-meta">
+                      <span>{group.references.length}개 태그</span>
+                      <code title={group.references.join(", ")}>
+                        {referenceSummary(group.references)}
+                      </code>
+                    </div>
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <code>{group.image.platform}</code>
+                </Table.Cell>
+                <Table.Cell>
+                  <time dateTime={group.image.createdAt}>
+                    {formatDateTime(group.image.createdAt)}
+                  </time>
+                </Table.Cell>
+                <Table.Cell>{group.image.size}</Table.Cell>
+                <Table.Cell>
+                  <div className="overseer-row-actions">
+                    <ConfirmAction
+                      actionLabel="이미지 삭제"
+                      ariaLabel={`${group.image.id} 이미지 삭제`}
+                      disabled={group.rows.some(isBusy)}
+                      description={
+                        group.references.length > 0
+                          ? `연결된 태그 ${group.references.length}개와 이미지 데이터를 삭제합니다. 사용하는 컨테이너가 있으면 삭제되지 않습니다. 삭제 태그: ${referenceSummary(group.references)}`
+                          : "태그 없는 이미지 데이터를 삭제합니다. 사용하는 컨테이너가 있으면 삭제되지 않습니다."
+                      }
+                      onConfirm={() => onRemoveImage(group.image.id)}
+                      iconOnly
+                      title={`${group.image.id} 이미지와 모든 태그를 삭제하시겠습니까?`}
                     >
                       <Trash2 aria-hidden="true" size={14} />
                     </ConfirmAction>

@@ -612,6 +612,11 @@ export interface PullImageInput {
   image: string;
 }
 
+export interface RemoveImageTagInput {
+  id: string;
+  reference: string;
+}
+
 export interface CreateNamedResourceInput {
   name: string;
 }
@@ -645,6 +650,7 @@ export type OperationKind =
   | "container.update"
   | "image.pull"
   | "image.remove"
+  | "image.tag.remove"
   | "image.repository.sync"
   | "network.create"
   | "network.remove"

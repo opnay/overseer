@@ -23,6 +23,7 @@ import type {
   NetworkDetail,
   NetworkSummary,
   PullImageInput,
+  RemoveImageTagInput,
   RegisterRemoteComposeInput,
   RuntimeInstancesSnapshot,
   RuntimeSnapshot,
@@ -136,6 +137,7 @@ export interface ImageController {
   getImages(): Promise<ImageSummary[]>;
   pullImage(input: PullImageInput, progress?: OperationProgress): Promise<void>;
   removeImage(id: string, progress?: OperationProgress): Promise<void>;
+  removeImageTag(input: RemoveImageTagInput, progress?: OperationProgress): Promise<void>;
 }
 
 export interface VolumeController {

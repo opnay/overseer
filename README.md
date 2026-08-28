@@ -101,6 +101,10 @@ pnpm check
 
 이름·재시작 정책·CPU·메모리는 Docker에서 직접 수정합니다. 그 밖의 설정은 Overseer가 만든 컨테이너에 한해 기존 컨테이너를 임시 보존하고 교체하며, 새 컨테이너 생성이나 시작에 실패하면 기존 이름과 실행 상태를 복구합니다. Compose나 외부에서 만든 컨테이너는 알 수 없는 설정의 손실을 막기 위해 교체하지 않습니다.
 
+## 이미지 관리
+
+이미지 페이지는 **태그**와 **이미지 ID** 보기를 전환합니다. 태그 보기의 삭제는 선택한 `repository:tag` 참조만 제거하고, 이미지 ID 보기의 삭제는 사용하는 컨테이너가 없는지 확인한 뒤 연결된 모든 태그와 이미지 데이터를 제거합니다.
+
 ## 비동기 작업
 
 모든 생성·수정·동작·삭제 요청은 `202 Accepted`와 작업 ID를 즉시 반환합니다. 상단의 **작업** Drawer에는 대기·진행·실패 작업만 표시하고, `/operations` 페이지에는 Overseer에서 요청한 모든 작업과 전체 작업 출력을 SQLite에 계속 저장하며 검색·상태·리소스 필터와 페이지 이동을 제공합니다. Drawer의 출력은 6줄 높이에서 스크롤하며 크게 보기에서는 같은 전체 출력을 표시합니다. 서버 재시작 당시 대기·실행 중이던 작업은 중단 실패로 기록하며, 실패 작업은 저장된 원래 요청을 다시 검증해 새 작업으로 재시도할 수 있습니다. Docker CLI에서 직접 실행한 작업은 기록하지 않습니다.
@@ -113,6 +117,8 @@ pnpm check
 - `GET /api/containers/:id/inspect`: 전체 Docker inspect JSON과 Health Check 이력
 - `PATCH /api/containers/:id`: config hash 기반 수정 작업 접수
 - `GET /api/images/:id`: 이미지 설정과 전체 Docker inspect JSON
+- `POST /api/images/tags/remove`: 이미지 ID와 태그 참조를 다시 확인한 뒤 단일 태그 삭제
+- `DELETE /api/images/:id`: 컨테이너 사용 여부를 확인한 뒤 모든 태그와 이미지 삭제
 - `GET /api/volumes/:name`: 볼륨 설정과 전체 Docker inspect JSON
 - `GET /api/networks/:name`: 네트워크·IPAM·연결 컨테이너와 전체 Docker inspect JSON
 - `GET /api/runtime/configuration`: 실제 VM 설정 또는 기본 설정과 드라이버 가용성

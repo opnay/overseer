@@ -4,6 +4,7 @@ import type {
   ImageRepositoryTags,
   ImageSummary,
   PullImageInput,
+  RemoveImageTagInput,
 } from "../../../shared/contracts.ts";
 import { ExpectedError } from "../../core/errors.ts";
 import { parseJsonLines } from "../../core/json-lines.ts";
@@ -48,6 +49,11 @@ interface DockerImageHistoryRow {
   Size: string;
 }
 
+interface DockerImageContainerRow {
+  ID: string;
+  Names: string;
+}
+
 interface DockerHubTagResult {
   full_size?: number;
   images?: Array<{ architecture?: string; os?: string; variant?: string | null }>;
@@ -56,6 +62,14 @@ interface DockerHubTagResult {
 }
 
 const IMAGE_ROW_FORMAT = "{{json .}}";
+
+function normalizedImageId(value: string): string {
+  return value.replace(/^sha256:/, "");
+}
+
+function sameImageId(expected: string, actual: string): boolean {
+  return normalizedImageId(actual).startsWith(normalizedImageId(expected));
+}
 
 function imageReferenceUrl(repository: string, tag: string): string {
   if (repository === "<none>") return "—";
@@ -216,13 +230,51 @@ export class DockerImageService {
   }
 
   async remove(id: string, progress?: OperationProgress): Promise<void> {
-    progress?.step("이미지 삭제 중");
-    await this.docker(["image", "rm", id], 120_000, progress);
+    progress?.step("이미지 사용 여부 확인 중");
+    const [image, containersResult] = await Promise.all([
+      this.inspect(id),
+      this.docker(["ps", "--all", "--filter", `ancestor=${id}`, "--format", IMAGE_ROW_FORMAT]),
+    ]);
+    const containers = parseJsonLines<DockerImageContainerRow>(containersResult.stdout);
+    if (containers.length > 0) {
+      const names = containers.map(({ ID, Names }) => Names || ID).slice(0, 5);
+      throw new ExpectedError(
+        "image_in_use",
+        `이 이미지를 사용하는 컨테이너가 있습니다: ${names.join(", ")}`,
+        409,
+      );
+    }
+    const references = (image.RepoTags ?? []).filter(
+      (reference) => reference && !reference.startsWith("<none>"),
+    );
+    progress?.step(
+      references.length > 0
+        ? `태그 ${references.length}개와 이미지 삭제 중`
+        : "태그 없는 이미지 삭제 중",
+    );
+    await this.docker(
+      ["image", "rm", ...(references.length > 0 ? references : [id])],
+      120_000,
+      progress,
+    );
+  }
+
+  async removeTag(input: RemoveImageTagInput, progress?: OperationProgress): Promise<void> {
+    progress?.step("이미지 태그 확인 중");
+    const image = await this.inspect(input.reference);
+    if (!sameImageId(input.id, image.Id)) {
+      throw new ExpectedError(
+        "image_tag_changed",
+        "이미지 태그가 다른 이미지를 가리킵니다. 목록을 새로고침한 뒤 다시 시도하십시오.",
+        409,
+      );
+    }
+    progress?.step("이미지 태그 삭제 중");
+    await this.docker(["image", "rm", input.reference], 120_000, progress);
   }
 
   async get(id: string): Promise<ImageDetail> {
-    const result = await this.docker(["image", "inspect", id]);
-    const inspected = parseImageInspectOutput(result.stdout)[0]!;
+    const inspected = await this.inspect(id);
     const config = inspected.Config ?? {};
     return {
       architecture: inspected.Architecture,
@@ -263,6 +315,11 @@ export class DockerImageService {
         ...(row.ID && row.ID !== "<missing>" ? { id: row.ID } : {}),
         size: row.Size,
       }));
+  }
+
+  private async inspect(reference: string): Promise<DockerInspectImage> {
+    const result = await this.docker(["image", "inspect", reference]);
+    return parseImageInspectOutput(result.stdout)[0]!;
   }
 
   async repositoryTags(id: string, page: number): Promise<ImageRepositoryTags> {
