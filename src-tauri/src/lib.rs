@@ -297,6 +297,10 @@ fn auto_start_runtime_path(state: TrayRuntimeState) -> Option<&'static str> {
     matches!(state, TrayRuntimeState::Stopped).then_some("/runtime/start")
 }
 
+fn shows_stopped_tray_indicator(state: TrayRuntimeState) -> bool {
+    matches!(state, TrayRuntimeState::Stopped)
+}
+
 fn tray_runtime_action(state: Option<TrayRuntimeState>) -> TrayRuntimeAction {
     match state {
         Some(TrayRuntimeState::Running) => TrayRuntimeAction {
@@ -522,11 +526,13 @@ fn request_operation(
 
 fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri::Result<()> {
     let menu = build_tray_menu(app.handle(), None)?;
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+    let running_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+    let stopped_icon =
+        tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon-stopped.png"))?;
     let event_api = Arc::clone(&api);
 
     let tray = TrayIconBuilder::with_id("overseer")
-        .icon(icon)
+        .icon(running_icon.clone())
         .icon_as_template(true)
         .menu(&menu)
         .on_menu_event(move |app, event| {
@@ -552,6 +558,7 @@ fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri
     let app_handle = app.handle().clone();
     thread::spawn(move || {
         let mut initial_runtime_checked = false;
+        let mut stopped_indicator_visible = false;
         loop {
             let snapshot = api
                 .lock()
@@ -570,6 +577,22 @@ fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri
                         initial_runtime_checked = true;
                         if let Some(path) = auto_start_runtime_path(snapshot.runtime_state) {
                             request_operation(Arc::clone(&api), path.into(), "VM 자동 시작");
+                        }
+                    }
+                    let should_show_stopped_indicator =
+                        shows_stopped_tray_indicator(snapshot.runtime_state);
+                    if should_show_stopped_indicator != stopped_indicator_visible {
+                        let icon = if should_show_stopped_indicator {
+                            stopped_icon.clone()
+                        } else {
+                            running_icon.clone()
+                        };
+                        if let Err(error) = tray
+                            .set_icon_with_as_template(Some(icon), !should_show_stopped_indicator)
+                        {
+                            eprintln!("메뉴바 아이콘을 갱신하지 못했습니다: {error}");
+                        } else {
+                            stopped_indicator_visible = should_show_stopped_indicator;
                         }
                     }
                     match build_tray_menu(&app_handle, Some(&snapshot)) {
@@ -1037,6 +1060,16 @@ mod tests {
             Some(("/runtime/restart", "VM 재시작"))
         );
         assert_eq!(tray_runtime_operation(TRAY_RUNTIME_STATUS_ID), None);
+    }
+
+    #[test]
+    fn shows_a_tray_indicator_only_when_the_runtime_is_stopped() {
+        assert!(shows_stopped_tray_indicator(TrayRuntimeState::Stopped));
+        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Running));
+        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Starting));
+        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Stopping));
+        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Missing));
+        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Error));
     }
 
     #[test]
