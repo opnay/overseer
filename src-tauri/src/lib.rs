@@ -29,8 +29,10 @@ const MAX_PROCESS_MESSAGE_BYTES: u64 = 10 * 1024 * 1024;
 const TRAY_MENU_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
 const TRAY_COMPOSE_ACTION_PREFIX: &str = "tray-compose-action:";
 const TRAY_OPEN_ID: &str = "tray-open";
-const TRAY_RESTART_ID: &str = "tray-restart";
 const TRAY_ROUTE_PREFIX: &str = "tray-route:";
+const TRAY_RUNTIME_RESTART_ID: &str = "tray-runtime-restart";
+const TRAY_RUNTIME_START_ID: &str = "tray-runtime-start";
+const TRAY_RUNTIME_STATUS_ID: &str = "tray-runtime-status";
 const TRAY_QUIT_ID: &str = "tray-quit";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -41,6 +43,13 @@ enum TrayRuntimeState {
     Starting,
     Stopped,
     Stopping,
+}
+
+#[derive(Debug, PartialEq)]
+struct TrayRuntimeAction {
+    enabled: bool,
+    id: &'static str,
+    label: &'static str,
 }
 
 #[derive(Debug, PartialEq)]
@@ -288,6 +297,54 @@ fn auto_start_runtime_path(state: TrayRuntimeState) -> Option<&'static str> {
     matches!(state, TrayRuntimeState::Stopped).then_some("/runtime/start")
 }
 
+fn tray_runtime_action(state: Option<TrayRuntimeState>) -> TrayRuntimeAction {
+    match state {
+        Some(TrayRuntimeState::Running) => TrayRuntimeAction {
+            enabled: true,
+            id: TRAY_RUNTIME_RESTART_ID,
+            label: "VM 재시작",
+        },
+        Some(TrayRuntimeState::Stopped) => TrayRuntimeAction {
+            enabled: true,
+            id: TRAY_RUNTIME_START_ID,
+            label: "VM 시작",
+        },
+        Some(TrayRuntimeState::Starting) => TrayRuntimeAction {
+            enabled: false,
+            id: TRAY_RUNTIME_STATUS_ID,
+            label: "VM 시작 중",
+        },
+        Some(TrayRuntimeState::Stopping) => TrayRuntimeAction {
+            enabled: false,
+            id: TRAY_RUNTIME_STATUS_ID,
+            label: "VM 중지 중",
+        },
+        Some(TrayRuntimeState::Missing) => TrayRuntimeAction {
+            enabled: false,
+            id: TRAY_RUNTIME_STATUS_ID,
+            label: "VM 없음",
+        },
+        Some(TrayRuntimeState::Error) => TrayRuntimeAction {
+            enabled: false,
+            id: TRAY_RUNTIME_STATUS_ID,
+            label: "VM 상태 확인 필요",
+        },
+        None => TrayRuntimeAction {
+            enabled: false,
+            id: TRAY_RUNTIME_STATUS_ID,
+            label: "VM 상태 확인 중",
+        },
+    }
+}
+
+fn tray_runtime_operation(menu_id: &str) -> Option<(&'static str, &'static str)> {
+    match menu_id {
+        TRAY_RUNTIME_RESTART_ID => Some(("/runtime/restart", "VM 재시작")),
+        TRAY_RUNTIME_START_ID => Some(("/runtime/start", "VM 시작")),
+        _ => None,
+    }
+}
+
 fn compose_state(status: &str) -> TrayComposeState {
     let status = status.to_ascii_lowercase();
     if status.starts_with("running(") {
@@ -350,22 +407,18 @@ fn build_tray_menu(
     snapshot: Option<&TraySnapshot>,
 ) -> tauri::Result<Menu<tauri::Wry>> {
     let open = MenuItem::with_id(app, TRAY_OPEN_ID, "Overseer 열기", true, None::<&str>)?;
-    let restart = MenuItem::with_id(
+    let runtime_action = tray_runtime_action(snapshot.map(|snapshot| snapshot.runtime_state));
+    let runtime = MenuItem::with_id(
         app,
-        TRAY_RESTART_ID,
-        "VM 재시작",
-        snapshot.is_some_and(|snapshot| {
-            matches!(
-                snapshot.runtime_state,
-                TrayRuntimeState::Running | TrayRuntimeState::Stopped | TrayRuntimeState::Error
-            )
-        }),
+        runtime_action.id,
+        runtime_action.label,
+        runtime_action.enabled,
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Overseer 종료", true, None::<&str>)?;
     let menu = Menu::new(app)?;
     menu.append(&open)?;
-    menu.append(&restart)?;
+    menu.append(&runtime)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
 
     if let Some(snapshot) = snapshot.filter(|snapshot| !snapshot.projects.is_empty()) {
@@ -481,12 +534,8 @@ fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri
                 if let Err(error) = show_main_window(app, None) {
                     eprintln!("launcher를 열지 못했습니다: {error}");
                 }
-            } else if event.id() == TRAY_RESTART_ID {
-                request_operation(
-                    Arc::clone(&event_api),
-                    "/runtime/restart".into(),
-                    "VM 재시작",
-                );
+            } else if let Some((path, context)) = tray_runtime_operation(event.id().as_ref()) {
+                request_operation(Arc::clone(&event_api), path.into(), context);
             } else if event.id() == TRAY_QUIT_ID {
                 app.exit(0);
             } else if let Some(path) = compose_action_path(event.id().as_ref()) {
@@ -942,6 +991,52 @@ mod tests {
         assert_eq!(auto_start_runtime_path(TrayRuntimeState::Stopping), None);
         assert_eq!(auto_start_runtime_path(TrayRuntimeState::Missing), None);
         assert_eq!(auto_start_runtime_path(TrayRuntimeState::Error), None);
+    }
+
+    #[test]
+    fn maps_runtime_states_to_menu_actions() {
+        assert_eq!(
+            tray_runtime_action(Some(TrayRuntimeState::Stopped)),
+            TrayRuntimeAction {
+                enabled: true,
+                id: TRAY_RUNTIME_START_ID,
+                label: "VM 시작",
+            }
+        );
+        assert_eq!(
+            tray_runtime_action(Some(TrayRuntimeState::Running)),
+            TrayRuntimeAction {
+                enabled: true,
+                id: TRAY_RUNTIME_RESTART_ID,
+                label: "VM 재시작",
+            }
+        );
+        assert_eq!(
+            tray_runtime_action(Some(TrayRuntimeState::Starting)).label,
+            "VM 시작 중"
+        );
+        assert_eq!(
+            tray_runtime_action(Some(TrayRuntimeState::Stopping)).label,
+            "VM 중지 중"
+        );
+        assert_eq!(
+            tray_runtime_action(Some(TrayRuntimeState::Missing)).label,
+            "VM 없음"
+        );
+        assert_eq!(
+            tray_runtime_action(Some(TrayRuntimeState::Error)).label,
+            "VM 상태 확인 필요"
+        );
+        assert_eq!(tray_runtime_action(None).label, "VM 상태 확인 중");
+        assert_eq!(
+            tray_runtime_operation(TRAY_RUNTIME_START_ID),
+            Some(("/runtime/start", "VM 시작"))
+        );
+        assert_eq!(
+            tray_runtime_operation(TRAY_RUNTIME_RESTART_ID),
+            Some(("/runtime/restart", "VM 재시작"))
+        );
+        assert_eq!(tray_runtime_operation(TRAY_RUNTIME_STATUS_ID), None);
     }
 
     #[test]
