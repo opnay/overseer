@@ -3,7 +3,8 @@ use auto_launch::AutoLaunch;
 use objc2::{MainThreadMarker, MainThreadOnly};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{
-    NSImage, NSImageNameStatusUnavailable, NSImageScaling, NSImageView, NSWindowOrderingMode,
+    NSImage, NSImageNameStatusAvailable, NSImageNameStatusPartiallyAvailable,
+    NSImageNameStatusUnavailable, NSImageScaling, NSImageView, NSWindowOrderingMode,
 };
 #[cfg(target_os = "macos")]
 use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -43,7 +44,7 @@ const TRAY_RUNTIME_START_ID: &str = "tray-runtime-start";
 const TRAY_RUNTIME_STATUS_ID: &str = "tray-runtime-status";
 const TRAY_QUIT_ID: &str = "tray-quit";
 #[cfg(target_os = "macos")]
-const TRAY_STOPPED_INDICATOR_TAG: isize = 0x4f565253;
+const TRAY_RUNTIME_INDICATOR_TAG: isize = 0x4f565253;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TrayRuntimeState {
@@ -53,6 +54,14 @@ enum TrayRuntimeState {
     Starting,
     Stopped,
     Stopping,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TrayRuntimeIndicator {
+    Available,
+    Hidden,
+    PartiallyAvailable,
+    Unavailable,
 }
 
 #[derive(Debug, PartialEq)]
@@ -307,12 +316,22 @@ fn auto_start_runtime_path(state: TrayRuntimeState) -> Option<&'static str> {
     matches!(state, TrayRuntimeState::Stopped).then_some("/runtime/start")
 }
 
-fn shows_stopped_tray_indicator(state: TrayRuntimeState) -> bool {
-    matches!(state, TrayRuntimeState::Stopped)
+fn tray_runtime_indicator(state: TrayRuntimeState) -> TrayRuntimeIndicator {
+    match state {
+        TrayRuntimeState::Running => TrayRuntimeIndicator::Available,
+        TrayRuntimeState::Starting | TrayRuntimeState::Stopping => {
+            TrayRuntimeIndicator::PartiallyAvailable
+        }
+        TrayRuntimeState::Stopped | TrayRuntimeState::Error => TrayRuntimeIndicator::Unavailable,
+        TrayRuntimeState::Missing => TrayRuntimeIndicator::Hidden,
+    }
 }
 
 #[cfg(target_os = "macos")]
-fn set_stopped_tray_indicator(tray: &tauri::tray::TrayIcon, visible: bool) -> Result<(), String> {
+fn set_tray_runtime_indicator(
+    tray: &tauri::tray::TrayIcon,
+    state: TrayRuntimeIndicator,
+) -> Result<(), String> {
     tray.with_inner_tray_icon(move |inner| {
         let mtm = MainThreadMarker::new().ok_or("메인 스레드를 확인하지 못했습니다.")?;
         let status_item = inner
@@ -321,10 +340,18 @@ fn set_stopped_tray_indicator(tray: &tauri::tray::TrayIcon, visible: bool) -> Re
         let button = status_item
             .button(mtm)
             .ok_or("macOS 상태 아이템 버튼을 찾지 못했습니다.")?;
-        let indicator = button.viewWithTag(TRAY_STOPPED_INDICATOR_TAG);
+        let indicator = button.viewWithTag(TRAY_RUNTIME_INDICATOR_TAG);
+        if state == TrayRuntimeIndicator::Hidden {
+            if let Some(indicator) = indicator {
+                indicator.setHidden(true);
+            }
+            return Ok(());
+        }
         let indicator = match indicator {
-            Some(indicator) => indicator,
-            None => unsafe {
+            Some(indicator) => indicator
+                .downcast::<NSImageView>()
+                .map_err(|_| "macOS VM 상태점 형식이 잘못됐습니다.")?,
+            None => {
                 let bounds = button.bounds();
                 let size = 7.0;
                 let frame = NSRect::new(
@@ -335,28 +362,39 @@ fn set_stopped_tray_indicator(tray: &tauri::tray::TrayIcon, visible: bool) -> Re
                     NSSize::new(size, size),
                 );
                 let indicator = NSImageView::initWithFrame(NSImageView::alloc(mtm), frame);
-                let image = NSImage::imageNamed(NSImageNameStatusUnavailable)
-                    .ok_or("macOS 중지 상태 이미지를 찾지 못했습니다.")?;
-                indicator.setImage(Some(&image));
                 indicator.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
-                indicator.setTag(TRAY_STOPPED_INDICATOR_TAG);
+                indicator.setTag(TRAY_RUNTIME_INDICATOR_TAG);
                 indicator.setEnabled(false);
                 button.addSubview_positioned_relativeTo(
                     &indicator,
                     NSWindowOrderingMode::Below,
                     None,
                 );
-                indicator.into_super().into_super()
-            },
+                indicator
+            }
         };
-        indicator.setHidden(!visible);
+        let image_name = unsafe {
+            match state {
+                TrayRuntimeIndicator::Available => NSImageNameStatusAvailable,
+                TrayRuntimeIndicator::PartiallyAvailable => NSImageNameStatusPartiallyAvailable,
+                TrayRuntimeIndicator::Unavailable => NSImageNameStatusUnavailable,
+                TrayRuntimeIndicator::Hidden => unreachable!(),
+            }
+        };
+        let image =
+            NSImage::imageNamed(image_name).ok_or("macOS VM 상태 이미지를 찾지 못했습니다.")?;
+        indicator.setImage(Some(&image));
+        indicator.setHidden(false);
         Ok::<(), String>(())
     })
     .map_err(|error| format!("메뉴바 상태점을 갱신하지 못했습니다: {error}"))?
 }
 
 #[cfg(not(target_os = "macos"))]
-fn set_stopped_tray_indicator(_tray: &tauri::tray::TrayIcon, _visible: bool) -> Result<(), String> {
+fn set_tray_runtime_indicator(
+    _tray: &tauri::tray::TrayIcon,
+    _state: TrayRuntimeIndicator,
+) -> Result<(), String> {
     Ok(())
 }
 
@@ -615,7 +653,7 @@ fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri
     let app_handle = app.handle().clone();
     thread::spawn(move || {
         let mut initial_runtime_checked = false;
-        let mut stopped_indicator_visible = false;
+        let mut current_runtime_indicator = TrayRuntimeIndicator::Hidden;
         loop {
             let snapshot = api
                 .lock()
@@ -636,15 +674,14 @@ fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri
                             request_operation(Arc::clone(&api), path.into(), "VM 자동 시작");
                         }
                     }
-                    let should_show_stopped_indicator =
-                        shows_stopped_tray_indicator(snapshot.runtime_state);
-                    if should_show_stopped_indicator != stopped_indicator_visible {
+                    let next_runtime_indicator = tray_runtime_indicator(snapshot.runtime_state);
+                    if next_runtime_indicator != current_runtime_indicator {
                         if let Err(error) =
-                            set_stopped_tray_indicator(&tray, should_show_stopped_indicator)
+                            set_tray_runtime_indicator(&tray, next_runtime_indicator)
                         {
                             eprintln!("메뉴바 아이콘을 갱신하지 못했습니다: {error}");
                         } else {
-                            stopped_indicator_visible = should_show_stopped_indicator;
+                            current_runtime_indicator = next_runtime_indicator;
                         }
                     }
                     match build_tray_menu(&app_handle, Some(&snapshot)) {
@@ -1115,13 +1152,31 @@ mod tests {
     }
 
     #[test]
-    fn shows_a_tray_indicator_only_when_the_runtime_is_stopped() {
-        assert!(shows_stopped_tray_indicator(TrayRuntimeState::Stopped));
-        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Running));
-        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Starting));
-        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Stopping));
-        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Missing));
-        assert!(!shows_stopped_tray_indicator(TrayRuntimeState::Error));
+    fn maps_runtime_states_to_native_status_indicators() {
+        assert_eq!(
+            tray_runtime_indicator(TrayRuntimeState::Running),
+            TrayRuntimeIndicator::Available
+        );
+        assert_eq!(
+            tray_runtime_indicator(TrayRuntimeState::Starting),
+            TrayRuntimeIndicator::PartiallyAvailable
+        );
+        assert_eq!(
+            tray_runtime_indicator(TrayRuntimeState::Stopping),
+            TrayRuntimeIndicator::PartiallyAvailable
+        );
+        assert_eq!(
+            tray_runtime_indicator(TrayRuntimeState::Stopped),
+            TrayRuntimeIndicator::Unavailable
+        );
+        assert_eq!(
+            tray_runtime_indicator(TrayRuntimeState::Error),
+            TrayRuntimeIndicator::Unavailable
+        );
+        assert_eq!(
+            tray_runtime_indicator(TrayRuntimeState::Missing),
+            TrayRuntimeIndicator::Hidden
+        );
     }
 
     #[test]
