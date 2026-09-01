@@ -33,6 +33,16 @@ const TRAY_RESTART_ID: &str = "tray-restart";
 const TRAY_ROUTE_PREFIX: &str = "tray-route:";
 const TRAY_QUIT_ID: &str = "tray-quit";
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TrayRuntimeState {
+    Error,
+    Missing,
+    Running,
+    Starting,
+    Stopped,
+    Stopping,
+}
+
 #[derive(Debug, PartialEq)]
 struct TrayComposeProject {
     containers: Vec<TrayContainer>,
@@ -56,7 +66,7 @@ struct TrayContainer {
 #[derive(Debug, PartialEq)]
 struct TraySnapshot {
     projects: Vec<TrayComposeProject>,
-    restart_available: bool,
+    runtime_state: TrayRuntimeState,
 }
 
 struct DesktopApiProcess {
@@ -258,8 +268,24 @@ fn tray_snapshot_from_json(body: &str) -> Result<TraySnapshot, String> {
 
     Ok(TraySnapshot {
         projects,
-        restart_available: phase != "missing" && phase != "starting" && phase != "stopping",
+        runtime_state: tray_runtime_state(phase)?,
     })
+}
+
+fn tray_runtime_state(phase: &str) -> Result<TrayRuntimeState, String> {
+    match phase {
+        "error" => Ok(TrayRuntimeState::Error),
+        "missing" => Ok(TrayRuntimeState::Missing),
+        "running" => Ok(TrayRuntimeState::Running),
+        "starting" => Ok(TrayRuntimeState::Starting),
+        "stopped" => Ok(TrayRuntimeState::Stopped),
+        "stopping" => Ok(TrayRuntimeState::Stopping),
+        _ => Err(format!("알 수 없는 메뉴바 런타임 상태입니다: {phase}")),
+    }
+}
+
+fn auto_start_runtime_path(state: TrayRuntimeState) -> Option<&'static str> {
+    matches!(state, TrayRuntimeState::Stopped).then_some("/runtime/start")
 }
 
 fn compose_state(status: &str) -> TrayComposeState {
@@ -328,7 +354,12 @@ fn build_tray_menu(
         app,
         TRAY_RESTART_ID,
         "VM 재시작",
-        snapshot.is_some_and(|snapshot| snapshot.restart_available),
+        snapshot.is_some_and(|snapshot| {
+            matches!(
+                snapshot.runtime_state,
+                TrayRuntimeState::Running | TrayRuntimeState::Stopped | TrayRuntimeState::Error
+            )
+        }),
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Overseer 종료", true, None::<&str>)?;
@@ -470,30 +501,41 @@ fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri
         .build(app)?;
 
     let app_handle = app.handle().clone();
-    thread::spawn(move || loop {
-        let snapshot = api
-            .lock()
-            .map_err(|_| "API sidecar 잠금이 손상됐습니다.".to_owned())
-            .and_then(|mut api| api.request("/menu-bar".into(), "GET".into(), None))
-            .and_then(|(status, body)| {
-                if status == 200 {
-                    tray_snapshot_from_json(&body)
-                } else {
-                    Err(format!("메뉴바 상태를 불러오지 못했습니다: HTTP {status}"))
-                }
-            });
-        match snapshot {
-            Ok(snapshot) => match build_tray_menu(&app_handle, Some(&snapshot)) {
-                Ok(menu) => {
-                    if tray.set_menu(Some(menu)).is_err() {
-                        break;
+    thread::spawn(move || {
+        let mut initial_runtime_checked = false;
+        loop {
+            let snapshot = api
+                .lock()
+                .map_err(|_| "API sidecar 잠금이 손상됐습니다.".to_owned())
+                .and_then(|mut api| api.request("/menu-bar".into(), "GET".into(), None))
+                .and_then(|(status, body)| {
+                    if status == 200 {
+                        tray_snapshot_from_json(&body)
+                    } else {
+                        Err(format!("메뉴바 상태를 불러오지 못했습니다: HTTP {status}"))
+                    }
+                });
+            match snapshot {
+                Ok(snapshot) => {
+                    if !initial_runtime_checked {
+                        initial_runtime_checked = true;
+                        if let Some(path) = auto_start_runtime_path(snapshot.runtime_state) {
+                            request_operation(Arc::clone(&api), path.into(), "VM 자동 시작");
+                        }
+                    }
+                    match build_tray_menu(&app_handle, Some(&snapshot)) {
+                        Ok(menu) => {
+                            if tray.set_menu(Some(menu)).is_err() {
+                                break;
+                            }
+                        }
+                        Err(error) => eprintln!("메뉴바 목록을 만들지 못했습니다: {error}"),
                     }
                 }
-                Err(error) => eprintln!("메뉴바 목록을 만들지 못했습니다: {error}"),
-            },
-            Err(error) => eprintln!("메뉴바 목록을 갱신하지 못했습니다: {error}"),
+                Err(error) => eprintln!("메뉴바 목록을 갱신하지 못했습니다: {error}"),
+            }
+            thread::sleep(TRAY_MENU_REFRESH_INTERVAL);
         }
-        thread::sleep(TRAY_MENU_REFRESH_INTERVAL);
     });
     Ok(())
 }
@@ -884,9 +926,22 @@ mod tests {
                         state: TrayComposeState::Stopped,
                     },
                 ],
-                restart_available: true,
+                runtime_state: TrayRuntimeState::Running,
             }
         );
+    }
+
+    #[test]
+    fn auto_starts_only_an_existing_stopped_runtime() {
+        assert_eq!(
+            auto_start_runtime_path(TrayRuntimeState::Stopped),
+            Some("/runtime/start")
+        );
+        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Running), None);
+        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Starting), None);
+        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Stopping), None);
+        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Missing), None);
+        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Error), None);
     }
 
     #[test]
