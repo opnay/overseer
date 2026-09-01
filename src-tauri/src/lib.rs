@@ -1,4 +1,12 @@
 use auto_launch::AutoLaunch;
+#[cfg(target_os = "macos")]
+use objc2::{MainThreadMarker, MainThreadOnly};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{
+    NSImage, NSImageNameStatusUnavailable, NSImageScaling, NSImageView, NSWindowOrderingMode,
+};
+#[cfg(target_os = "macos")]
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 use std::{
     env, fs,
     io::{BufRead, BufReader, Read, Write},
@@ -34,6 +42,8 @@ const TRAY_RUNTIME_RESTART_ID: &str = "tray-runtime-restart";
 const TRAY_RUNTIME_START_ID: &str = "tray-runtime-start";
 const TRAY_RUNTIME_STATUS_ID: &str = "tray-runtime-status";
 const TRAY_QUIT_ID: &str = "tray-quit";
+#[cfg(target_os = "macos")]
+const TRAY_STOPPED_INDICATOR_TAG: isize = 0x4f565253;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TrayRuntimeState {
@@ -301,6 +311,55 @@ fn shows_stopped_tray_indicator(state: TrayRuntimeState) -> bool {
     matches!(state, TrayRuntimeState::Stopped)
 }
 
+#[cfg(target_os = "macos")]
+fn set_stopped_tray_indicator(tray: &tauri::tray::TrayIcon, visible: bool) -> Result<(), String> {
+    tray.with_inner_tray_icon(move |inner| {
+        let mtm = MainThreadMarker::new().ok_or("메인 스레드를 확인하지 못했습니다.")?;
+        let status_item = inner
+            .ns_status_item()
+            .ok_or("macOS 상태 아이템을 찾지 못했습니다.")?;
+        let button = status_item
+            .button(mtm)
+            .ok_or("macOS 상태 아이템 버튼을 찾지 못했습니다.")?;
+        let indicator = button.viewWithTag(TRAY_STOPPED_INDICATOR_TAG);
+        let indicator = match indicator {
+            Some(indicator) => indicator,
+            None => unsafe {
+                let bounds = button.bounds();
+                let size = 7.0;
+                let frame = NSRect::new(
+                    NSPoint::new(
+                        bounds.size.width - size - 1.0,
+                        bounds.size.height - size - 1.0,
+                    ),
+                    NSSize::new(size, size),
+                );
+                let indicator = NSImageView::initWithFrame(NSImageView::alloc(mtm), frame);
+                let image = NSImage::imageNamed(NSImageNameStatusUnavailable)
+                    .ok_or("macOS 중지 상태 이미지를 찾지 못했습니다.")?;
+                indicator.setImage(Some(&image));
+                indicator.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
+                indicator.setTag(TRAY_STOPPED_INDICATOR_TAG);
+                indicator.setEnabled(false);
+                button.addSubview_positioned_relativeTo(
+                    &indicator,
+                    NSWindowOrderingMode::Below,
+                    None,
+                );
+                indicator.into_super().into_super()
+            },
+        };
+        indicator.setHidden(!visible);
+        Ok::<(), String>(())
+    })
+    .map_err(|error| format!("메뉴바 상태점을 갱신하지 못했습니다: {error}"))?
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_stopped_tray_indicator(_tray: &tauri::tray::TrayIcon, _visible: bool) -> Result<(), String> {
+    Ok(())
+}
+
 fn tray_runtime_action(state: Option<TrayRuntimeState>) -> TrayRuntimeAction {
     match state {
         Some(TrayRuntimeState::Running) => TrayRuntimeAction {
@@ -526,13 +585,11 @@ fn request_operation(
 
 fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri::Result<()> {
     let menu = build_tray_menu(app.handle(), None)?;
-    let running_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
-    let stopped_icon =
-        tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon-stopped.png"))?;
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
     let event_api = Arc::clone(&api);
 
     let tray = TrayIconBuilder::with_id("overseer")
-        .icon(running_icon.clone())
+        .icon(icon)
         .icon_as_template(true)
         .menu(&menu)
         .on_menu_event(move |app, event| {
@@ -582,13 +639,8 @@ fn setup_tray(app: &mut tauri::App, api: Arc<Mutex<DesktopApiProcess>>) -> tauri
                     let should_show_stopped_indicator =
                         shows_stopped_tray_indicator(snapshot.runtime_state);
                     if should_show_stopped_indicator != stopped_indicator_visible {
-                        let icon = if should_show_stopped_indicator {
-                            stopped_icon.clone()
-                        } else {
-                            running_icon.clone()
-                        };
-                        if let Err(error) = tray
-                            .set_icon_with_as_template(Some(icon), !should_show_stopped_indicator)
+                        if let Err(error) =
+                            set_stopped_tray_indicator(&tray, should_show_stopped_indicator)
                         {
                             eprintln!("메뉴바 아이콘을 갱신하지 못했습니다: {error}");
                         } else {
