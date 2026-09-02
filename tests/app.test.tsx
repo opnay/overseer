@@ -3873,6 +3873,7 @@ describe("App", () => {
 
   it("uses text hierarchy instead of badges for table metadata and image tags", async () => {
     const user = userEvent.setup();
+    const containerId = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const dashboard: DashboardSnapshot = {
       composeProjects: [
         {
@@ -3891,7 +3892,7 @@ describe("App", () => {
         {
           composeProject: "remote-stack",
           composeService: "web",
-          id: "container-id",
+          id: containerId,
           image: "nginx:alpine",
           name: "remote-stack-web-1",
           ports: "",
@@ -3958,6 +3959,10 @@ describe("App", () => {
       containerTable.querySelectorAll("tbody tr:first-child .overseer-table-column-wide"),
     ).toHaveLength(1);
     expect(within(containerTable).getByText("nginx:alpine")).toBeInTheDocument();
+    expect(within(containerTable).getByText("0123456789ab")).toHaveAttribute("title", containerId);
+    expect(
+      within(containerTable).getByRole("link", { name: "remote-stack-web-1" }),
+    ).toHaveAttribute("href", `/containers/${containerId}`);
 
     await user.click(screen.getByRole("link", { name: "Compose" }));
     expect(await screen.findByText("1개 생성됨")).toBeInTheDocument();
@@ -4086,6 +4091,7 @@ describe("App", () => {
 
   it("opens volume and network detail pages with raw information", async () => {
     const user = userEvent.setup();
+    const containerId = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
       containers: [],
@@ -4139,7 +4145,7 @@ describe("App", () => {
               configOnly: false,
               containers: [
                 {
-                  id: "container-id",
+                  id: containerId,
                   ipv4Address: "172.17.0.2/16",
                   macAddress: "02:42:ac:11:00:02",
                   name: "web",
@@ -4211,8 +4217,9 @@ describe("App", () => {
     await user.click(within(networkNavigation).getByRole("button", { name: "연결 컨테이너" }));
     expect(screen.getByRole("link", { name: "web" })).toHaveAttribute(
       "href",
-      "/containers/container-id",
+      `/containers/${containerId}`,
     );
+    expect(screen.getByText("abcdef012345")).toHaveAttribute("title", containerId);
     await user.click(within(networkNavigation).getByRole("button", { name: "드라이버 설정" }));
     expect(screen.getByText("com.docker.network.bridge.name")).toBeInTheDocument();
     await user.click(within(networkNavigation).getByRole("button", { name: "원본 정보" }));

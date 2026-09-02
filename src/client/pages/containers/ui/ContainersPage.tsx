@@ -93,7 +93,7 @@ export function ContainersPage({
                               : ""}
                           </span>
                         ) : null}
-                        <code>{container.id}</code>
+                        <code title={container.id}>{container.id.slice(0, 12)}</code>
                       </div>
                     </div>
                   </Table.Cell>

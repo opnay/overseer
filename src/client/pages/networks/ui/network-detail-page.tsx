@@ -152,7 +152,9 @@ function Containers({
                     >
                       {container.name}
                     </a>
-                    <code className="overseer-primary-meta">{container.id}</code>
+                    <code className="overseer-primary-meta" title={container.id}>
+                      {container.id.slice(0, 12)}
+                    </code>
                   </div>
                 </Table.Cell>
                 <Table.Cell>
