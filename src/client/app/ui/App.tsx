@@ -728,6 +728,7 @@ function AppContent() {
   const notifiedOperations = useRef(new Set<string>());
   const operationsInitialized = useRef(false);
   const startupLoaded = useRef(false);
+  const startupRefreshQueued = useRef(false);
   const startupRefreshInFlight = useRef(false);
   const toastManager = Toast.useToastManager();
 
@@ -750,25 +751,31 @@ function AppContent() {
   }, [resourcePath]);
 
   const refreshStartup = useCallback(async () => {
-    if (startupRefreshInFlight.current) return;
-    startupRefreshInFlight.current = true;
-    const showFeedback = startupLoaded.current;
-    if (showFeedback) setStartupRefreshing(true);
-    setStartupError(undefined);
-    const startedAt = Date.now();
-    try {
-      setStartup(await apiRequest<StartupSnapshot>("/startup"));
-    } catch (error) {
-      setStartupError(actionError(error));
-    } finally {
-      const remaining = STARTUP_REFRESH_FEEDBACK_MS - (Date.now() - startedAt);
-      if (showFeedback && remaining > 0) {
-        await new Promise((resolve) => window.setTimeout(resolve, remaining));
-      }
-      startupLoaded.current = true;
-      startupRefreshInFlight.current = false;
-      if (showFeedback) setStartupRefreshing(false);
+    if (startupRefreshInFlight.current) {
+      startupRefreshQueued.current = true;
+      return;
     }
+    do {
+      startupRefreshQueued.current = false;
+      startupRefreshInFlight.current = true;
+      const showFeedback = startupLoaded.current;
+      if (showFeedback) setStartupRefreshing(true);
+      setStartupError(undefined);
+      const startedAt = Date.now();
+      try {
+        setStartup(await apiRequest<StartupSnapshot>("/startup"));
+      } catch (error) {
+        setStartupError(actionError(error));
+      } finally {
+        const remaining = STARTUP_REFRESH_FEEDBACK_MS - (Date.now() - startedAt);
+        if (showFeedback && remaining > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, remaining));
+        }
+        startupLoaded.current = true;
+        startupRefreshInFlight.current = false;
+        if (showFeedback) setStartupRefreshing(false);
+      }
+    } while (startupRefreshQueued.current);
   }, []);
 
   const displayedStartup =
