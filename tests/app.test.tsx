@@ -346,17 +346,19 @@ describe("App", () => {
       },
       volumes: [],
     };
-    let startupRequests = 0;
+    let homebrewInstalled = false;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.endsWith("/api/startup")) {
-          startupRequests += 1;
           return jsonResponse(
-            startupRequests === 1
-              ? startupSnapshot({ compose: false, docker: false, homebrew: false, lima: false })
-              : startupSnapshot({ compose: false, docker: false, homebrew: true, lima: false }),
+            startupSnapshot({
+              compose: false,
+              docker: false,
+              homebrew: homebrewInstalled,
+              lima: false,
+            }),
           );
         }
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
@@ -399,7 +401,16 @@ describe("App", () => {
       "https://brew.sh/",
     );
 
-    await user.click(screen.getByRole("button", { name: "설치 확인" }));
+    const installCheck = screen.getByRole("button", { name: "설치 확인" });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "상태 새로고침" })).toBeEnabled(),
+    );
+    await waitFor(() => expect(installCheck).toBeEnabled());
+    homebrewInstalled = true;
+    await user.click(installCheck);
     expect(
       await screen.findByRole("heading", { name: "Homebrew 설치를 확인했습니다.", level: 2 }),
     ).toBeInTheDocument();
