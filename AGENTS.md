@@ -3,3 +3,4 @@
 - `src/client`의 파일 생성·이동·분리, import 변경, 구조 리팩터링이나 아키텍처 리뷰 전에는 반드시 `.agents/skills/frontend-fsd-architecture/SKILL.md`를 읽고 준수해야 합니다.
 - 프론트엔드 FSD 작업에서는 `app → pages → shared` 의존 방향, page slice 격리, `index.ts` public API 규칙을 예외 없이 지키고 `tests/client-architecture.test.ts`로 검증해야 합니다.
 - 서버는 `docs/decisions/0007-server-modular-monolith.md`의 `app → application/modules → infrastructure/core` 책임 경계와 module `index.ts` 공개 API 규칙을 지키고 `tests/server-architecture.test.ts`로 검증해야 합니다.
+- `src-tauri`의 파일 생성·이동·분리와 수명주기 변경 전에는 `docs/decisions/0008-macos-background-app-lifecycle.md`와 `docs/decisions/0009-tauri-shell-modules.md`를 읽고 Tauri shell 모듈 책임과 의존 방향을 지켜야 합니다.
