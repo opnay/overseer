@@ -732,7 +732,7 @@ describe("App", () => {
       volumes: [],
     };
     const snapshot = startupSnapshot({ compose: false, lima: false });
-    let startupRequests = 0;
+    let deferRefresh = false;
     let releaseRefresh: ((response: Response) => void) | undefined;
     const intervalSpy = vi.spyOn(window, "setInterval");
     vi.stubGlobal(
@@ -740,11 +740,13 @@ describe("App", () => {
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.endsWith("/api/startup")) {
-          startupRequests += 1;
-          if (startupRequests === 1) return jsonResponse(snapshot);
-          return new Promise<Response>((resolve) => {
-            releaseRefresh = resolve;
-          });
+          if (deferRefresh) {
+            deferRefresh = false;
+            return new Promise<Response>((resolve) => {
+              releaseRefresh = resolve;
+            });
+          }
+          return jsonResponse(snapshot);
         }
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         return jsonResponse(dashboard);
@@ -758,7 +760,10 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
 
-    await user.click(screen.getByRole("button", { name: "상태 새로고침" }));
+    const refreshButton = await screen.findByRole("button", { name: "상태 새로고침" });
+    await waitFor(() => expect(refreshButton).toBeEnabled());
+    deferRefresh = true;
+    await user.click(refreshButton);
     expect(screen.getByRole("button", { name: "새로고침 중…" })).toBeDisabled();
     await waitFor(() => expect(releaseRefresh).toBeTypeOf("function"));
     releaseRefresh?.(jsonResponse(snapshot));
