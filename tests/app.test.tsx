@@ -372,7 +372,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/startup");
+    await waitFor(() => expect(window.location.pathname).toBe("/startup"));
     expect(screen.getByText("CLI 설치")).toBeInTheDocument();
     expect(screen.getByText("zshrc 등록")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CLI 설치 명령 복사" })).toBeEnabled();
@@ -460,7 +460,7 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "Homebrew를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
     expect(screen.getByText("미리보기")).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/startup");
+    await waitFor(() => expect(window.location.pathname).toBe("/startup"));
     expect(screen.getByLabelText("Homebrew CLI 설치 명령")).toHaveTextContent(
       "raw.githubusercontent.com/Homebrew/install",
     );
@@ -513,7 +513,7 @@ describe("App", () => {
 
       expect(await screen.findByRole("heading", { name: heading, level: 2 })).toBeInTheDocument();
       expect(screen.getByText("미리보기")).toBeInTheDocument();
-      expect(window.location.pathname).toBe("/startup");
+      await waitFor(() => expect(window.location.pathname).toBe("/startup"));
       expect(screen.getAllByText("완료")).toHaveLength(completedSteps);
       expect(screen.getByLabelText(commandLabel)).toHaveTextContent(command);
     },
@@ -550,7 +550,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Homebrew 설치를 확인했습니다.", level: 2 }),
     ).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/startup");
+    await waitFor(() => expect(window.location.pathname).toBe("/startup"));
     expect(screen.getByLabelText("Homebrew CLI 설치 명령")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "다음" }));
@@ -794,16 +794,13 @@ describe("App", () => {
       },
       volumes: [],
     };
-    let startupRequests = 0;
+    let limaInstalled = false;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.endsWith("/api/startup")) {
-          startupRequests += 1;
-          return jsonResponse(
-            startupRequests === 1 ? startupSnapshot({ lima: false }) : startupSnapshot(),
-          );
+          return jsonResponse(startupSnapshot({ lima: limaInstalled }));
         }
         if (url.endsWith("/api/runtime/configuration")) {
           return jsonResponse(dockerEngineSnapshot());
@@ -819,9 +816,12 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Lima를 설치해야 합니다.", level: 2 }),
     ).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/startup");
+    await waitFor(() => expect(window.location.pathname).toBe("/startup"));
 
-    await user.click(screen.getByRole("button", { name: "상태 새로고침" }));
+    const refreshButton = await screen.findByRole("button", { name: "상태 새로고침" });
+    await waitFor(() => expect(refreshButton).toBeEnabled());
+    limaInstalled = true;
+    await user.click(refreshButton);
 
     expect(
       await screen.findByRole("heading", { name: "Lima 설치를 확인했습니다.", level: 2 }),
@@ -855,7 +855,7 @@ describe("App", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "Docker Engine 만들기" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "다음" })).not.toBeInTheDocument();
-    expect(window.location.pathname).toBe("/startup");
+    await waitFor(() => expect(window.location.pathname).toBe("/startup"));
   });
 
   it("keeps non-Compose resources available when optional Compose is missing", async () => {
