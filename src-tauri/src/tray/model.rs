@@ -1,4 +1,60 @@
 use super::{TRAY_RUNTIME_RESTART_ID, TRAY_RUNTIME_START_ID, TRAY_RUNTIME_STATUS_ID};
+use serde::Deserialize;
+use std::fmt;
+
+#[derive(Debug, PartialEq)]
+pub(super) enum TraySnapshotError {
+    InvalidResponse(String),
+    MissingComposeProjects,
+    MissingContainers,
+    MissingRuntimeState,
+    UnknownRuntimeState(String),
+}
+
+impl fmt::Display for TraySnapshotError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidResponse(error) => {
+                write!(formatter, "메뉴바 상태 응답이 잘못됐습니다: {error}")
+            }
+            Self::MissingComposeProjects => formatter.write_str("메뉴바 Compose 목록이 없습니다."),
+            Self::MissingContainers => formatter.write_str("메뉴바 컨테이너 목록이 없습니다."),
+            Self::MissingRuntimeState => formatter.write_str("메뉴바 런타임 상태가 없습니다."),
+            Self::UnknownRuntimeState(state) => {
+                write!(formatter, "알 수 없는 메뉴바 런타임 상태입니다: {state}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for TraySnapshotError {}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TraySnapshotDto {
+    compose_projects: Option<Vec<TrayComposeProjectDto>>,
+    containers: Option<Vec<TrayContainerDto>>,
+    runtime: Option<TrayRuntimeDto>,
+}
+
+#[derive(Deserialize)]
+struct TrayRuntimeDto {
+    phase: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct TrayComposeProjectDto {
+    name: Option<String>,
+    status: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrayContainerDto {
+    compose_project: Option<String>,
+    id: Option<String>,
+    name: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum TrayRuntimeState {
@@ -43,61 +99,52 @@ pub(super) struct TraySnapshot {
     pub(super) runtime_state: TrayRuntimeState,
 }
 
-pub(super) fn tray_snapshot_from_json(body: &str) -> Result<TraySnapshot, String> {
-    let value: serde_json::Value = serde_json::from_str(body)
-        .map_err(|error| format!("메뉴바 상태 응답이 잘못됐습니다: {error}"))?;
-    let phase = value
-        .pointer("/runtime/phase")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("메뉴바 런타임 상태가 없습니다.")?;
-    let project_values = value
-        .get("composeProjects")
-        .and_then(serde_json::Value::as_array)
-        .ok_or("메뉴바 Compose 목록이 없습니다.")?;
-    let container_values = value
-        .get("containers")
-        .and_then(serde_json::Value::as_array)
-        .ok_or("메뉴바 컨테이너 목록이 없습니다.")?;
+pub(super) fn tray_snapshot_from_json(body: &str) -> Result<TraySnapshot, TraySnapshotError> {
+    let dto: TraySnapshotDto = serde_json::from_str(body)
+        .map_err(|error| TraySnapshotError::InvalidResponse(error.to_string()))?;
+    let phase = dto
+        .runtime
+        .and_then(|runtime| runtime.phase)
+        .ok_or(TraySnapshotError::MissingRuntimeState)?;
+    let project_values = dto
+        .compose_projects
+        .ok_or(TraySnapshotError::MissingComposeProjects)?;
+    let container_values = dto.containers.ok_or(TraySnapshotError::MissingContainers)?;
 
     let mut projects = Vec::with_capacity(project_values.len());
     for project in project_values {
-        let Some(name) = project.get("name").and_then(serde_json::Value::as_str) else {
+        let Some(name) = project.name else {
             continue;
         };
         let state = project
-            .get("status")
-            .and_then(serde_json::Value::as_str)
+            .status
+            .as_deref()
             .map(compose_state)
             .unwrap_or(TrayComposeState::Unknown);
         let containers = container_values
             .iter()
-            .filter(|container| {
-                container
-                    .get("composeProject")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(name)
-            })
+            .filter(|container| container.compose_project.as_deref() == Some(name.as_str()))
             .filter_map(|container| {
                 Some(TrayContainer {
-                    id: container.get("id")?.as_str()?.to_owned(),
-                    name: container.get("name")?.as_str()?.to_owned(),
+                    id: container.id.clone()?,
+                    name: container.name.clone()?,
                 })
             })
             .collect();
         projects.push(TrayComposeProject {
             containers,
-            name: name.to_owned(),
+            name,
             state,
         });
     }
 
     Ok(TraySnapshot {
         projects,
-        runtime_state: tray_runtime_state(phase)?,
+        runtime_state: tray_runtime_state(&phase)?,
     })
 }
 
-fn tray_runtime_state(phase: &str) -> Result<TrayRuntimeState, String> {
+fn tray_runtime_state(phase: &str) -> Result<TrayRuntimeState, TraySnapshotError> {
     match phase {
         "error" => Ok(TrayRuntimeState::Error),
         "missing" => Ok(TrayRuntimeState::Missing),
@@ -105,7 +152,7 @@ fn tray_runtime_state(phase: &str) -> Result<TrayRuntimeState, String> {
         "starting" => Ok(TrayRuntimeState::Starting),
         "stopped" => Ok(TrayRuntimeState::Stopped),
         "stopping" => Ok(TrayRuntimeState::Stopping),
-        _ => Err(format!("알 수 없는 메뉴바 런타임 상태입니다: {phase}")),
+        _ => Err(TraySnapshotError::UnknownRuntimeState(phase.to_owned())),
     }
 }
 
@@ -186,11 +233,13 @@ mod tests {
                 "runtime":{"phase":"running"},
                 "composeProjects":[
                     {"name":"alpha","status":"running(2)"},
-                    {"name":"beta","status":"registered"}
+                    {"name":"beta","status":"registered"},
+                    {"status":"running(1)"}
                 ],
                 "containers":[
                     {"composeProject":"alpha","id":"one","name":"web"},
                     {"composeProject":"alpha","id":"two","name":"worker"},
+                    {"composeProject":"alpha","name":"missing-id"},
                     {"id":"standalone","name":"standalone"}
                 ]
             }"#,
@@ -223,6 +272,36 @@ mod tests {
                 ],
                 runtime_state: TrayRuntimeState::Running,
             }
+        );
+    }
+
+    #[test]
+    fn reports_missing_menu_bar_contract_sections() {
+        assert_eq!(
+            tray_snapshot_from_json(r#"{"composeProjects":[],"containers":[]}"#),
+            Err(TraySnapshotError::MissingRuntimeState)
+        );
+        assert_eq!(
+            tray_snapshot_from_json(r#"{"runtime":{"phase":"running"},"containers":[]}"#),
+            Err(TraySnapshotError::MissingComposeProjects)
+        );
+        assert_eq!(
+            tray_snapshot_from_json(r#"{"runtime":{"phase":"running"},"composeProjects":[]}"#),
+            Err(TraySnapshotError::MissingContainers)
+        );
+    }
+
+    #[test]
+    fn reports_invalid_and_unknown_menu_bar_states() {
+        assert!(matches!(
+            tray_snapshot_from_json("{"),
+            Err(TraySnapshotError::InvalidResponse(_))
+        ));
+        assert_eq!(
+            tray_snapshot_from_json(
+                r#"{"runtime":{"phase":"paused"},"composeProjects":[],"containers":[]}"#
+            ),
+            Err(TraySnapshotError::UnknownRuntimeState("paused".into()))
         );
     }
 

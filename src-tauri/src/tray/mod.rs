@@ -88,7 +88,7 @@ pub(crate) fn setup_tray(
                 .and_then(|mut api| api.request("/menu-bar".into(), "GET".into(), None))
                 .and_then(|(status, body)| {
                     if status == 200 {
-                        tray_snapshot_from_json(&body)
+                        tray_snapshot_from_json(&body).map_err(|error| error.to_string())
                     } else {
                         Err(format!("메뉴바 상태를 불러오지 못했습니다: HTTP {status}"))
                     }
