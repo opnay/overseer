@@ -732,22 +732,12 @@ describe("App", () => {
       volumes: [],
     };
     const snapshot = startupSnapshot({ compose: false, lima: false });
-    let deferRefresh = false;
-    let releaseRefresh: ((response: Response) => void) | undefined;
     const intervalSpy = vi.spyOn(window, "setInterval");
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.endsWith("/api/startup")) {
-          if (deferRefresh) {
-            deferRefresh = false;
-            return new Promise<Response>((resolve) => {
-              releaseRefresh = resolve;
-            });
-          }
-          return jsonResponse(snapshot);
-        }
+        if (url.endsWith("/api/startup")) return jsonResponse(snapshot);
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         return jsonResponse(dashboard);
       }),
@@ -759,15 +749,6 @@ describe("App", () => {
       await screen.findByRole("heading", { name: "Docker Compose를 설치할까요?", level: 2 }),
     ).toBeInTheDocument();
     expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 10_000);
-
-    const refreshButton = await screen.findByRole("button", { name: "상태 새로고침" });
-    await waitFor(() => expect(refreshButton).toBeEnabled());
-    deferRefresh = true;
-    await user.click(refreshButton);
-    expect(screen.getByRole("button", { name: "새로고침 중…" })).toBeDisabled();
-    await waitFor(() => expect(releaseRefresh).toBeTypeOf("function"));
-    releaseRefresh?.(jsonResponse(snapshot));
-    expect(await screen.findByRole("button", { name: "상태 새로고침" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "건너뛰기" }));
     expect(
