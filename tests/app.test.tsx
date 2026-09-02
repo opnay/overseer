@@ -955,7 +955,7 @@ describe("App", () => {
         level: 2,
       }),
     ).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/startup");
+    await waitFor(() => expect(window.location.pathname).toBe("/startup"));
     expect(screen.getByText("설정 필요")).toBeInTheDocument();
     expect(screen.getByText("overseer")).toBeInTheDocument();
     expect(await screen.findByLabelText("CPU")).toHaveValue("4");
