@@ -6,7 +6,7 @@ import { Drawer } from "@opnay/city-ds-react/drawer";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Toolbar } from "@opnay/city-ds-react/toolbar";
-import { Toast } from "@opnay/city-ds-react/toast";
+import { Toaster, toast } from "@opnay/city-ds-react/toast";
 import { Tooltip } from "@opnay/city-ds-react/tooltip";
 import {
   ArrowLeft,
@@ -391,7 +391,7 @@ function MobileNavigationDrawer({
                 <X aria-hidden="true" size={16} />
               </Drawer.Close>
             </Drawer.Header>
-            <Drawer.Body className="overseer-mobile-navigation-body">
+            <Drawer.Content className="overseer-mobile-navigation-body">
               <PrimaryNavigation
                 currentPath={currentPath}
                 mode="drawer"
@@ -408,7 +408,7 @@ function MobileNavigationDrawer({
                   onSelect(path);
                 }}
               />
-            </Drawer.Body>
+            </Drawer.Content>
           </Drawer.Popup>
         </Drawer.Viewport>
       </Drawer.Portal>
@@ -685,9 +685,14 @@ function withStartupPreview(snapshot: StartupSnapshot, preview: StartupPreview):
 
 export function App() {
   return (
-    <Toast.Provider limit={3} timeout={5_000}>
+    <>
       <AppContent />
-    </Toast.Provider>
+      <Toaster
+        duration={5_000}
+        toastOptions={{ closeButtonAriaLabel: "알림 닫기" }}
+        visibleToasts={3}
+      />
+    </>
   );
 }
 
@@ -730,7 +735,6 @@ function AppContent() {
   const startupLoaded = useRef(false);
   const startupRefreshQueued = useRef(false);
   const startupRefreshInFlight = useRef(false);
-  const toastManager = Toast.useToastManager();
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setLoadError(undefined);
@@ -961,10 +965,10 @@ function AppContent() {
       }
       notifiedOperations.current.add(operation.id);
       if (operation.status === "succeeded") {
-        toastManager.add({
+        toast.success("작업을 완료했습니다.", {
           description: operation.successMessage,
-          title: "작업을 완료했습니다.",
-          type: "success",
+          id: `operation-${operation.id}-succeeded`,
+          testId: `operation-${operation.id}-succeeded`,
         });
         const resources = new Set<OperationResource>([operation.target.resource]);
         if (operation.kind === "container.create" || operation.kind === "container.update") {
@@ -977,17 +981,17 @@ function AppContent() {
         }
         for (const resource of resources) void refreshResource(resource);
       } else if (operation.status === "failed") {
-        toastManager.add({
+        toast.warning("작업이 실패했습니다.", {
           description: operation.error?.message ?? "작업을 완료하지 못했습니다.",
-          title: "작업이 실패했습니다.",
-          type: "warning",
+          id: `operation-${operation.id}-failed`,
+          testId: `operation-${operation.id}-failed`,
         });
         if (operation.target.resource === "runtime" || operation.target.resource === "startup") {
           void refreshResource(operation.target.resource);
         }
       }
     }
-  }, [operations, refreshResource, toastManager]);
+  }, [operations, refreshResource]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -1025,10 +1029,10 @@ function AppContent() {
       if (!operation) throw new Error("작업 응답을 확인하지 못했습니다.");
       setOperations((current) => [operation, ...current.filter(({ id }) => id !== operation.id)]);
       onAccepted?.(operation);
-      toastManager.add({
+      toast.info("작업을 시작했습니다.", {
         description: operation.title,
-        title: "작업을 시작했습니다.",
-        type: "info",
+        id: `operation-${operation.id}-started`,
+        testId: `operation-${operation.id}-started`,
       });
     } catch (error) {
       const message = actionError(error);
@@ -2245,21 +2249,6 @@ function AppContent() {
         </Suspense>
       ) : null}
       <LogsDialog onClose={() => setLogsTarget(undefined)} target={logsTarget} />
-      <Toast.Portal>
-        <Toast.Viewport>
-          {toastManager.toasts.map((toast) => (
-            <Toast.Root key={toast.id} toast={toast}>
-              <Toast.Content>
-                <div>
-                  <Toast.Title />
-                  <Toast.Description />
-                </div>
-                <Toast.Close aria-label="알림 닫기" />
-              </Toast.Content>
-            </Toast.Root>
-          ))}
-        </Toast.Viewport>
-      </Toast.Portal>
     </div>
   );
 }

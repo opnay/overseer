@@ -1,5 +1,5 @@
 import { Field } from "@opnay/city-ds-react/field";
-import { NumberField } from "@opnay/city-ds-react/number-field";
+import { NumberInput } from "@opnay/city-ds-react/number-input";
 
 export function DockerEngineNumberSetting({
   description,
@@ -19,18 +19,18 @@ export function DockerEngineNumberSetting({
   return (
     <Field.Root invalid={Boolean(error)}>
       <Field.Label>{label}</Field.Label>
-      <NumberField.Root
+      <NumberInput.Root
         min={min}
         onValueChange={(nextValue) => onChange(nextValue ?? null)}
         step={1}
         value={value}
       >
-        <NumberField.Group>
-          <NumberField.Input aria-label={label} />
-          <NumberField.Decrement aria-label={`${label} 감소`} />
-          <NumberField.Increment aria-label={`${label} 증가`} />
-        </NumberField.Group>
-      </NumberField.Root>
+        <NumberInput.Group>
+          <NumberInput.Input aria-label={label} />
+          <NumberInput.Decrement aria-label={`${label} 감소`} />
+          <NumberInput.Increment aria-label={`${label} 증가`} />
+        </NumberInput.Group>
+      </NumberInput.Root>
       {description ? <Field.Description>{description}</Field.Description> : null}
       <Field.Error match>{error}</Field.Error>
     </Field.Root>

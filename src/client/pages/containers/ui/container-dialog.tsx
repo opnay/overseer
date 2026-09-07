@@ -7,7 +7,7 @@ import { Dialog } from "@opnay/city-ds-react/dialog";
 import { Field } from "@opnay/city-ds-react/field";
 import { Fieldset } from "@opnay/city-ds-react/fieldset";
 import { Input } from "@opnay/city-ds-react/input";
-import { NumberField } from "@opnay/city-ds-react/number-field";
+import { NumberInput } from "@opnay/city-ds-react/number-input";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Plus } from "lucide-react";
@@ -96,7 +96,7 @@ function NumberControl({
   value?: number;
 }) {
   return (
-    <NumberField.Root
+    <NumberInput.Root
       disabled={disabled}
       max={max}
       min={min}
@@ -104,12 +104,12 @@ function NumberControl({
       step={step}
       value={value ?? null}
     >
-      <NumberField.Group>
-        <NumberField.Input aria-label={ariaLabel} placeholder={placeholder} />
-        <NumberField.Decrement aria-label={`${ariaLabel} 감소`} />
-        <NumberField.Increment aria-label={`${ariaLabel} 증가`} />
-      </NumberField.Group>
-    </NumberField.Root>
+      <NumberInput.Group>
+        <NumberInput.Input aria-label={ariaLabel} placeholder={placeholder} />
+        <NumberInput.Decrement aria-label={`${ariaLabel} 감소`} />
+        <NumberInput.Increment aria-label={`${ariaLabel} 증가`} />
+      </NumberInput.Group>
+    </NumberInput.Root>
   );
 }
 

@@ -6,7 +6,7 @@ import { Dialog } from "@opnay/city-ds-react/dialog";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { FilterBar } from "@opnay/city-ds-react/filter-bar";
 import { Pagination } from "@opnay/city-ds-react/pagination";
-import { SearchField } from "@opnay/city-ds-react/search-field";
+import { SearchInput } from "@opnay/city-ds-react/search-input";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
@@ -189,20 +189,23 @@ export function OperationsPage({
           className="overseer-operation-filters"
           density="compact"
         >
-          <div className="overseer-operation-search-filter">
-            <SearchField.Root
+          <form
+            className="overseer-operation-search-filter"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setQuery(draftQuery.trim());
+              setPage(1);
+            }}
+          >
+            <SearchInput.Root
               loading={loading}
-              onSubmit={(value) => {
-                setQuery(value.trim());
-                setPage(1);
-              }}
               onValueChange={setDraftQuery}
               size="sm"
               value={draftQuery}
             >
-              <SearchField.Group>
-                <SearchField.Input aria-label="작업 검색" placeholder="작업명 또는 대상" />
-                <SearchField.Clear
+              <SearchInput.Group>
+                <SearchInput.Input aria-label="작업 검색" placeholder="작업명 또는 대상" />
+                <SearchInput.Clear
                   aria-label="검색어 지우기"
                   onClick={() => {
                     setDraftQuery("");
@@ -210,12 +213,12 @@ export function OperationsPage({
                     setPage(1);
                   }}
                 />
-                <SearchField.Submit aria-label="검색" iconOnly>
+                <SearchInput.Submit aria-label="검색" iconOnly>
                   <Search aria-hidden="true" size={14} />
-                </SearchField.Submit>
-              </SearchField.Group>
-            </SearchField.Root>
-          </div>
+                </SearchInput.Submit>
+              </SearchInput.Group>
+            </SearchInput.Root>
+          </form>
           <OperationFilterSelect
             label="상태"
             onChange={(value) => {

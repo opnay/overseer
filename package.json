@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
-    "@opnay/city-ds-react": "0.1.1",
+    "@opnay/city-ds-react": "0.2.0",
     "@tauri-apps/api": "2.11.1",
     "hono": "4.13.3",
     "lucide-react": "1.26.0",

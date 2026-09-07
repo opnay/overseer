@@ -3566,9 +3566,9 @@ describe("App", () => {
     await user.type(screen.getByRole("textbox", { name: /프로젝트 이름/ }), "remote-stack");
     await user.click(screen.getByRole("button", { name: "URL 등록" }));
 
-    expect(await screen.findByRole("dialog", { name: "작업을 시작했습니다." })).toHaveTextContent(
-      "URL Compose 등록",
-    );
+    expect(
+      await screen.findByTestId("operation-remote-register-operation-started"),
+    ).toHaveTextContent("URL Compose 등록");
     expect(submittedBody).toEqual({
       name: "remote-stack",
       url: "https://raw.githubusercontent.com/opnay/example/main/compose.yaml",
@@ -4306,14 +4306,15 @@ describe("App", () => {
     await user.type(screen.getByRole("textbox", { name: "이름" }), "app-data");
     await user.click(screen.getByRole("button", { name: "볼륨 만들기" }));
 
-    expect(await screen.findByRole("dialog", { name: "작업을 시작했습니다." })).toHaveTextContent(
+    expect(await screen.findByTestId("operation-operation-id-started")).toHaveTextContent(
       "볼륨 만들기",
     );
     await waitFor(
-      () =>
-        expect(screen.getByRole("dialog", { name: "작업을 완료했습니다." })).toHaveTextContent(
+      () => {
+        expect(screen.getByTestId("operation-operation-id-succeeded")).toHaveTextContent(
           "app-data 볼륨을 만들었습니다.",
-        ),
+        );
+      },
       { timeout: 2_500 },
     );
   });

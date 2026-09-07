@@ -121,7 +121,7 @@ export function OperationsDrawer({
                 <Drawer.Close render={<Button size="sm" variant="outline" />}>닫기</Drawer.Close>
               ) : null}
             </Drawer.Header>
-            <Drawer.Body>
+            <Drawer.Content>
               {visible.length === 0 ? (
                 <EmptyState.Root density="compact">
                   <EmptyState.Icon>
@@ -223,7 +223,7 @@ export function OperationsDrawer({
                   })}
                 </ol>
               )}
-            </Drawer.Body>
+            </Drawer.Content>
             <Drawer.Footer>
               <Drawer.Close onClick={onViewAll} render={<Button variant="primary" />}>
                 전체 작업 보기

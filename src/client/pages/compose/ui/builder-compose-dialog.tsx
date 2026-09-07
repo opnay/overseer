@@ -5,7 +5,7 @@ import { Dialog } from "@opnay/city-ds-react/dialog";
 import { Field } from "@opnay/city-ds-react/field";
 import { Fieldset } from "@opnay/city-ds-react/fieldset";
 import { Input, Textarea } from "@opnay/city-ds-react/input";
-import { NumberField } from "@opnay/city-ds-react/number-field";
+import { NumberInput } from "@opnay/city-ds-react/number-input";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Tabs } from "@opnay/city-ds-react/tabs";
@@ -78,18 +78,18 @@ function NumberControl({
   value?: number;
 }) {
   return (
-    <NumberField.Root
+    <NumberInput.Root
       max={65_535}
       min={1}
       onValueChange={(nextValue) => onChange(nextValue ?? undefined)}
       value={value ?? null}
     >
-      <NumberField.Group>
-        <NumberField.Input aria-label={ariaLabel} />
-        <NumberField.Decrement aria-label={`${ariaLabel} 감소`} />
-        <NumberField.Increment aria-label={`${ariaLabel} 증가`} />
-      </NumberField.Group>
-    </NumberField.Root>
+      <NumberInput.Group>
+        <NumberInput.Input aria-label={ariaLabel} />
+        <NumberInput.Decrement aria-label={`${ariaLabel} 감소`} />
+        <NumberInput.Increment aria-label={`${ariaLabel} 증가`} />
+      </NumberInput.Group>
+    </NumberInput.Root>
   );
 }
 
