@@ -14,7 +14,7 @@ import type {
 import { apiRequest } from "@/shared/api";
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "플러그인 상태를 확인하지 못했습니다.";
+  return error instanceof Error ? error.message : "CLI 도구 상태를 확인하지 못했습니다.";
 }
 
 export function DockerCliPluginsPage({
@@ -46,7 +46,7 @@ export function DockerCliPluginsPage({
   if (error) {
     return (
       <Alert.Root tone="destructive">
-        <Alert.Title level={2}>플러그인 상태를 불러오지 못했습니다.</Alert.Title>
+        <Alert.Title level={2}>CLI 도구 상태를 불러오지 못했습니다.</Alert.Title>
         <Alert.Description>{error}</Alert.Description>
         <Alert.Action>
           <Button onClick={() => setRequestRevision((value) => value + 1)} size="sm">
@@ -62,13 +62,13 @@ export function DockerCliPluginsPage({
   return (
     <section className="overseer-panel" id="docker-cli-plugins">
       <DataTableRegion
-        hint="플러그인은 호스트의 Docker CLI에 연결됩니다."
-        label="Docker CLI 플러그인 표"
+        hint="Docker에서 공식 지원하는 CLI 도구를 관리합니다."
+        label="Docker CLI 도구 표"
       >
-        <Table.Root aria-label="Docker CLI 플러그인 목록" className="overseer-table" size="sm">
+        <Table.Root aria-label="Docker CLI 도구 목록" className="overseer-table" size="sm">
           <Table.Header>
             <Table.Row>
-              <Table.Head className="overseer-table-column-wide">플러그인</Table.Head>
+              <Table.Head className="overseer-table-column-wide">도구</Table.Head>
               <Table.Head className="overseer-table-column-state">상태</Table.Head>
               <Table.Head className="overseer-table-column-state">버전</Table.Head>
               <Table.Head className="overseer-table-column-state">관리 위치</Table.Head>
@@ -92,7 +92,9 @@ export function DockerCliPluginsPage({
                     </Badge>
                   </Table.Cell>
                   <Table.Cell>{plugin.version ?? "—"}</Table.Cell>
-                  <Table.Cell>{plugin.management === "startup" ? "시작 준비" : "확장"}</Table.Cell>
+                  <Table.Cell>
+                    {plugin.management === "startup" ? "시작 준비" : "CLI 도구"}
+                  </Table.Cell>
                   <Table.Cell>
                     <div className="overseer-row-actions">
                       {plugin.management === "extensions" && !plugin.installed ? (

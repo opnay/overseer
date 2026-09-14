@@ -2574,7 +2574,7 @@ describe("App", () => {
     const workloads = within(navigation).getByRole("group", { name: "워크로드" });
     const resources = within(navigation).getByRole("group", { name: "리소스" });
     const external = within(navigation).getByRole("group", { name: "외부 공급자" });
-    const extensions = within(navigation).getByRole("group", { name: "확장" });
+    const extensions = within(navigation).getByRole("group", { name: "CLI" });
     const operations = within(navigation).getByRole("group", { name: "운영" });
     const virtualization = within(navigation).getByRole("group", { name: "가상화" });
     expect(
@@ -2599,7 +2599,7 @@ describe("App", () => {
       "href",
       "/image-repositories",
     );
-    expect(within(extensions).getByRole("link", { name: "Docker CLI 플러그인" })).toHaveAttribute(
+    expect(within(extensions).getByRole("link", { name: "도구" })).toHaveAttribute(
       "href",
       "/docker-plugins",
     );
@@ -2668,12 +2668,8 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(
-      await screen.findByRole("heading", { name: "Docker CLI 플러그인", level: 1 }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("table", { name: "Docker CLI 플러그인 목록" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "도구", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "Docker CLI 도구 목록" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "설치" }));
     await waitFor(() =>
       expect(
