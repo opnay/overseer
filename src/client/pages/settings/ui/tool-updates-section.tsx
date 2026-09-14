@@ -89,7 +89,9 @@ export function ToolUpdatesSection({
     >
       <header className="overseer-tool-updates-header">
         <div>
-          <h3 id="overseer-settings-tool-updates">도구 업데이트</h3>
+          <h3 className="city-text-subsection-title" id="overseer-settings-tool-updates">
+            도구 업데이트
+          </h3>
           <p>Homebrew로 설치된 Docker CLI·Compose·Lima의 새 버전을 확인합니다.</p>
           <span aria-live="polite" className="city-text-caption">
             {snapshot?.checkedAt

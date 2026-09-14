@@ -116,7 +116,9 @@ export function SettingsPage({
                     <PackageCheck size={18} strokeWidth={1.8} />
                   </span>
                   <div>
-                    <h3 id="overseer-settings-startup">시작 준비</h3>
+                    <h3 className="city-text-subsection-title" id="overseer-settings-startup">
+                      시작 준비
+                    </h3>
                     <p>필수 도구와 Docker Engine 준비 과정을 다시 확인합니다.</p>
                   </div>
                 </div>

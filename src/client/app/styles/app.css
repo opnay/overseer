@@ -548,10 +548,6 @@
     margin: 0;
   }
 
-  .overseer-settings-general-copy h3 {
-    font-size: var(--city-font-size-sm);
-  }
-
   .overseer-settings-general-copy p {
     color: var(--city-color-muted-foreground);
     font-size: var(--city-font-size-sm);
@@ -745,7 +741,6 @@
     margin: 0;
   }
 
-  .overseer-tool-updates-header h3,
   .overseer-tool-update-name strong {
     font-size: var(--city-font-size-sm);
   }
@@ -1036,10 +1031,10 @@
   }
 
   .overseer-detail-summary strong {
-    overflow: hidden;
+    min-width: 0;
     font-size: var(--city-font-size-sm);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .overseer-detail-section {
@@ -2708,7 +2703,7 @@
 
     .overseer-instance-header-actions {
       width: 100%;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
     }
 
     .overseer-instance-header-actions > .city-button:not([data-city-icon-only]) {

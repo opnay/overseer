@@ -25,6 +25,14 @@
 
 페이지 제목은 `city-text-page-title`, 본문 영역 제목은 `city-text-section-title`, 하위 섹션 제목은 `city-text-subsection-title`을 사용합니다. heading 수준은 시각 크기가 아니라 문서 구조를 따릅니다.
 
+### 페이지 맥락과 액션
+
+- 목록·설정 화면의 eyebrow는 해당 항목이 속한 주요 탐색 카테고리명만 사용합니다. `워크로드`, `리소스`, `가상화`, `외부 공급자`, `CLI`, `운영`을 그대로 사용하고, 하단 유틸리티인 설정은 `Overseer`를 사용합니다.
+- 상세 화면은 breadcrumb가 상위 경로와 현재 리소스를 표시하므로 eyebrow를 추가하지 않습니다. Startup은 단계 탐색이 맥락을 소유하므로 공통 페이지 헤더를 사용하지 않습니다.
+- 페이지 액션의 DOM 순서는 `utility group > primary or management group`입니다. 데스크톱에서는 한 행에 배치하고 모바일에서는 그룹을 두 행으로 재배치합니다.
+- 한 관리 그룹 안의 직접 명령과 overflow 메뉴는 같은 행을 유지합니다. 텍스트 명령은 남는 폭을 사용할 수 있지만 아이콘 메뉴를 별도 행으로 밀어내지 않습니다.
+- 요약 surface의 값은 비교에 필요한 실제 정보이므로 무조건 말줄임하지 않습니다. 긴 이미지명·포트·가상화 방식·시각은 영역 안에서 줄바꿈하여 전체 값을 확인할 수 있어야 합니다.
+
 ### 간격 소유권
 
 | 경계                    | 소유자              | 기본 간격                                   |
@@ -57,11 +65,26 @@
 - 로딩은 실제 구조를 닮은 `Skeleton`, 빈 상태는 해당 데이터 영역 안의 `EmptyState`, 복구 가능한 오류는 원인과 다음 행동을 포함한 `Alert`를 사용합니다.
 - 새로고침 중 기존 데이터가 있으면 제거하지 않고 갱신 상태만 표시합니다.
 
+## 라우트와 패턴 매핑
+
+| 라우트                                                                                                      | 프로젝트 패턴      | 변형                              |
+| ----------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------- |
+| `/compose`, `/containers`, `/images`, `/volumes`, `/networks`, `/instances`                                 | ResourceCollection | 기본 리소스 목록                  |
+| `/image-repositories`                                                                                       | ResourceCollection | 외부 저장소 목록                  |
+| `/docker-plugins`                                                                                           | ResourceCollection | Docker CLI 도구 목록              |
+| `/operations`                                                                                               | ResourceCollection | 작업 상세 Dialog와 LogViewer 포함 |
+| `/compose/:name`, `/containers/:id`, `/images/:id`, `/volumes/:name`, `/networks/:name`, `/instances/:name` | ResourceDetail     | Sectioned Workspace 상세          |
+| `/image-repositories/:id`                                                                                   | ResourceDetail     | 단일 콘텐츠 상세                  |
+| `/settings`                                                                                                 | SettingsWorkspace  | 범주형 Sectioned Workspace        |
+| `/startup`                                                                                                  | GuidedSetup        | 순차 준비 흐름                    |
+
+`ResourceDetail`의 단일 콘텐츠 변형은 현재 선택 가능한 상세 섹션이 하나뿐일 때만 Sectioned Workspace를 생략합니다. 섹션이 둘 이상 생기면 기본 ResourceDetail 구성으로 전환합니다.
+
 ## ResourceCollection
 
 ### 사용자 목표와 적용 조건
 
-여러 리소스를 비교하고 하나를 선택해 상세나 작업으로 이동하는 반복 업무에 사용합니다. Compose, 컨테이너, 이미지, 인스턴스, 볼륨, 네트워크와 작업 목록에 적용합니다. 순서가 있는 준비 과정이나 하나의 리소스를 깊게 읽는 화면에는 사용하지 않습니다.
+여러 리소스를 비교하고 하나를 선택해 상세나 작업으로 이동하는 반복 업무에 사용합니다. Compose, 컨테이너, 이미지, 인스턴스, 볼륨, 네트워크, 이미지 저장소, Docker CLI 도구와 작업 목록에 적용합니다. 순서가 있는 준비 과정이나 하나의 리소스를 깊게 읽는 화면에는 사용하지 않습니다.
 
 ### 구성과 레이아웃
 
@@ -85,7 +108,7 @@
 
 ### 사용자 목표와 적용 조건
 
-리소스 하나의 현재 상태, 구성, 관계와 원본 정보를 확인하고 안전하게 작업하는 화면에 사용합니다. Compose, 컨테이너, 이미지, 인스턴스, 볼륨과 네트워크 상세에 적용합니다. 여러 리소스 비교나 전역 설정에는 사용하지 않습니다.
+리소스 하나의 현재 상태, 구성, 관계와 원본 정보를 확인하고 안전하게 작업하는 화면에 사용합니다. Compose, 컨테이너, 이미지, 이미지 저장소, 인스턴스, 볼륨과 네트워크 상세에 적용합니다. 여러 리소스 비교나 전역 설정에는 사용하지 않습니다.
 
 ### 구성과 레이아웃
 

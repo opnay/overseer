@@ -1490,21 +1490,7 @@ function AppContent() {
       )
     : undefined;
   const detailRefreshToken = `${detailRefreshRevision}:${latestFinishedDetailOperation?.id ?? ""}:${latestFinishedDetailOperation?.status ?? ""}`;
-  const pageEyebrow = currentDetail
-    ? currentDetail.type === "compose"
-      ? "COMPOSE 프로젝트"
-      : currentDetail.type === "container"
-        ? "컨테이너 상세"
-        : currentDetail.type === "image"
-          ? "이미지 상세"
-          : currentDetail.type === "imageRepository"
-            ? "이미지 저장소 상세"
-            : currentDetail.type === "instance"
-              ? "VM 인스턴스 상세"
-              : currentDetail.type === "network"
-                ? "네트워크 상세"
-                : "볼륨 상세"
-    : currentRoute.eyebrow;
+  const pageEyebrow = currentRoute.eyebrow;
   const pageLabel = currentDetail
     ? currentDetail.type === "compose"
       ? currentDetail.identifier

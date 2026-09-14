@@ -177,7 +177,7 @@ export function RuntimeInstanceCreateDialog({
               <Dialog.Close render={<Button variant="outline" />}>취소</Dialog.Close>
               <Button disabled={busy || !name.trim()} onClick={() => void submit()} type="button">
                 <ServerCog aria-hidden="true" size={14} />
-                만들기
+                인스턴스 만들기
               </Button>
             </Dialog.Footer>
           </Dialog.Popup>

@@ -1173,15 +1173,16 @@ describe("App", () => {
     window.history.replaceState(null, "", "/instances");
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "인스턴스", level: 1 })).toBeInTheDocument();
+    const pageHeading = await screen.findByRole("heading", { name: "인스턴스", level: 1 });
+    expect(
+      within(pageHeading.closest(".overseer-page-header") as HTMLElement).getByText("가상화"),
+    ).toBeInTheDocument();
     expect(await screen.findByRole("columnheader", { name: "가상화" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "컨테이너" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "활성" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "VM 인스턴스" })).not.toBeInTheDocument();
     const createButton = screen.getByRole("button", { name: "인스턴스 만들기" });
-    expect(
-      screen.getByRole("heading", { name: "인스턴스", level: 1 }).closest(".overseer-page-header"),
-    ).toContainElement(createButton);
+    expect(pageHeading.closest(".overseer-page-header")).toContainElement(createButton);
     const refreshButton = screen.getByRole("button", { name: "새로고침" });
     expect(
       refreshButton.compareDocumentPosition(createButton) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -1200,7 +1201,7 @@ describe("App", () => {
     expect(within(dialog).getByLabelText("메모리")).toHaveValue("4");
     expect(within(dialog).getByLabelText("디스크")).toHaveValue("100");
     await user.type(within(dialog).getByLabelText("인스턴스 이름"), "dev");
-    await user.click(within(dialog).getByRole("button", { name: "만들기" }));
+    await user.click(within(dialog).getByRole("button", { name: "인스턴스 만들기" }));
 
     await waitFor(() =>
       expect(
@@ -1261,6 +1262,8 @@ describe("App", () => {
     const instanceMenu = screen.getByRole("button", { name: "overseer 인스턴스 메뉴" });
     expect(pageHeader).toContainElement(stopButton);
     expect(pageHeader).toContainElement(instanceMenu);
+    const instanceActions = stopButton.closest(".overseer-instance-header-actions");
+    expect(instanceActions).toContainElement(instanceMenu);
 
     await user.click(instanceMenu);
     expect(
@@ -1955,9 +1958,10 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings");
     render(<App />);
 
-    expect(
-      await screen.findByRole("heading", { name: "도구 업데이트", level: 3 }),
-    ).toBeInTheDocument();
+    const startupHeading = await screen.findByRole("heading", { name: "시작 준비", level: 3 });
+    const updatesHeading = screen.getByRole("heading", { name: "도구 업데이트", level: 3 });
+    expect(startupHeading).toHaveClass("city-text-subsection-title");
+    expect(updatesHeading).toHaveClass("city-text-subsection-title");
     expect(
       await screen.findByText(/^마지막 확인 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
     ).toBeInTheDocument();

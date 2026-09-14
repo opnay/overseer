@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  APP_ROUTES,
   composeProjectDetailPath,
   containerDetailPath,
   getAppDetailLocation,
@@ -13,6 +14,21 @@ import {
 } from "../src/client/shared/routes/index.ts";
 
 describe("application routes", () => {
+  it("uses navigation categories as collection page eyebrows", () => {
+    expect(Object.fromEntries(APP_ROUTES.map(({ eyebrow, path }) => [path, eyebrow]))).toEqual({
+      "/compose": "워크로드",
+      "/containers": "워크로드",
+      "/docker-plugins": "CLI",
+      "/image-repositories": "외부 공급자",
+      "/images": "리소스",
+      "/instances": "가상화",
+      "/networks": "리소스",
+      "/operations": "운영",
+      "/settings": "Overseer",
+      "/volumes": "리소스",
+    });
+  });
+
   it("recognizes direct resource detail URLs", () => {
     expect(getAppDetailLocation("/compose/demo-stack")).toEqual({
       identifier: "demo-stack",
