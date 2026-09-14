@@ -73,7 +73,7 @@ function KeyValues({ empty, values }: { empty: string; values: ContainerKeyValue
 export function VolumeDetailPage({ name, refreshToken }: VolumeDetailPageProps) {
   const [detail, setDetail] = useState<VolumeDetail>();
   const [error, setError] = useState<string>();
-  const [section, setSection] = useUrlSection({
+  const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
     locationKey: name,
     values: sectionOrder,
@@ -123,6 +123,7 @@ export function VolumeDetailPage({ name, refreshToken }: VolumeDetailPageProps) 
       <SectionedWorkspace<VolumeDetailSection>
         category="볼륨"
         description={presentation.description}
+        getSectionHref={getSectionHref}
         groups={volumeDetailNavigation}
         navigationLabel="볼륨 상세 메뉴"
         onSectionChange={setSection}

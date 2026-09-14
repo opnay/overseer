@@ -14,6 +14,7 @@ describe("SectionedWorkspace", () => {
       <SectionedWorkspace<TestSection>
         category="Docker Engine"
         description="Docker Engine의 외부 연결을 구성합니다."
+        getSectionHref={(section) => `/settings?section=${section}`}
         groups={[
           {
             items: [{ label: "일반", value: "general" }],
@@ -45,12 +46,16 @@ describe("SectionedWorkspace", () => {
     expect(heading.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(screen.getByRole("button", { name: "네트워크 설정" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "네트워크 설정" })).toHaveAttribute(
       "aria-current",
       "page",
     );
+    expect(screen.getByRole("link", { name: "네트워크 설정" })).toHaveAttribute(
+      "href",
+      "/settings?section=network",
+    );
 
-    await user.click(screen.getByRole("button", { name: "일반" }));
+    await user.click(screen.getByRole("link", { name: "일반" }));
     expect(onSectionChange).toHaveBeenCalledWith("general");
 
     await user.click(screen.getByRole("combobox", { name: "설정 상세 메뉴" }));

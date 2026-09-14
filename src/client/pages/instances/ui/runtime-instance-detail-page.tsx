@@ -80,7 +80,7 @@ export function RuntimeInstanceDetailPage({
 }) {
   const [snapshot, setSnapshot] = useState<RuntimeInstancesSnapshot>();
   const [error, setError] = useState<string>();
-  const [section, setSection] = useUrlSection({
+  const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
     locationKey: name,
     values: sectionOrder,
@@ -160,6 +160,7 @@ export function RuntimeInstanceDetailPage({
       <SectionedWorkspace<InstanceDetailSection>
         category="VM 인스턴스"
         description={presentation.description}
+        getSectionHref={getSectionHref}
         groups={instanceDetailNavigation}
         navigationLabel="VM 인스턴스 상세 메뉴"
         onSectionChange={setSection}

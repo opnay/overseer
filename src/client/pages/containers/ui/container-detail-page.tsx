@@ -342,7 +342,7 @@ export function ContainerDetailPage({
   const [inspectionAttempt, setInspectionAttempt] = useState(0);
   const [inspectionError, setInspectionError] = useState<string>();
   const [inspectionLoading, setInspectionLoading] = useState(false);
-  const [section, setSection] = useUrlSection({
+  const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
     locationKey: id,
     values: sectionOrder,
@@ -461,6 +461,7 @@ export function ContainerDetailPage({
       <SectionedWorkspace<ContainerDetailSection>
         category="컨테이너"
         description={presentation.description}
+        getSectionHref={getSectionHref}
         groups={containerDetailNavigation}
         navigationLabel="컨테이너 상세 메뉴"
         onSectionChange={setSection}
@@ -502,7 +503,7 @@ export function ContainerDetailPage({
               </header>
               <dl className="overseer-detail-definitions">
                 <Definition label="이름" value={spec.name ?? "—"} />
-                <Definition label="ID" value={<code>{detail.id}</code>} />
+                <Definition label="ID" value={<code>{detail.id}</code>} wide />
                 {composeProject ? (
                   <Definition
                     label="Compose 프로젝트"

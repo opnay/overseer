@@ -1,5 +1,6 @@
 import { Select } from "@opnay/city-ds-react/select";
 import { useId, type ReactNode } from "react";
+import { followLink } from "@/shared/lib/follow-link";
 
 export interface SectionedWorkspaceGroup<Section extends string> {
   items: ReadonlyArray<{ label: string; value: Section }>;
@@ -10,6 +11,7 @@ export function SectionedWorkspace<Section extends string>({
   category,
   children,
   description,
+  getSectionHref,
   groups,
   navigationLabel,
   onSectionChange,
@@ -19,6 +21,7 @@ export function SectionedWorkspace<Section extends string>({
   category: string;
   children: ReactNode;
   description: string;
+  getSectionHref(section: Section): string;
   groups: ReadonlyArray<SectionedWorkspaceGroup<Section>>;
   navigationLabel: string;
   onSectionChange(section: Section): void;
@@ -54,14 +57,14 @@ export function SectionedWorkspace<Section extends string>({
                 </span>
                 <div className="overseer-sectioned-workspace-nav-items">
                   {group.items.map((item) => (
-                    <button
+                    <a
                       aria-current={section === item.value ? "page" : undefined}
+                      href={getSectionHref(item.value)}
                       key={item.value}
-                      onClick={() => onSectionChange(item.value)}
-                      type="button"
+                      onClick={(event) => followLink(event, () => onSectionChange(item.value))}
                     >
                       {item.label}
-                    </button>
+                    </a>
                   ))}
                 </div>
               </div>

@@ -7,7 +7,7 @@ import { useUrlSection } from "../src/client/shared/lib/url-section/index.ts";
 const sections = ["general", "engine", "network"] as const;
 
 function SectionProbe() {
-  const [section, setSection] = useUrlSection({
+  const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "general",
     values: sections,
   });
@@ -17,6 +17,8 @@ function SectionProbe() {
       <button onClick={() => setSection("engine")} type="button">
         엔진 설정
       </button>
+      <a href={getSectionHref("network")}>네트워크 설정</a>
+      <a href={getSectionHref("general")}>일반 설정</a>
     </div>
   );
 }
@@ -27,6 +29,11 @@ describe("useUrlSection", () => {
     window.history.replaceState(null, "", "/settings?section=network");
     render(<SectionProbe />);
     expect(screen.getByText("network")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "네트워크 설정" })).toHaveAttribute(
+      "href",
+      "/settings?section=network",
+    );
+    expect(screen.getByRole("link", { name: "일반 설정" })).toHaveAttribute("href", "/settings");
 
     await user.click(screen.getByRole("button", { name: "엔진 설정" }));
     expect(window.location.search).toBe("?section=engine");

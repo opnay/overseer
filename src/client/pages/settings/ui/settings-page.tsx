@@ -84,7 +84,7 @@ export function SettingsPage({
   toolOperation,
   toolRequestPending,
 }: SettingsPageProps) {
-  const [section, setSection] = useUrlSection({
+  const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: dashboard.runtime.phase === "running" ? "general" : "engine",
     values: settingsSections,
   });
@@ -97,6 +97,7 @@ export function SettingsPage({
       <SectionedWorkspace<SettingsSection>
         category={presentation.category}
         description={presentation.description}
+        getSectionHref={getSectionHref}
         groups={settingsNavigation}
         navigationLabel="설정 상세 메뉴"
         onSectionChange={setSection}

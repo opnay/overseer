@@ -85,9 +85,17 @@ function formatBytes(value: number): string {
   return `${new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(size)} ${units[unit]}`;
 }
 
-function Definition({ label, value }: { label: string; value: ReactNode }) {
+function Definition({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value: ReactNode;
+  wide?: boolean;
+}) {
   return (
-    <div>
+    <div className={wide ? "overseer-detail-definition--wide" : undefined}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -170,7 +178,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
   const [error, setError] = useState<string>();
   const [history, setHistory] = useState<ImageHistoryEntry[]>();
   const [historyError, setHistoryError] = useState<string>();
-  const [section, setSection] = useUrlSection({
+  const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
     locationKey: id,
     values: sectionOrder,
@@ -247,6 +255,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
       <SectionedWorkspace<ImageDetailSection>
         category="이미지"
         description={presentation.description}
+        getSectionHref={getSectionHref}
         groups={imageDetailNavigation}
         navigationLabel="이미지 상세 메뉴"
         onSectionChange={setSection}
@@ -306,7 +315,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
               </header>
               <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
                 <Definition label="참조 URL" value={<code>{referenceUrl}</code>} />
-                <Definition label="이미지 ID" value={<code>{detail.id}</code>} />
+                <Definition label="이미지 ID" value={<code>{detail.id}</code>} wide />
                 <Definition
                   label="저장소·태그"
                   value={<CodeValues empty="태그 없음" values={detail.repositoryTags} />}
@@ -314,6 +323,7 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
                 <Definition
                   label="Digest"
                   value={<CodeValues empty="Digest 없음" values={detail.repositoryDigests} />}
+                  wide
                 />
               </dl>
             </section>

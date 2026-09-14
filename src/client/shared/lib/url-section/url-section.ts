@@ -10,7 +10,7 @@ export function useUrlSection<Section extends string>({
   locationKey?: string;
   parameter?: string;
   values: ReadonlyArray<Section>;
-}): [Section, (section: Section) => void] {
+}): [Section, (section: Section) => void, (section: Section) => string] {
   const read = useCallback(() => {
     const candidate = new URLSearchParams(window.location.search).get(parameter);
     return candidate && values.includes(candidate as Section)
@@ -39,5 +39,15 @@ export function useUrlSection<Section extends string>({
     [defaultValue, parameter, section],
   );
 
-  return [section, select];
+  const getHref = useCallback(
+    (next: Section) => {
+      const url = new URL(window.location.href);
+      if (next === defaultValue) url.searchParams.delete(parameter);
+      else url.searchParams.set(parameter, next);
+      return `${url.pathname}${url.search}${url.hash}`;
+    },
+    [defaultValue, parameter],
+  );
+
+  return [section, select, getHref];
 }

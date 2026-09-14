@@ -259,7 +259,8 @@ function mockViewport(width: number) {
 }
 
 describe("App", () => {
-  it("matches the loading skeleton to the page shell and table", () => {
+  it("matches the loading skeleton to the resource collection pattern", () => {
+    window.history.replaceState(null, "", "/containers");
     vi.stubGlobal(
       "fetch",
       vi.fn(() => new Promise<Response>(() => undefined)),
@@ -268,8 +269,40 @@ describe("App", () => {
     const { container } = render(<App />);
 
     expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(9);
-    expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
+    expect(container.querySelector('[data-loading-pattern="collection"]')).toBeInTheDocument();
+    expect(container.querySelectorAll(".overseer-loading-table-row")).toHaveLength(6);
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["/containers/c79426952635", "detail"],
+    ["/settings", "settings"],
+  ])("matches the %s loading skeleton to the %s pattern", (path, pattern) => {
+    window.history.replaceState(null, "", path);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+
+    const { container } = render(<App />);
+
+    expect(container.querySelector(`[data-loading-pattern="${pattern}"]`)).toBeInTheDocument();
+  });
+
+  it("uses the guided setup skeleton on the startup route", () => {
+    window.history.replaceState(null, "", "/startup");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+
+    render(<App />);
+
+    expect(screen.getByLabelText("시작 준비 화면 불러오는 중")).toHaveAttribute(
+      "data-loading-pattern",
+      "startup",
+    );
+    expect(screen.queryByLabelText("화면 준비 중")).not.toBeInTheDocument();
   });
 
   it("uses the mobile header skeleton without flashing desktop navigation", () => {
@@ -1236,20 +1269,20 @@ describe("App", () => {
     await user.keyboard("{Escape}");
 
     const navigation = screen.getByRole("navigation", { name: "VM 인스턴스 상세 메뉴" });
-    await user.click(within(navigation).getByRole("button", { name: "VM 설정" }));
+    await user.click(within(navigation).getByRole("link", { name: "VM 설정" }));
     expect(window.location.search).toBe("?section=settings");
     expect(screen.getByText("Lima VM")).toBeInTheDocument();
     expect(screen.getByText("Apple Virtualization (VZ)")).toBeInTheDocument();
     expect(screen.getByText("100GiB")).toBeInTheDocument();
 
-    await user.click(within(navigation).getByRole("button", { name: "터미널" }));
+    await user.click(within(navigation).getByRole("link", { name: "터미널" }));
     expect(window.location.search).toBe("?section=terminal");
     expect(screen.getByLabelText("VM 인스턴스 터미널 명령")).toHaveTextContent(
       "limactl shell overseer",
     );
     expect(screen.getByRole("button", { name: "터미널 명령 복사" })).toBeEnabled();
 
-    await user.click(within(navigation).getByRole("button", { name: "Docker 연결" }));
+    await user.click(within(navigation).getByRole("link", { name: "Docker 연결" }));
     expect(window.location.search).toBe("?section=connection");
     expect(screen.getByText("현재 사용 중")).toBeInTheDocument();
     expect(screen.getByText("29.7.2")).toBeInTheDocument();
@@ -1299,9 +1332,9 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     expect(
-      within(navigation).queryByRole("button", { name: "인스턴스 설정" }),
+      within(navigation).queryByRole("link", { name: "인스턴스 설정" }),
     ).not.toBeInTheDocument();
-    await user.click(within(navigation).getByRole("button", { name: "엔진 설정" }));
+    await user.click(within(navigation).getByRole("link", { name: "엔진 설정" }));
     expect(window.location.search).toBe("?section=engine");
     const liveRestore = await screen.findByRole("switch", { name: "컨테이너 실행 유지" });
     expect(liveRestore).not.toBeChecked();
@@ -1379,7 +1412,7 @@ describe("App", () => {
     render(<App />);
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(navigation).getByRole("button", { name: "네트워크 설정" }));
+    await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
     expect(window.location.search).toBe("?section=network");
     expect(await screen.findByLabelText("DNS 서버")).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "컨테이너 실행 유지" })).not.toBeInTheDocument();
@@ -1470,7 +1503,7 @@ describe("App", () => {
     render(<App />);
 
     const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(within(navigation).getByRole("button", { name: "네트워크 설정" }));
+    await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
     expect(await screen.findByLabelText("Docker Engine 설정 불러오는 중")).toBeInTheDocument();
     expect(timeoutSpy).toHaveBeenCalledWith(15_000);
 
@@ -3151,12 +3184,18 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/images/3e24e96c89ef");
     const imageNavigation = await screen.findByRole("navigation", { name: "이미지 상세 메뉴" });
     const imageGroup = within(imageNavigation).getByRole("group", { name: "이미지" });
-    expect(within(imageGroup).getByRole("button", { name: "개요" })).toHaveAttribute(
+    expect(within(imageGroup).getByRole("link", { name: "개요" })).toHaveAttribute(
       "aria-current",
       "page",
     );
     expect(screen.getByText("linux/arm64")).toBeInTheDocument();
     expect(screen.getByText("sha256:3e24e96c89ef")).toBeInTheDocument();
+    expect(screen.getByText("이미지 ID", { selector: "dt" }).parentElement).toHaveClass(
+      "overseer-detail-definition--wide",
+    );
+    expect(screen.getByText("Digest", { selector: "dt" }).parentElement).toHaveClass(
+      "overseer-detail-definition--wide",
+    );
     expect(screen.getByRole("button", { name: "Docker Hub" })).toHaveAttribute(
       "href",
       "https://hub.docker.com/r/louislam/uptime-kuma",
@@ -3166,22 +3205,20 @@ describe("App", () => {
       "https://github.com/louislam/uptime-kuma",
     );
 
-    expect(
-      within(imageGroup).queryByRole("button", { name: "저장소 태그" }),
-    ).not.toBeInTheDocument();
+    expect(within(imageGroup).queryByRole("link", { name: "저장소 태그" })).not.toBeInTheDocument();
 
-    await user.click(within(imageGroup).getByRole("button", { name: "실행 설정" }));
+    await user.click(within(imageGroup).getByRole("link", { name: "실행 설정" }));
     expect(screen.getByText("/app")).toBeInTheDocument();
     expect(screen.getByText("3001/tcp")).toBeInTheDocument();
     expect(screen.getByText("2개")).toBeInTheDocument();
 
-    await user.click(within(imageGroup).getByRole("button", { name: "환경 변수" }));
+    await user.click(within(imageGroup).getByRole("link", { name: "환경 변수" }));
     expect(screen.getByText("NODE_ENV")).toBeInTheDocument();
 
-    await user.click(within(imageGroup).getByRole("button", { name: "라벨" }));
+    await user.click(within(imageGroup).getByRole("link", { name: "라벨" }));
     expect(screen.getByText("org.opencontainers.image.source")).toBeInTheDocument();
 
-    await user.click(within(imageGroup).getByRole("button", { name: "레이어" }));
+    await user.click(within(imageGroup).getByRole("link", { name: "레이어" }));
     const layerCode = await screen.findByRole("region", { name: "Dockerfile 레이어 코드" });
     expect(layerCode.querySelector("pre")).toHaveTextContent(
       "# Layer 1 · 12MB RUN apt update \\ && apt install curl \\ | tee /tmp/result",
@@ -3192,7 +3229,7 @@ describe("App", () => {
     expect(within(layerCode).getByRole("button", { name: "코드 보기 옵션" })).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "이미지 레이어 기록" })).not.toBeInTheDocument();
 
-    await user.click(within(imageGroup).getByRole("button", { name: "원본 정보" }));
+    await user.click(within(imageGroup).getByRole("link", { name: "원본 정보" }));
     const imageInspect = screen.getByRole("region", { name: "이미지 원본 JSON" });
     expect(imageInspect.querySelector("pre")).toHaveTextContent('"Id": "sha256:3e24e96c89ef"');
     expect(
@@ -3317,16 +3354,19 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "worker", level: 1 })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/containers/container-id");
+    expect((await screen.findByText("ID", { selector: "dt" })).parentElement).toHaveClass(
+      "overseer-detail-definition--wide",
+    );
     const containerNavigation = await screen.findByRole("navigation", {
       name: "컨테이너 상세 메뉴",
     });
     const containerGroup = within(containerNavigation).getByRole("group", { name: "컨테이너" });
-    expect(within(containerGroup).getByRole("button", { name: "개요" })).toHaveAttribute(
+    expect(within(containerGroup).getByRole("link", { name: "개요" })).toHaveAttribute(
       "aria-current",
       "page",
     );
 
-    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "실행 설정" }));
     expect(screen.getByRole("heading", { name: "실행 설정", level: 2 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "기본 정보", level: 3 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "리소스 제한", level: 3 })).toBeInTheDocument();
@@ -3342,9 +3382,9 @@ describe("App", () => {
     expect(screen.getByText("/app/data")).toBeInTheDocument();
     expect(screen.getByText("이름 있는 볼륨")).toBeInTheDocument();
     expect(screen.getByText("audit-data")).toBeInTheDocument();
-    expect(within(containerGroup).queryByRole("button", { name: "연결" })).not.toBeInTheDocument();
+    expect(within(containerGroup).queryByRole("link", { name: "연결" })).not.toBeInTheDocument();
 
-    await user.click(within(containerGroup).getByRole("button", { name: "터미널" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "터미널" }));
     expect(await screen.findByText("sh", { selector: "code" })).toBeInTheDocument();
     expect(screen.getByLabelText("컨테이너 터미널 명령")).toHaveTextContent(
       "docker --context overseer exec -it container-id sh",
@@ -3352,8 +3392,8 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "터미널 명령 복사" })).toBeEnabled();
 
     terminalStatus = "shell-not-found";
-    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
-    await user.click(within(containerGroup).getByRole("button", { name: "터미널" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "터미널" }));
     expect(
       await screen.findByRole("heading", {
         name: "실행할 셸을 찾을 수 없습니다.",
@@ -3362,8 +3402,8 @@ describe("App", () => {
     ).toBeInTheDocument();
 
     terminalStatus = "not-running";
-    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
-    await user.click(within(containerGroup).getByRole("button", { name: "터미널" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "터미널" }));
     expect(
       await screen.findByRole("heading", {
         name: "컨테이너가 실행 중이 아닙니다.",
@@ -3372,8 +3412,8 @@ describe("App", () => {
     ).toBeInTheDocument();
 
     terminalStatus = "paused";
-    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
-    await user.click(within(containerGroup).getByRole("button", { name: "터미널" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "터미널" }));
     expect(
       await screen.findByRole("heading", {
         name: "컨테이너가 일시 중지되어 있습니다.",
@@ -3381,7 +3421,7 @@ describe("App", () => {
       }),
     ).toBeInTheDocument();
 
-    await user.click(within(containerGroup).getByRole("button", { name: "상태 검사" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "상태 검사" }));
     expect(await screen.findByText("비정상")).toBeInTheDocument();
     expect(screen.getByText("1회")).toBeInTheDocument();
     expect(screen.getAllByText(healthStartedAtLabel)).toHaveLength(2);
@@ -3392,15 +3432,15 @@ describe("App", () => {
     ).toHaveTextContent("service unavailable");
     expect(screen.getByRole("button", { name: "상태 검사 출력 옵션" })).toBeInTheDocument();
 
-    await user.click(within(containerGroup).getByRole("button", { name: "원본 정보" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "원본 정보" }));
     expect(screen.getByText("민감한 설정이 포함될 수 있습니다.")).toBeInTheDocument();
     const inspectViewer = await screen.findByRole("region", { name: "Docker 원본 JSON" });
     expect(inspectViewer).toHaveTextContent('"Id": "container-id"');
     expect(screen.getByRole("button", { name: "원본 정보 보기 옵션" })).toBeInTheDocument();
 
     includeHealth = false;
-    await user.click(within(containerGroup).getByRole("button", { name: "실행 설정" }));
-    await user.click(within(containerGroup).getByRole("button", { name: "상태 검사" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "실행 설정" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "상태 검사" }));
     expect(
       await screen.findByRole("heading", {
         name: "상태 검사가 설정되지 않았습니다.",
@@ -3408,10 +3448,10 @@ describe("App", () => {
       }),
     ).toBeInTheDocument();
 
-    await user.click(within(containerGroup).getByRole("button", { name: "환경 변수" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "환경 변수" }));
     expect(screen.getByText("MODE")).toBeInTheDocument();
 
-    await user.click(within(containerGroup).getByRole("button", { name: "라벨" }));
+    await user.click(within(containerGroup).getByRole("link", { name: "라벨" }));
     expect(screen.getByText("team")).toBeInTheDocument();
 
     await user.click(
@@ -3533,22 +3573,20 @@ describe("App", () => {
     const composeGroup = within(composeNavigation).getByRole("group", {
       name: "Compose 프로젝트",
     });
-    expect(within(composeGroup).getByRole("button", { name: "개요" })).toHaveAttribute(
+    expect(within(composeGroup).getByRole("link", { name: "개요" })).toHaveAttribute(
       "aria-current",
       "page",
     );
 
-    expect(within(composeGroup).getByRole("button", { name: "구성" })).toBeEnabled();
-    expect(within(composeGroup).getByRole("button", { name: "로그" })).toBeEnabled();
-    expect(
-      within(composeGroup).queryByRole("button", { name: "업데이트" }),
-    ).not.toBeInTheDocument();
-    expect(within(composeGroup).queryByRole("button", { name: "폼 설정" })).not.toBeInTheDocument();
+    expect(within(composeGroup).getByRole("link", { name: "구성" })).toBeInTheDocument();
+    expect(within(composeGroup).getByRole("link", { name: "로그" })).toBeInTheDocument();
+    expect(within(composeGroup).queryByRole("link", { name: "업데이트" })).not.toBeInTheDocument();
+    expect(within(composeGroup).queryByRole("link", { name: "폼 설정" })).not.toBeInTheDocument();
 
-    await user.click(within(composeGroup).getByRole("button", { name: "구성" }));
+    await user.click(within(composeGroup).getByRole("link", { name: "구성" }));
     expect(screen.getAllByText("/workspace/compose.yaml").length).toBeGreaterThan(0);
 
-    await user.click(within(composeGroup).getByRole("button", { name: "로그" }));
+    await user.click(within(composeGroup).getByRole("link", { name: "로그" }));
     const composeLog = await screen.findByRole("region", { name: "demo-stack Compose 로그" });
     expect(composeLog).toHaveTextContent("web | ready");
     const composeLogCode = composeLog.querySelector(".overseer-log-viewer-code");
@@ -3561,7 +3599,7 @@ describe("App", () => {
     expect(composeLogCode).toHaveAttribute("data-wrap", "true");
     await user.keyboard("{Escape}");
 
-    await user.click(within(composeGroup).getByRole("button", { name: "서비스" }));
+    await user.click(within(composeGroup).getByRole("link", { name: "서비스" }));
     const serviceTable = await screen.findByRole("table", {
       name: "demo-stack 서비스 컨테이너 목록",
     });
@@ -3666,10 +3704,10 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "Compose 상세 메뉴" });
     const group = within(navigation).getByRole("group", { name: "Compose 프로젝트" });
-    expect(within(group).getByRole("button", { name: "업데이트" })).toBeEnabled();
-    expect(within(group).queryByRole("button", { name: "폼 설정" })).not.toBeInTheDocument();
+    expect(within(group).getByRole("link", { name: "업데이트" })).toBeInTheDocument();
+    expect(within(group).queryByRole("link", { name: "폼 설정" })).not.toBeInTheDocument();
 
-    await user.click(within(group).getByRole("button", { name: "업데이트" }));
+    await user.click(within(group).getByRole("link", { name: "업데이트" }));
 
     expect(screen.getByText("적용 대기 YAML")).toBeInTheDocument();
     expect(screen.getByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)).toBeInTheDocument();
@@ -3750,10 +3788,10 @@ describe("App", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "Compose 상세 메뉴" });
     const group = within(navigation).getByRole("group", { name: "Compose 프로젝트" });
-    expect(within(group).getByRole("button", { name: "작성 설정" })).toBeEnabled();
-    expect(within(group).queryByRole("button", { name: "업데이트" })).not.toBeInTheDocument();
+    expect(within(group).getByRole("link", { name: "작성 설정" })).toBeInTheDocument();
+    expect(within(group).queryByRole("link", { name: "업데이트" })).not.toBeInTheDocument();
 
-    await user.click(within(group).getByRole("button", { name: "작성 설정" }));
+    await user.click(within(group).getByRole("link", { name: "작성 설정" }));
     await user.click(screen.getByRole("button", { name: "구성 편집" }));
 
     expect(await screen.findByRole("dialog", { name: "Compose 수정" })).toBeInTheDocument();
@@ -4430,11 +4468,11 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "app-data", level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("/var/lib/docker/volumes/app-data/_data")).toBeInTheDocument();
     const volumeNavigation = screen.getByRole("navigation", { name: "볼륨 상세 메뉴" });
-    await user.click(within(volumeNavigation).getByRole("button", { name: "드라이버 설정" }));
+    await user.click(within(volumeNavigation).getByRole("link", { name: "드라이버 설정" }));
     expect(screen.getByText("type")).toBeInTheDocument();
-    await user.click(within(volumeNavigation).getByRole("button", { name: "라벨" }));
+    await user.click(within(volumeNavigation).getByRole("link", { name: "라벨" }));
     expect(screen.getByText("team")).toBeInTheDocument();
-    await user.click(within(volumeNavigation).getByRole("button", { name: "원본 정보" }));
+    await user.click(within(volumeNavigation).getByRole("link", { name: "원본 정보" }));
     expect(screen.getByRole("region", { name: "볼륨 원본 JSON" })).toHaveTextContent(
       '"Name": "app-data"',
     );
@@ -4455,20 +4493,23 @@ describe("App", () => {
     await user.click(screen.getByRole("link", { name: "bridge" }));
 
     expect(await screen.findByRole("heading", { name: "bridge", level: 1 })).toBeInTheDocument();
+    expect((await screen.findByText("ID", { selector: "dt" })).parentElement).toHaveClass(
+      "overseer-detail-definition--wide",
+    );
     const networkNavigation = await screen.findByRole("navigation", {
       name: "네트워크 상세 메뉴",
     });
-    await user.click(within(networkNavigation).getByRole("button", { name: "IP 주소 관리" }));
+    await user.click(within(networkNavigation).getByRole("link", { name: "IP 주소 관리" }));
     expect(screen.getByText("172.17.0.0/16")).toBeInTheDocument();
-    await user.click(within(networkNavigation).getByRole("button", { name: "연결 컨테이너" }));
+    await user.click(within(networkNavigation).getByRole("link", { name: "연결 컨테이너" }));
     expect(screen.getByRole("link", { name: "web" })).toHaveAttribute(
       "href",
       `/containers/${containerId}`,
     );
     expect(screen.getByText("abcdef012345")).toHaveAttribute("title", containerId);
-    await user.click(within(networkNavigation).getByRole("button", { name: "드라이버 설정" }));
+    await user.click(within(networkNavigation).getByRole("link", { name: "드라이버 설정" }));
     expect(screen.getByText("com.docker.network.bridge.name")).toBeInTheDocument();
-    await user.click(within(networkNavigation).getByRole("button", { name: "원본 정보" }));
+    await user.click(within(networkNavigation).getByRole("link", { name: "원본 정보" }));
     expect(screen.getByRole("region", { name: "네트워크 원본 JSON" })).toHaveTextContent(
       '"Name": "bridge"',
     );

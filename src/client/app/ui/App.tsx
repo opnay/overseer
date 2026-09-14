@@ -428,8 +428,151 @@ function actionError(error: unknown): string {
   return error instanceof Error ? error.message : "요청을 완료하지 못했습니다.";
 }
 
-function LoadingScreen() {
+const LOADING_ROWS = ["row-1", "row-2", "row-3", "row-4", "row-5"] as const;
+const LOADING_SECTIONS = ["section-1", "section-2"] as const;
+const LOADING_NAV_ITEMS = ["nav-1", "nav-2", "nav-3", "nav-4"] as const;
+
+type PageLoadingPattern = "collection" | "detail" | "settings";
+
+function pageLoadingPattern(path: AppLocationPath): PageLoadingPattern {
+  if (path === "/settings") return "settings";
+  const detail = getAppDetailLocation(path);
+  return detail && detail.type !== "imageRepository" ? "detail" : "collection";
+}
+
+function CollectionLoadingBody() {
+  return (
+    <section
+      aria-label="목록 불러오는 중"
+      className="overseer-loading-collection"
+      data-loading-pattern="collection"
+    >
+      <div aria-hidden="true" className="overseer-loading-table-row overseer-loading-table-head">
+        <Skeleton />
+        <Skeleton />
+        <Skeleton />
+        <Skeleton />
+      </div>
+      {LOADING_ROWS.map((row) => (
+        <div aria-hidden="true" className="overseer-loading-table-row" key={row}>
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function SectionedLoadingBody({ pattern }: { pattern: Exclude<PageLoadingPattern, "collection"> }) {
+  return (
+    <section
+      aria-label={pattern === "settings" ? "설정 불러오는 중" : "상세 정보 불러오는 중"}
+      className="overseer-sectioned-workspace overseer-loading-sectioned"
+      data-loading-pattern={pattern}
+    >
+      <aside aria-hidden="true" className="overseer-sectioned-workspace-sidebar">
+        <nav className="overseer-sectioned-workspace-desktop-navigation overseer-loading-section-navigation">
+          <Skeleton className="overseer-loading-section-navigation-label" />
+          {LOADING_NAV_ITEMS.map((item) => (
+            <Skeleton className="overseer-loading-section-navigation-item" key={item} />
+          ))}
+        </nav>
+        <div className="overseer-sectioned-workspace-mobile-navigation">
+          <Skeleton className="overseer-loading-section-navigation-label" />
+          <Skeleton className="overseer-loading-section-select" />
+        </div>
+      </aside>
+      <div aria-hidden="true" className="overseer-sectioned-workspace-content">
+        <header className="overseer-sectioned-workspace-header">
+          <Skeleton className="overseer-loading-section-category" />
+          <Skeleton className="overseer-loading-section-title" />
+          <Skeleton className="overseer-loading-section-description" />
+        </header>
+        <div className="overseer-sectioned-workspace-body overseer-loading-section-body">
+          {pattern === "detail" ? (
+            <div className="overseer-detail-summary overseer-loading-summary">
+              {["summary-1", "summary-2", "summary-3"].map((item) => (
+                <div key={item}>
+                  <Skeleton className="overseer-loading-summary-label" />
+                  <Skeleton className="overseer-loading-summary-value" />
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {LOADING_SECTIONS.map((item) => (
+            <div className="overseer-loading-form-section" key={item}>
+              <Skeleton className="overseer-loading-form-title" />
+              <Skeleton className="overseer-loading-form-field" />
+              <Skeleton className="overseer-loading-form-field" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PageLoadingBody({ path }: { path: AppLocationPath }) {
+  const pattern = pageLoadingPattern(path);
+  return pattern === "collection" ? (
+    <CollectionLoadingBody />
+  ) : (
+    <SectionedLoadingBody pattern={pattern} />
+  );
+}
+
+function StartupLoadingScreen() {
+  return (
+    <div
+      aria-busy="true"
+      aria-label="시작 준비 화면 불러오는 중"
+      className="overseer-startup-shell"
+      data-loading-pattern="startup"
+    >
+      <main aria-hidden="true" className="overseer-startup overseer-loading-startup">
+        <header className="overseer-startup-header">
+          <Skeleton className="overseer-loading-startup-brand" />
+          <Skeleton className="overseer-loading-eyebrow" />
+          <Skeleton className="overseer-loading-title" />
+        </header>
+        <div className="overseer-startup-workflow">
+          <aside className="overseer-startup-step-panel">
+            <Skeleton className="overseer-loading-startup-step-label" />
+            <ol className="overseer-startup-steps">
+              {LOADING_NAV_ITEMS.map((item) => (
+                <li key={item}>
+                  <Skeleton className="overseer-loading-startup-step-number" />
+                  <div className="overseer-startup-step-copy">
+                    <Skeleton className="overseer-loading-startup-step-title" />
+                    <Skeleton className="overseer-loading-startup-step-status" />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </aside>
+          <section className="overseer-startup-content">
+            <header className="overseer-startup-content-header">
+              <div>
+                <Skeleton className="overseer-loading-eyebrow" />
+                <Skeleton className="overseer-loading-section-title" />
+                <Skeleton className="overseer-loading-section-description" />
+              </div>
+            </header>
+            <Skeleton className="overseer-loading-startup-guidance" />
+            <Skeleton className="overseer-loading-startup-action" />
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function LoadingScreen({ path, startup = false }: { path: AppLocationPath; startup?: boolean }) {
   const mode = useNavigationMode();
+
+  if (startup) return <StartupLoadingScreen />;
 
   return (
     <div
@@ -477,7 +620,7 @@ function LoadingScreen() {
             <Skeleton className="overseer-loading-title" />
             <Skeleton className="overseer-loading-description" />
           </div>
-          <Skeleton className="overseer-loading-table" />
+          <PageLoadingBody path={path} />
         </main>
       </div>
     </div>
@@ -1206,7 +1349,9 @@ function AppContent() {
     });
   };
 
-  if ((!dashboard && !loadError) || startupCheckPending) return <LoadingScreen />;
+  if ((!dashboard && !loadError) || startupCheckPending) {
+    return <LoadingScreen path={resourcePath} startup={startupRoute} />;
+  }
 
   if (dashboard && displayedStartup && currentStartupStep) {
     const startupOperation = startupOperationId
@@ -1240,7 +1385,7 @@ function AppContent() {
       if (startupRoute) selectResourcePath(resourcePath);
     };
     return (
-      <Suspense fallback={<LoadingScreen />}>
+      <Suspense fallback={<LoadingScreen path={resourcePath} startup />}>
         <StartupPage
           composeSkipped={composeSkipped}
           engineBusy={submitting === "runtime-start" || submitting === "runtime-force-restart"}
@@ -1888,7 +2033,7 @@ function AppContent() {
           ) : null}
 
           {dashboard && resourcePath === "/instances" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <RuntimeInstancesPage
                 busy={runtimeBusy || Boolean(submitting)}
                 onDelete={deleteRuntimeInstance}
@@ -1905,7 +2050,7 @@ function AppContent() {
           ) : null}
 
           {dashboard && currentDetail?.type === "instance" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <RuntimeInstanceDetailPage
                 name={currentDetail.identifier}
                 onHeaderStateChange={setRuntimeInstanceHeaderState}
@@ -1915,7 +2060,7 @@ function AppContent() {
           ) : null}
 
           {dashboard && resourcePath === "/settings" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <SettingsPage
                 busy={runtimeBusy || Boolean(submitting)}
                 dashboard={dashboard}
@@ -1930,7 +2075,7 @@ function AppContent() {
           ) : null}
 
           {resourcePath === "/operations" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <OperationsPage
                 busyId={
                   submitting?.startsWith("operation-retry-") ? submitting.slice(16) : undefined
@@ -1942,7 +2087,7 @@ function AppContent() {
           ) : null}
 
           {resourcePath === "/docker-plugins" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <DockerCliPluginsPage
                 isBusy={(plugin) => targetBusy("dockerPlugin", plugin.id)}
                 onInstall={installDockerPlugin}
@@ -1952,7 +2097,7 @@ function AppContent() {
           ) : null}
 
           {resourcePath === "/image-repositories" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <ImageRepositoriesPage
                 isBusy={(repository) =>
                   targetBusy("imageRepository", repository.id) ||
@@ -1992,7 +2137,7 @@ function AppContent() {
           ) : null}
 
           {currentDetail?.type === "imageRepository" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <ImageRepositoryDetailPage
                 id={currentDetail.identifier}
                 isBusy={(reference) =>
@@ -2014,7 +2159,7 @@ function AppContent() {
           runtimeRunning &&
           dockerComposeAvailable &&
           currentDetail?.type === "compose" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <ComposeProjectDetailPage
                 busy={runtimeBusy || targetBusy("compose", currentDetail.identifier)}
                 name={currentDetail.identifier}
@@ -2085,7 +2230,7 @@ function AppContent() {
           ) : null}
 
           {dashboard && runtimeRunning && currentDetail?.type === "container" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <ContainerDetailPage
                 id={currentDetail.identifier}
                 onOpenCompose={(name) => selectResourcePath(composeProjectDetailPath(name))}
@@ -2096,7 +2241,7 @@ function AppContent() {
           ) : null}
 
           {dashboard && runtimeRunning && currentDetail?.type === "image" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <ImageDetailPage
                 id={currentDetail.identifier}
                 refreshToken={detailRefreshToken}
@@ -2106,7 +2251,7 @@ function AppContent() {
           ) : null}
 
           {dashboard && runtimeRunning && currentDetail?.type === "network" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <NetworkDetailPage
                 name={currentDetail.identifier}
                 onOpenContainer={(id) => selectResourcePath(containerDetailPath(id))}
@@ -2116,7 +2261,7 @@ function AppContent() {
           ) : null}
 
           {dashboard && runtimeRunning && currentDetail?.type === "volume" ? (
-            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <VolumeDetailPage name={currentDetail.identifier} refreshToken={detailRefreshToken} />
             </Suspense>
           ) : null}

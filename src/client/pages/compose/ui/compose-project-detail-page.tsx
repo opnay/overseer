@@ -100,7 +100,7 @@ export function ComposeProjectDetailPage({
   const [logs, setLogs] = useState<string>();
   const [logsError, setLogsError] = useState<string>();
   const [logsLoading, setLogsLoading] = useState(false);
-  const [requestedSection, setSection] = useUrlSection({
+  const [requestedSection, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
     locationKey: name,
     values: sectionOrder,
@@ -204,6 +204,7 @@ export function ComposeProjectDetailPage({
       <SectionedWorkspace<ComposeDetailSection>
         category="Compose 프로젝트"
         description={presentation.description}
+        getSectionHref={getSectionHref}
         groups={[{ items: sections, label: "Compose 프로젝트" }]}
         navigationLabel="Compose 상세 메뉴"
         onSectionChange={setSection}

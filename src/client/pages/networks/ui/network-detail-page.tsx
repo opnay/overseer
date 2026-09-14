@@ -69,9 +69,17 @@ const networkDetailNavigation = [
   },
 ];
 
-function Definition({ label, value }: { label: string; value: ReactNode }) {
+function Definition({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value: ReactNode;
+  wide?: boolean;
+}) {
   return (
-    <div>
+    <div className={wide ? "overseer-detail-definition--wide" : undefined}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -178,7 +186,7 @@ function Containers({
 export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: NetworkDetailPageProps) {
   const [detail, setDetail] = useState<NetworkDetail>();
   const [error, setError] = useState<string>();
-  const [section, setSection] = useUrlSection({
+  const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
     locationKey: name,
     values: sectionOrder,
@@ -228,6 +236,7 @@ export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: Netwo
       <SectionedWorkspace<NetworkDetailSection>
         category="네트워크"
         description={presentation.description}
+        getSectionHref={getSectionHref}
         groups={networkDetailNavigation}
         navigationLabel="네트워크 상세 메뉴"
         onSectionChange={setSection}
@@ -260,7 +269,7 @@ export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: Netwo
               </header>
               <dl className="overseer-detail-definitions overseer-detail-definitions--wide">
                 <Definition label="이름" value={detail.name} />
-                <Definition label="ID" value={<code>{detail.id}</code>} />
+                <Definition label="ID" value={<code>{detail.id}</code>} wide />
                 <Definition
                   label="종류"
                   value={
