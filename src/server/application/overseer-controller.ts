@@ -54,6 +54,7 @@ export interface DockerEngineController {
   connectDockerCli(progress?: OperationProgress): Promise<void>;
   getDockerDaemonConfiguration(): Promise<DockerDaemonConfigurationSnapshot>;
   getDockerEngineConfiguration(): Promise<DockerEngineConfigurationSnapshot>;
+  forceRestartRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot>;
   recreateRuntime(
     configuration: DockerEngineConfiguration,
     progress?: OperationProgress,
@@ -73,6 +74,7 @@ export interface RuntimeInstanceController {
   ): Promise<void>;
   deleteRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   getRuntimeInstances(): Promise<RuntimeInstancesSnapshot>;
+  forceStopRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   prepareRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   selectRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;
   startRuntimeInstance(name: string, progress?: OperationProgress): Promise<void>;

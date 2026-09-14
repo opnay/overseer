@@ -494,6 +494,17 @@ export class LimaDockerRuntime implements OverseerController {
     });
   }
 
+  async forceStopRuntimeInstance(name: string, progress?: OperationProgress): Promise<void> {
+    this.requireRuntimeIdle();
+    const instance = await this.requireInstanceDetails(name);
+    if (instance.status.toLowerCase() === "stopped") return;
+    progress?.step("Lima 인스턴스 강제 중지 중");
+    await this.command("limactl", ["stop", "--force", name], {
+      onOutput: progress?.output,
+      timeoutMs: 120_000,
+    });
+  }
+
   async getDockerDaemonConfiguration(): Promise<DockerDaemonConfigurationSnapshot> {
     const instance = await this.getInstance();
     if (!instance) {
@@ -642,6 +653,15 @@ export class LimaDockerRuntime implements OverseerController {
     }
     await this.stopRuntime(progress);
     return this.startRuntime(progress);
+  }
+
+  forceRestartRuntime(progress?: OperationProgress): Promise<RuntimeSnapshot> {
+    if (this.transition)
+      throw new ExpectedError("runtime_busy", "다른 런타임 작업이 진행 중입니다.", 409);
+    this.transition = this.forceRestartRuntimeOnce(progress).finally(() => {
+      this.transition = undefined;
+    });
+    return this.transition;
   }
 
   async runContainer(input: RunContainerInput, progress?: OperationProgress): Promise<void> {
@@ -830,6 +850,29 @@ export class LimaDockerRuntime implements OverseerController {
         timeoutMs: 10 * 60_000,
       });
     }
+    await this.waitForDockerReady(progress);
+    await this.connectDockerCli(progress);
+    return this.getRuntimeSnapshot();
+  }
+
+  private async forceRestartRuntimeOnce(progress?: OperationProgress): Promise<RuntimeSnapshot> {
+    if (!(await this.getInstance())) {
+      throw new ExpectedError(
+        "runtime_missing",
+        "강제 재시작할 Docker Engine 인스턴스가 없습니다.",
+        409,
+      );
+    }
+    progress?.step("Lima 런타임 강제 중지 중");
+    await this.command("limactl", ["stop", "--force", this.instanceName], {
+      onOutput: progress?.output,
+      timeoutMs: 120_000,
+    });
+    progress?.step("Lima 런타임 시작 중");
+    await this.command("limactl", ["start", this.instanceName, "--tty=false", "--progress"], {
+      onOutput: progress?.output,
+      timeoutMs: 10 * 60_000,
+    });
     await this.waitForDockerReady(progress);
     await this.connectDockerCli(progress);
     return this.getRuntimeSnapshot();
@@ -1259,7 +1302,15 @@ export class LimaDockerRuntime implements OverseerController {
       throw error;
     }
     if (!instance) return this.missingSnapshot(instanceName);
-    if (instance.status.toLowerCase() !== "running") return this.stoppedSnapshot(instanceName);
+    const status = instance.status.toLowerCase();
+    if (status === "broken") {
+      return {
+        instance: instanceName,
+        message: "Lima 인스턴스 상태를 복구해야 합니다.",
+        phase: "error",
+      };
+    }
+    if (status !== "running") return this.stoppedSnapshot(instanceName);
     try {
       const result = await this.dockerForInstance(instanceName, [
         "version",

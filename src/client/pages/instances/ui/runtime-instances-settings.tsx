@@ -18,6 +18,7 @@ import { runtimeInstanceDetailPath } from "@/shared/routes";
 interface RuntimeInstancesSettingsProps {
   busy: boolean;
   onDelete(name: string, input: DeleteRuntimeInstanceInput): Promise<void>;
+  onForceStop(name: string): Promise<void>;
   onPrepare(name: string): Promise<void>;
   onSelect(name: string): Promise<void>;
   onStart(name: string): Promise<void>;
@@ -34,6 +35,7 @@ function gibibytes(value: number | undefined): string {
 export function RuntimeInstancesSettings({
   busy,
   onDelete,
+  onForceStop,
   onPrepare,
   onSelect,
   onStart,
@@ -199,6 +201,7 @@ export function RuntimeInstancesSettings({
                           busy={busy}
                           instance={instance}
                           onDelete={onDelete}
+                          onForceStop={onForceStop}
                           onSelect={onSelect}
                           onUpdate={onUpdate}
                           selectionLocked={snapshot.selectionLocked}

@@ -9,6 +9,7 @@ export interface RuntimeInstanceMutationProps {
   busy: boolean;
   onCreate(input: CreateRuntimeInstanceInput): Promise<void>;
   onDelete(name: string, input: DeleteRuntimeInstanceInput): Promise<void>;
+  onForceStop(name: string): Promise<void>;
   onPrepare(name: string): Promise<void>;
   onSelect(name: string): Promise<void>;
   onStart(name: string): Promise<void>;
@@ -20,6 +21,7 @@ export interface RuntimeInstanceMutationProps {
 export function RuntimeInstancesPage({
   busy,
   onDelete,
+  onForceStop,
   onOpenDetail,
   onPrepare,
   onSelect,
@@ -33,6 +35,7 @@ export function RuntimeInstancesPage({
       <RuntimeInstancesSettings
         busy={busy}
         onDelete={onDelete}
+        onForceStop={onForceStop}
         onOpenDetail={onOpenDetail}
         onPrepare={onPrepare}
         onSelect={onSelect}

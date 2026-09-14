@@ -16,6 +16,7 @@ export function RuntimeInstanceHeaderActions({
   busy,
   instance,
   onDelete,
+  onForceStop,
   onPrepare,
   onSelect,
   onStart,
@@ -25,6 +26,7 @@ export function RuntimeInstanceHeaderActions({
 }: RuntimeInstanceHeaderState & {
   busy: boolean;
   onDelete(name: string, input: DeleteRuntimeInstanceInput): Promise<void>;
+  onForceStop(name: string): Promise<void>;
   onPrepare(name: string): Promise<void>;
   onSelect(name: string): Promise<void>;
   onStart(name: string): Promise<void>;
@@ -74,6 +76,7 @@ export function RuntimeInstanceHeaderActions({
         busy={busy}
         instance={instance}
         onDelete={onDelete}
+        onForceStop={onForceStop}
         onSelect={onSelect}
         onUpdate={onUpdate}
         selectionLocked={selectionLocked}

@@ -1021,6 +1021,86 @@ describe("App", () => {
     expect(screen.getByRole("progressbar", { name: "런타임 시작 진행 중" })).toBeInTheDocument();
   });
 
+  it("force restarts a broken Docker Engine from the startup step", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer-docker",
+        message: "Lima 인스턴스 상태를 복구해야 합니다.",
+        phase: "error",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "runtime.force-restart",
+      target: { name: "Docker Engine", resource: "runtime" },
+      title: "Docker Engine 강제 재시작",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/runtime/force-restart") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Docker Engine 강제 재시작" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Docker Engine을 강제로 재시작하시겠습니까?",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "강제 재시작" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/runtime/force-restart") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("allows the engine setup to be deferred for the current app session", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer-docker",
+        message: "Lima 인스턴스 상태를 복구해야 합니다.",
+        phase: "error",
+      },
+      volumes: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        if (String(input).endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/containers");
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "나중에 설정" }));
+
+    expect(await screen.findByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/containers");
+    expect(window.sessionStorage.getItem("overseer-engine-setup")).toBe("skipped");
+  });
+
   it("creates a Lima instance from Instance settings", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
@@ -1592,6 +1672,69 @@ describe("App", () => {
         fetchMock.mock.calls.some(
           ([input, init]) =>
             String(input).endsWith("/api/runtime/instances/overseer/start") &&
+            init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("force stops a broken Lima instance from its row menu", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer-docker",
+        message: "Lima 인스턴스 상태를 복구해야 합니다.",
+        phase: "error",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "runtime.instance.force-stop",
+      target: { name: "overseer-docker", resource: "runtime" },
+      title: "Lima 인스턴스 강제 중지",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/runtime/configuration")) {
+        return jsonResponse(dockerEngineSnapshot("instance", true));
+      }
+      if (url.endsWith("/api/runtime/instances")) {
+        return jsonResponse(
+          runtimeInstancesSnapshot([
+            runtimeInstance({ name: "overseer-docker", status: "Broken" }),
+          ]),
+        );
+      }
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (
+        url.endsWith("/api/runtime/instances/overseer-docker/force-stop") &&
+        init?.method === "POST"
+      ) {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/instances");
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "overseer-docker 인스턴스 메뉴" }));
+    await user.click(await screen.findByRole("menuitem", { name: "강제 중지" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "overseer-docker 인스턴스를 강제로 중지하시겠습니까?",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "강제 중지" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/runtime/instances/overseer-docker/force-stop") &&
             init?.method === "POST",
         ),
       ).toBe(true),

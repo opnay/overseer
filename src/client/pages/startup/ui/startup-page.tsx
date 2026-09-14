@@ -1,5 +1,6 @@
 import { Alert } from "@opnay/city-ds-react/alert";
 import { Accordion } from "@opnay/city-ds-react/accordion";
+import { AlertDialog } from "@opnay/city-ds-react/alert-dialog";
 import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { Checkbox } from "@opnay/city-ds-react/checkbox";
@@ -46,9 +47,11 @@ interface StartupPageProps {
   engineBusy: boolean;
   error?: string;
   onContinue(): void;
+  onForceRestartEngine(): Promise<void>;
   onInstall(target: StartupInstallTarget): Promise<void>;
   onRefresh(): Promise<void>;
   onSkipCompose(): void;
+  onSkipEngine(): void;
   onStartEngine(configuration?: DockerEngineConfiguration): Promise<void>;
   operation?: OperationSnapshot;
   preview: boolean;
@@ -85,9 +88,11 @@ export function StartupPage({
   engineBusy,
   error,
   onContinue,
+  onForceRestartEngine,
   onInstall,
   onRefresh,
   onSkipCompose,
+  onSkipEngine,
   onStartEngine,
   operation,
   preview,
@@ -102,6 +107,7 @@ export function StartupPage({
   const [engineConfigurationError, setEngineConfigurationError] = useState<string>();
   const [engineForm, setEngineForm] = useState<DockerEngineConfigurationForm>();
   const [engineFormErrors, setEngineFormErrors] = useState<DockerEngineConfigurationErrors>({});
+  const [forceRestartOpen, setForceRestartOpen] = useState(false);
 
   const loadEngineConfiguration = useCallback(async () => {
     setEngineConfigurationError(undefined);
@@ -576,7 +582,10 @@ export function StartupPage({
                           </Fieldset.Content>
                         </Fieldset.Root>
 
-                        <div className="overseer-startup-primary-action">
+                        <div className="overseer-startup-decision-actions">
+                          <Button disabled={engineBusy} onClick={onSkipEngine} variant="outline">
+                            나중에 설정
+                          </Button>
                           <Button
                             disabled={engineBusy || selectedVmType?.available !== true}
                             type="submit"
@@ -593,16 +602,19 @@ export function StartupPage({
                 {!detected &&
                 !enginePreparing &&
                 (runtime.phase === "stopped" || runtime.phase === "error") ? (
-                  <div className="overseer-startup-primary-action">
+                  <div className="overseer-startup-decision-actions">
+                    <Button disabled={engineBusy} onClick={onSkipEngine} variant="outline">
+                      나중에 설정
+                    </Button>
                     {runtime.phase === "stopped" ? (
                       <Button onClick={() => void onStartEngine().catch(() => undefined)}>
                         <Play aria-hidden="true" size={16} />
                         Docker Engine 시작
                       </Button>
                     ) : runtime.phase === "error" ? (
-                      <Button onClick={() => void onStartEngine().catch(() => undefined)}>
+                      <Button onClick={() => setForceRestartOpen(true)}>
                         <Play aria-hidden="true" size={16} />
-                        Docker Engine 다시 준비
+                        Docker Engine 강제 재시작
                       </Button>
                     ) : null}
                   </div>
@@ -617,6 +629,38 @@ export function StartupPage({
                   </div>
                 ) : null}
               </div>
+            ) : null}
+
+            {forceRestartOpen ? (
+              <AlertDialog.Root onOpenChange={setForceRestartOpen} open>
+                <AlertDialog.Portal>
+                  <AlertDialog.Backdrop />
+                  <AlertDialog.Viewport>
+                    <AlertDialog.Popup>
+                      <AlertDialog.Title>
+                        Docker Engine을 강제로 재시작하시겠습니까?
+                      </AlertDialog.Title>
+                      <AlertDialog.Description>
+                        응답하지 않는 Lima VM을 강제로 중지한 뒤 다시 시작합니다. VM과 디스크는
+                        삭제하지 않지만 실행 중인 작업은 즉시 중단될 수 있습니다.
+                      </AlertDialog.Description>
+                      <div className="overseer-dialog-actions">
+                        <AlertDialog.Cancel render={<Button variant="outline" />}>
+                          취소
+                        </AlertDialog.Cancel>
+                        <AlertDialog.Action
+                          destructive
+                          disabled={engineBusy}
+                          onClick={() => void onForceRestartEngine().catch(() => undefined)}
+                          render={<Button variant="destructive" />}
+                        >
+                          강제 재시작
+                        </AlertDialog.Action>
+                      </div>
+                    </AlertDialog.Popup>
+                  </AlertDialog.Viewport>
+                </AlertDialog.Portal>
+              </AlertDialog.Root>
             ) : null}
 
             {!engineSetup ? (

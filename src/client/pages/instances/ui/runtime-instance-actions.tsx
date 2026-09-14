@@ -42,6 +42,7 @@ export function RuntimeInstanceActions({
   busy,
   instance,
   onDelete,
+  onForceStop,
   onSelect,
   onUpdate,
   selectionLocked,
@@ -49,6 +50,7 @@ export function RuntimeInstanceActions({
   busy: boolean;
   instance: RuntimeInstanceSummary;
   onDelete(name: string, input: DeleteRuntimeInstanceInput): Promise<void>;
+  onForceStop(name: string): Promise<void>;
   onSelect(name: string): Promise<void>;
   onUpdate(name: string, input: UpdateRuntimeInstanceInput): Promise<void>;
   selectionLocked: boolean;
@@ -56,6 +58,7 @@ export function RuntimeInstanceActions({
   const initialResources = instanceResources(instance);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [forceStopOpen, setForceStopOpen] = useState(false);
   const [resources, setResources] = useState(initialResources);
   const [confirmation, setConfirmation] = useState("");
   const [formError, setFormError] = useState<string>();
@@ -114,6 +117,14 @@ export function RuntimeInstanceActions({
               <Menu.Item disabled={!editable} onClick={openEdit}>
                 수정
               </Menu.Item>
+              {instance.status.toLowerCase() === "broken" ? (
+                <>
+                  <Menu.Separator />
+                  <Menu.Item onClick={() => setForceStopOpen(true)} variant="destructive">
+                    강제 중지
+                  </Menu.Item>
+                </>
+              ) : null}
               <Menu.Separator />
               <Menu.Item
                 disabled={!deletable}
@@ -177,6 +188,38 @@ export function RuntimeInstanceActions({
           </Dialog.Viewport>
         </Dialog.Portal>
       </Dialog.Root>
+
+      {forceStopOpen ? (
+        <AlertDialog.Root onOpenChange={setForceStopOpen} open>
+          <AlertDialog.Portal>
+            <AlertDialog.Backdrop />
+            <AlertDialog.Viewport>
+              <AlertDialog.Popup>
+                <AlertDialog.Title>
+                  {instance.name} 인스턴스를 강제로 중지하시겠습니까?
+                </AlertDialog.Title>
+                <AlertDialog.Description>
+                  응답하지 않는 VM 프로세스를 정리합니다. VM과 디스크는 삭제하지 않지만 실행 중인
+                  작업은 즉시 중단될 수 있습니다.
+                </AlertDialog.Description>
+                <div className="overseer-dialog-actions">
+                  <AlertDialog.Cancel render={<Button variant="outline" />}>
+                    취소
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action
+                    destructive
+                    disabled={busy}
+                    onClick={() => void onForceStop(instance.name).catch(() => undefined)}
+                    render={<Button variant="destructive" />}
+                  >
+                    강제 중지
+                  </AlertDialog.Action>
+                </div>
+              </AlertDialog.Popup>
+            </AlertDialog.Viewport>
+          </AlertDialog.Portal>
+        </AlertDialog.Root>
+      ) : null}
 
       {deleteOpen ? (
         <AlertDialog.Root

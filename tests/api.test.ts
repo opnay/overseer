@@ -205,6 +205,12 @@ function createController(): RuntimeController {
       options: [],
       scope: "local",
     })),
+    forceRestartRuntime: vi.fn(async () => ({
+      instance: "overseer",
+      message: "정상 실행 중",
+      phase: "running" as const,
+    })),
+    forceStopRuntimeInstance: vi.fn(async () => undefined),
     pullImage: vi.fn(async () => undefined),
     prepareRuntimeInstance: vi.fn(async () => undefined),
     registerBuilderCompose: vi.fn(async () => undefined),
@@ -830,6 +836,37 @@ describe("API boundary", () => {
     expect(response.status).toBe(202);
     await vi.waitFor(() =>
       expect(controller.restartRuntime).toHaveBeenCalledWith(expect.any(Object)),
+    );
+  });
+
+  it("force restarts the active Docker Engine through one exclusive operation", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/force-restart", {
+      headers: localHeaders,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.forceRestartRuntime).toHaveBeenCalledWith(expect.any(Object)),
+    );
+  });
+
+  it("force stops a named Lima instance through one exclusive operation", async () => {
+    const controller = createController();
+    const app = createApi(controller);
+    const response = await app.request("/runtime/instances/overseer-docker/force-stop", {
+      headers: localHeaders,
+      method: "POST",
+    });
+
+    expect(response.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(controller.forceStopRuntimeInstance).toHaveBeenCalledWith(
+        "overseer-docker",
+        expect.any(Object),
+      ),
     );
   });
 

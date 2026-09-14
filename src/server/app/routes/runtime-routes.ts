@@ -154,6 +154,24 @@ export function registerRuntimeRoutes(
     });
     return context.json({ operation }, 202);
   });
+  app.post("/runtime/instances/:name/force-stop", (context) => {
+    const name = requireRuntimeInstanceName(context.req.param("name"));
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.instance.force-stop",
+        locks: [],
+        run: (progress) => controller.forceStopRuntimeInstance(name, progress),
+        successMessage: `${name} 인스턴스를 강제로 중지했습니다.`,
+        target: { name, resource: "runtime" },
+        title: "Lima 인스턴스 강제 중지",
+      },
+      undefined,
+      false,
+    );
+    return context.json({ operation }, 202);
+  });
   app.get("/runtime/engine/configuration", async (context) =>
     context.json(await controller.getDockerDaemonConfiguration()),
   );
@@ -258,6 +276,23 @@ export function registerRuntimeRoutes(
       target: { name: "Docker Engine", resource: "runtime" },
       title: "VM 재시작",
     });
+    return context.json({ operation }, 202);
+  });
+  app.post("/runtime/force-restart", (context) => {
+    const operation = enqueue(
+      context,
+      {
+        exclusive: true,
+        kind: "runtime.force-restart",
+        locks: [],
+        run: async (progress) => void (await controller.forceRestartRuntime(progress)),
+        successMessage: "Docker Engine을 강제로 재시작했습니다.",
+        target: { name: "Docker Engine", resource: "runtime" },
+        title: "Docker Engine 강제 재시작",
+      },
+      undefined,
+      false,
+    );
     return context.json({ operation }, 202);
   });
   app.post("/runtime/stop", (context) => {

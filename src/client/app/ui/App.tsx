@@ -713,6 +713,9 @@ function AppContent() {
       startupPreview !== "docker" &&
       window.localStorage.getItem("overseer-compose-setup") === "skipped",
   );
+  const [engineSetupSkipped, setEngineSetupSkipped] = useState(
+    () => window.sessionStorage.getItem("overseer-engine-setup") === "skipped",
+  );
   const [operationError, setOperationError] = useState<string>();
   const [submitting, setSubmitting] = useState<string>();
   const [operations, setOperations] = useState<OperationSnapshot[]>([]);
@@ -805,8 +808,12 @@ function AppContent() {
   const detectedStartupStep: StartupStepId | undefined =
     prerequisiteStartupStep ??
     (displayedStartup?.ready && dashboard?.runtime.phase !== "running" ? "engine" : undefined);
+  const requiredStartupStep =
+    detectedStartupStep === "engine" && engineSetupSkipped && !startupRoute
+      ? undefined
+      : detectedStartupStep;
   const engineManagementRoute =
-    detectedStartupStep === "engine" &&
+    requiredStartupStep === "engine" &&
     (resourcePath === "/settings" ||
       resourcePath.startsWith("/image-repositories") ||
       resourcePath.startsWith("/instances"));
@@ -815,7 +822,7 @@ function AppContent() {
       ? "homebrew"
       : engineManagementRoute
         ? undefined
-        : detectedStartupStep;
+        : requiredStartupStep;
   const currentStartupStep = startupStep ?? entryStartupStep;
   const startupVisible = Boolean(displayedStartup && currentStartupStep);
   const startupCheckPending = Boolean(
@@ -846,8 +853,8 @@ function AppContent() {
     if (
       !displayedStartup ||
       startupRoute ||
-      !detectedStartupStep ||
-      (detectedStartupStep === "engine" &&
+      !requiredStartupStep ||
+      (requiredStartupStep === "engine" &&
         (resourcePath === "/settings" ||
           resourcePath.startsWith("/image-repositories") ||
           resourcePath.startsWith("/instances")))
@@ -857,7 +864,7 @@ function AppContent() {
     setStartupReviewMode(false);
     setStartupRoute(true);
     window.history.replaceState(null, "", `/startup${window.location.search}`);
-  }, [detectedStartupStep, displayedStartup, resourcePath, startupRoute]);
+  }, [displayedStartup, requiredStartupStep, resourcePath, startupRoute]);
 
   useEffect(() => {
     if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview && !startupRoute)) {
@@ -1111,6 +1118,16 @@ function AppContent() {
         }),
     });
 
+  const forceRestartDockerEngineForStartup = () =>
+    mutate({
+      key: "runtime-force-restart",
+      onAccepted: (operation) => setStartupOperationId(operation.id),
+      request: () =>
+        apiRequest<OperationAccepted>("/runtime/force-restart", {
+          method: "POST",
+        }),
+    });
+
   const createRuntimeInstance = (input: CreateRuntimeInstanceInput) =>
     mutate({
       key: `runtime-instance-create-${input.name}`,
@@ -1141,7 +1158,10 @@ function AppContent() {
         }),
     });
 
-  const mutateRuntimeInstance = (name: string, action: "prepare" | "select" | "start" | "stop") =>
+  const mutateRuntimeInstance = (
+    name: string,
+    action: "force-stop" | "prepare" | "select" | "start" | "stop",
+  ) =>
     mutate({
       key: `runtime-instance-${action}-${name}`,
       request: () =>
@@ -1199,9 +1219,10 @@ function AppContent() {
       <Suspense fallback={<LoadingScreen />}>
         <StartupPage
           composeSkipped={composeSkipped}
-          engineBusy={submitting === "runtime-start"}
+          engineBusy={submitting === "runtime-start" || submitting === "runtime-force-restart"}
           error={startupError ?? operationError}
           onContinue={continueStartup}
+          onForceRestartEngine={forceRestartDockerEngineForStartup}
           onInstall={installStartupTarget}
           onRefresh={async () => {
             setOperationError(undefined);
@@ -1214,6 +1235,12 @@ function AppContent() {
           onSkipCompose={() => {
             window.localStorage.setItem("overseer-compose-setup", "skipped");
             setComposeSkipped(true);
+          }}
+          onSkipEngine={() => {
+            window.sessionStorage.setItem("overseer-engine-setup", "skipped");
+            setEngineSetupSkipped(true);
+            setStartupStep(undefined);
+            if (startupRoute) selectResourcePath(resourcePath);
           }}
           operation={startupOperation}
           preview={Boolean(startupPreview)}
@@ -1542,6 +1569,7 @@ function AppContent() {
           busy={runtimeBusy || Boolean(submitting)}
           instance={runtimeInstanceHeaderState.instance}
           onDelete={deleteRuntimeInstance}
+          onForceStop={(name) => mutateRuntimeInstance(name, "force-stop")}
           onPrepare={(name) => mutateRuntimeInstance(name, "prepare")}
           onSelect={(name) => mutateRuntimeInstance(name, "select")}
           onStart={(name) => mutateRuntimeInstance(name, "start")}
@@ -1813,6 +1841,7 @@ function AppContent() {
               <RuntimeInstancesPage
                 busy={runtimeBusy || Boolean(submitting)}
                 onDelete={deleteRuntimeInstance}
+                onForceStop={(name) => mutateRuntimeInstance(name, "force-stop")}
                 onOpenDetail={(name) => selectResourcePath(runtimeInstanceDetailPath(name))}
                 onPrepare={(name) => mutateRuntimeInstance(name, "prepare")}
                 onSelect={(name) => mutateRuntimeInstance(name, "select")}

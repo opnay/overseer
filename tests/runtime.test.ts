@@ -1642,6 +1642,65 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
     ).toBe(false);
   });
 
+  it("force stops a broken instance", async () => {
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list" && args.includes("--json")) {
+        return { stderr: "", stdout: limaDetails({ status: "Broken" }) };
+      }
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await runtime.forceStopRuntimeInstance("overseer");
+
+    expect(command).toHaveBeenCalledWith(
+      "limactl",
+      ["stop", "--force", "overseer"],
+      expect.objectContaining({ timeoutMs: 120_000 }),
+    );
+  });
+
+  it("force restarts a broken engine in force-stop, start, ready order", async () => {
+    let status = "Broken";
+    const lifecycle: string[] = [];
+    const docker = dockerContextResponder();
+    const command: CommandRunner = vi.fn(async (executable, args) => {
+      if (executable === "limactl" && args[0] === "list") {
+        return {
+          stderr: "",
+          stdout: args.includes("--json")
+            ? limaDetails({ status })
+            : `overseer\t${status}\t/tmp/overseer\n`,
+        };
+      }
+      if (executable === "limactl" && args[0] === "stop") {
+        lifecycle.push("force-stop");
+        status = "Stopped";
+      }
+      if (executable === "limactl" && args[0] === "start") {
+        lifecycle.push("start");
+        status = "Running";
+      }
+      if (executable === "docker") {
+        if (args.includes("version")) lifecycle.push("ready");
+        return docker(args);
+      }
+      return { stderr: "", stdout: "" };
+    });
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.forceRestartRuntime()).resolves.toMatchObject({
+      dockerVersion: "29.7.2",
+      phase: "running",
+    });
+    expect(lifecycle.slice(0, 3)).toEqual(["force-stop", "start", "ready"]);
+    expect(command).toHaveBeenCalledWith(
+      "limactl",
+      ["stop", "--force", "overseer"],
+      expect.objectContaining({ timeoutMs: 120_000 }),
+    );
+  });
+
   it("rejects unavailable QEMU before stopping the existing VM", async () => {
     const command: CommandRunner = vi.fn(async (executable) => {
       if (executable.startsWith("qemu-system-")) {
