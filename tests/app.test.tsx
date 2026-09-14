@@ -3199,7 +3199,11 @@ describe("App", () => {
       within(imageInspect).getByRole("button", { name: "원본 JSON 보기 옵션" }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "이미지 목록" }));
+    await user.click(
+      within(screen.getByRole("navigation", { name: "현재 위치" })).getByRole("link", {
+        name: "이미지",
+      }),
+    );
     expect(window.location.pathname).toBe("/images");
   });
 
@@ -3410,7 +3414,11 @@ describe("App", () => {
     await user.click(within(containerGroup).getByRole("button", { name: "라벨" }));
     expect(screen.getByText("team")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "컨테이너 목록" }));
+    await user.click(
+      within(screen.getByRole("navigation", { name: "현재 위치" })).getByRole("link", {
+        name: "컨테이너",
+      }),
+    );
 
     expect(window.location.pathname).toBe("/containers");
     expect(screen.getByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
@@ -3575,6 +3583,20 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/containers/container-id");
     expect(await screen.findByRole("heading", { name: "개요", level: 2 })).toBeInTheDocument();
     expect(screen.getByText("Compose에서 관리하는 컨테이너입니다.")).toBeInTheDocument();
+    const breadcrumbs = screen.getByRole("navigation", { name: "현재 위치" });
+    expect(within(breadcrumbs).getByRole("link", { name: "Compose" })).toHaveAttribute(
+      "href",
+      "/compose",
+    );
+    expect(within(breadcrumbs).getByRole("link", { name: "demo-stack" })).toHaveAttribute(
+      "href",
+      "/compose/demo-stack",
+    );
+    expect(within(breadcrumbs).getByText("demo-stack-web-1")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.queryByRole("button", { name: "컨테이너 목록" })).not.toBeInTheDocument();
   });
 
   it("shows URL Compose update details and actions only for remote projects", async () => {
@@ -4416,7 +4438,11 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "볼륨 원본 JSON" })).toHaveTextContent(
       '"Name": "app-data"',
     );
-    await user.click(screen.getByRole("button", { name: "볼륨 목록" }));
+    await user.click(
+      within(screen.getByRole("navigation", { name: "현재 위치" })).getByRole("link", {
+        name: "볼륨",
+      }),
+    );
 
     await user.click(screen.getByRole("link", { name: "네트워크" }));
 
@@ -4446,7 +4472,11 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "네트워크 원본 JSON" })).toHaveTextContent(
       '"Name": "bridge"',
     );
-    await user.click(screen.getByRole("button", { name: "네트워크 목록" }));
+    await user.click(
+      within(screen.getByRole("navigation", { name: "현재 위치" })).getByRole("link", {
+        name: "네트워크",
+      }),
+    );
     expect(window.location.pathname).toBe("/networks");
   });
 

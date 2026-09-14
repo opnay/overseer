@@ -1,5 +1,6 @@
 import { Alert } from "@opnay/city-ds-react/alert";
 import { Badge } from "@opnay/city-ds-react/badge";
+import { Breadcrumbs } from "@opnay/city-ds-react/breadcrumbs";
 import { Button } from "@opnay/city-ds-react/button";
 import { Dialog } from "@opnay/city-ds-react/dialog";
 import { Drawer } from "@opnay/city-ds-react/drawer";
@@ -9,7 +10,6 @@ import { Toolbar } from "@opnay/city-ds-react/toolbar";
 import { Toaster, toast } from "@opnay/city-ds-react/toast";
 import { Tooltip } from "@opnay/city-ds-react/tooltip";
 import {
-  ArrowLeft,
   ArrowDownToLine,
   Boxes,
   Check,
@@ -1394,6 +1394,18 @@ function AppContent() {
                 ? "Docker 네트워크의 연결 관계와 원본 구성을 탐색합니다."
                 : "Docker 볼륨의 저장 위치와 원본 구성을 탐색합니다."
     : currentRoute.description;
+  const detailBreadcrumbs: Array<{ label: string; path?: AppLocationPath }> = currentDetail
+    ? currentDetail.type === "container" && currentContainer?.composeProject
+      ? [
+          { label: "Compose", path: "/compose" as const },
+          {
+            label: currentContainer.composeProject,
+            path: composeProjectDetailPath(currentContainer.composeProject),
+          },
+          { label: pageLabel },
+        ]
+      : [{ label: currentRoute.label, path: currentDetail.parentPath }, { label: pageLabel }]
+    : [];
   const runComposeAction = (name: string, action: ComposeProjectAction) =>
     mutate({
       key: `compose-${name}-${action}`,
@@ -1723,34 +1735,43 @@ function AppContent() {
         <main className="overseer-main" id="main-content">
           <section className="overseer-page-header">
             <div>
-              <p>{pageEyebrow}</p>
+              {currentDetail ? (
+                <Breadcrumbs.Root aria-label="현재 위치">
+                  <Breadcrumbs.List>
+                    {detailBreadcrumbs.map((item, index) => {
+                      const path = item.path;
+                      const collapseOnMobile =
+                        navigationMode === "mobile" &&
+                        detailBreadcrumbs.length === 3 &&
+                        index === 1;
+                      return (
+                        <Breadcrumbs.Item key={`${item.label}-${index}`}>
+                          {index > 0 ? <Breadcrumbs.Separator /> : null}
+                          {collapseOnMobile ? (
+                            <Breadcrumbs.Ellipsis aria-label={`${item.label} 경로 생략`} />
+                          ) : !path ? (
+                            <Breadcrumbs.Page>{item.label}</Breadcrumbs.Page>
+                          ) : (
+                            <Breadcrumbs.Link
+                              href={path}
+                              onClick={(event) => followLink(event, () => selectResourcePath(path))}
+                            >
+                              {item.label}
+                            </Breadcrumbs.Link>
+                          )}
+                        </Breadcrumbs.Item>
+                      );
+                    })}
+                  </Breadcrumbs.List>
+                </Breadcrumbs.Root>
+              ) : (
+                <p>{pageEyebrow}</p>
+              )}
               <h1 className="city-text-page-title">{pageLabel}</h1>
               <span className="city-text-supporting">{pageDescription}</span>
             </div>
             <div className="overseer-page-actions">
               <div className="overseer-page-utilities">
-                {currentDetail ? (
-                  <Button
-                    onClick={() => selectResourcePath(currentDetail.parentPath)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <ArrowLeft aria-hidden="true" size={14} />
-                    {currentDetail.type === "compose"
-                      ? "Compose 목록"
-                      : currentDetail.type === "container"
-                        ? "컨테이너 목록"
-                        : currentDetail.type === "image"
-                          ? "이미지 목록"
-                          : currentDetail.type === "imageRepository"
-                            ? "이미지 저장소 목록"
-                            : currentDetail.type === "instance"
-                              ? "인스턴스 목록"
-                              : currentDetail.type === "network"
-                                ? "네트워크 목록"
-                                : "볼륨 목록"}
-                  </Button>
-                ) : null}
                 <Button
                   onClick={() => {
                     if (resourcePath === "/operations") {
