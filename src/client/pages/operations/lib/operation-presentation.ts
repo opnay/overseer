@@ -31,6 +31,7 @@ export function operationListTime(value: string): string {
 export const operationResourceLabel = {
   compose: "Compose",
   container: "컨테이너",
+  dockerPlugin: "Docker CLI 플러그인",
   image: "이미지",
   imageRepository: "이미지 저장소",
   network: "네트워크",

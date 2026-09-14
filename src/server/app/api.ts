@@ -3,6 +3,10 @@ import type { RuntimeController } from "../application/overseer-controller.ts";
 import { ExpectedError } from "../core/errors.ts";
 import { LimaDockerRuntime } from "../infrastructure/lima/lima-docker-runtime.ts";
 import {
+  DockerCliPluginService,
+  type DockerCliPluginController,
+} from "../modules/docker-plugins/index.ts";
+import {
   ImageRepositoryService,
   SqliteImageRepositoryStore,
   type ImageRepositoryController,
@@ -21,6 +25,7 @@ import {
 import { type EnqueueApiOperation } from "./http.ts";
 import { registerComposeRoutes } from "./routes/compose-routes.ts";
 import { registerContainerRoutes } from "./routes/container-routes.ts";
+import { registerDockerPluginRoutes } from "./routes/docker-plugin-routes.ts";
 import { registerImageRoutes } from "./routes/image-routes.ts";
 import { registerImageRepositoryRoutes } from "./routes/image-repository-routes.ts";
 import { registerNetworkRoutes } from "./routes/network-routes.ts";
@@ -49,6 +54,7 @@ export function createApi(
   operations = new OperationQueue(),
   startup: StartupPrerequisiteController = new StartupPrerequisiteService(),
   imageRepositories: ImageRepositoryController = new ImageRepositoryService(),
+  dockerPlugins: DockerCliPluginController = new DockerCliPluginService(),
 ) {
   const app = new Hono();
   const enqueue: EnqueueApiOperation = (context, input, body, retryable = true) =>
@@ -67,6 +73,7 @@ export function createApi(
   registerOperationRoutes(app, operations);
   registerComposeRoutes(app, controller, enqueue);
   registerContainerRoutes(app, controller, enqueue);
+  registerDockerPluginRoutes(app, dockerPlugins, enqueue);
   registerImageRepositoryRoutes(app, imageRepositories, enqueue);
   registerImageRoutes(app, controller, enqueue);
   registerVolumeRoutes(app, controller, enqueue);

@@ -267,7 +267,7 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(8);
+    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(9);
     expect(container.querySelector(".overseer-loading-table")).toBeInTheDocument();
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
   });
@@ -2574,6 +2574,7 @@ describe("App", () => {
     const workloads = within(navigation).getByRole("group", { name: "워크로드" });
     const resources = within(navigation).getByRole("group", { name: "리소스" });
     const external = within(navigation).getByRole("group", { name: "외부 공급자" });
+    const extensions = within(navigation).getByRole("group", { name: "확장" });
     const operations = within(navigation).getByRole("group", { name: "운영" });
     const virtualization = within(navigation).getByRole("group", { name: "가상화" });
     expect(
@@ -2598,11 +2599,91 @@ describe("App", () => {
       "href",
       "/image-repositories",
     );
+    expect(within(extensions).getByRole("link", { name: "Docker CLI 플러그인" })).toHaveAttribute(
+      "href",
+      "/docker-plugins",
+    );
     expect(external.compareDocumentPosition(operations) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(within(navigation).queryByRole("link", { name: "설정" })).not.toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "유틸리티 메뉴" })).toHaveTextContent("설정");
+  });
+
+  it("shows Docker CLI plugins and requests a Buildx installation", async () => {
+    const user = userEvent.setup();
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      runtime: {
+        instance: "overseer",
+        message: "중지됨",
+        phase: "stopped",
+      },
+      volumes: [],
+    };
+    const accepted = operation("queued", {
+      kind: "docker.plugin.install",
+      target: { id: "buildx", name: "Docker Buildx", resource: "dockerPlugin" },
+      title: "Docker Buildx 설치",
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      if (url.endsWith("/api/docker-cli/plugins/buildx/install") && init?.method === "POST") {
+        return jsonResponse({ operation: accepted }, 202);
+      }
+      if (url.endsWith("/api/docker-cli/plugins")) {
+        return jsonResponse({
+          plugins: [
+            {
+              description: "BuildKit 기반 빌드",
+              id: "buildx",
+              installAvailable: true,
+              installed: false,
+              label: "Docker Buildx",
+              management: "extensions",
+              source: "homebrew",
+            },
+            {
+              description: "Compose 프로젝트 실행",
+              id: "compose",
+              installAvailable: false,
+              installed: true,
+              label: "Docker Compose",
+              management: "startup",
+              source: "homebrew",
+              version: "2.40.0",
+            },
+          ],
+        });
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/docker-plugins");
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Docker CLI 플러그인", level: 1 }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("table", { name: "Docker CLI 플러그인 목록" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "설치" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/api/docker-cli/plugins/buildx/install") &&
+            init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
   });
 
   it("uses an accessible icon rail at tablet width", async () => {

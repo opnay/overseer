@@ -25,6 +25,7 @@ import {
   Moon,
   Network as NetworkIcon,
   Play,
+  Puzzle,
   Radio,
   RefreshCw,
   RotateCcw,
@@ -46,6 +47,7 @@ import type {
   CreateRuntimeInstanceInput,
   DashboardSnapshot,
   DeleteRuntimeInstanceInput,
+  DockerCliPluginId,
   DockerEngineConfiguration,
   ImageRepositorySummary,
   ImageRepositoryDetail,
@@ -109,6 +111,11 @@ const ImageViewToggle = lazy(() =>
 const ImageRepositoriesPage = lazy(() =>
   import("@/pages/image-repositories").then((module) => ({
     default: module.ImageRepositoriesPage,
+  })),
+);
+const DockerCliPluginsPage = lazy(() =>
+  import("@/pages/docker-plugins").then((module) => ({
+    default: module.DockerCliPluginsPage,
   })),
 );
 const ImageRepositoryDetailPage = lazy(() =>
@@ -201,6 +208,7 @@ const CreateBuilderComposeDialog = lazy(() =>
 const resourceRouteIcon = {
   "/compose": Layers3,
   "/containers": Boxes,
+  "/docker-plugins": Puzzle,
   "/images": HardDrive,
   "/image-repositories": Cloud,
   "/instances": Server,
@@ -815,6 +823,7 @@ function AppContent() {
   const engineManagementRoute =
     requiredStartupStep === "engine" &&
     (resourcePath === "/settings" ||
+      resourcePath === "/docker-plugins" ||
       resourcePath.startsWith("/image-repositories") ||
       resourcePath.startsWith("/instances"));
   const entryStartupStep =
@@ -856,6 +865,7 @@ function AppContent() {
       !requiredStartupStep ||
       (requiredStartupStep === "engine" &&
         (resourcePath === "/settings" ||
+          resourcePath === "/docker-plugins" ||
           resourcePath.startsWith("/image-repositories") ||
           resourcePath.startsWith("/instances")))
     ) {
@@ -884,6 +894,7 @@ function AppContent() {
           await refresh(true);
           return;
         }
+        if (resource === "dockerPlugin" || resource === "imageRepository") return;
         if (resource === "compose") {
           const { projects } = await apiRequest<{ projects: ComposeProjectSummary[] }>(
             "/compose/projects",
@@ -954,6 +965,10 @@ function AppContent() {
   const imageRepositoryOperationRefreshToken = latestFinishedImageRepositoryOperation
     ? `${latestFinishedImageRepositoryOperation.id}:${latestFinishedImageRepositoryOperation.status}`
     : "";
+  const dockerPluginOperationRefreshToken = operations
+    .filter(({ target }) => target.resource === "dockerPlugin")
+    .map(({ id, status }) => `${id}:${status}`)
+    .join("|");
 
   useEffect(() => {
     if (!hasActiveOperations) return;
@@ -1103,6 +1118,15 @@ function AppContent() {
       key: `startup-update-${target}`,
       request: () =>
         apiRequest<OperationAccepted>(`/startup/prerequisites/${target}/update`, {
+          method: "POST",
+        }),
+    });
+
+  const installDockerPlugin = (id: DockerCliPluginId) =>
+    mutate({
+      key: `docker-plugin-install-${id}`,
+      request: () =>
+        apiRequest<OperationAccepted>(`/docker-cli/plugins/${id}/install`, {
           method: "POST",
         }),
     });
@@ -1733,7 +1757,11 @@ function AppContent() {
                       void loadOperations();
                       return;
                     }
-                    if (resourcePath === "/settings" || resourcePath.startsWith("/instances")) {
+                    if (
+                      resourcePath === "/settings" ||
+                      resourcePath === "/docker-plugins" ||
+                      resourcePath.startsWith("/instances")
+                    ) {
                       setSettingsRefreshRevision((value) => value + 1);
                     }
                     if (currentDetail) {
@@ -1794,6 +1822,7 @@ function AppContent() {
           {runtime &&
           !runtimeRunning &&
           resourcePath !== "/settings" &&
+          resourcePath !== "/docker-plugins" &&
           !resourcePath.startsWith("/image-repositories") &&
           !resourcePath.startsWith("/instances") ? (
             <Alert.Root appearance="subtle" tone={runtimeStatus.tone}>
@@ -1809,6 +1838,7 @@ function AppContent() {
           !runtimeRunning &&
           resourcePath !== "/operations" &&
           resourcePath !== "/settings" &&
+          resourcePath !== "/docker-plugins" &&
           !resourcePath.startsWith("/image-repositories") &&
           !resourcePath.startsWith("/instances") ? (
             <section className="overseer-runtime-empty">
@@ -1886,6 +1916,16 @@ function AppContent() {
                 }
                 onRetry={retryOperation}
                 refreshToken={operationsRefreshToken}
+              />
+            </Suspense>
+          ) : null}
+
+          {resourcePath === "/docker-plugins" ? (
+            <Suspense fallback={<Skeleton className="overseer-loading-table" />}>
+              <DockerCliPluginsPage
+                isBusy={(plugin) => targetBusy("dockerPlugin", plugin.id)}
+                onInstall={installDockerPlugin}
+                refreshToken={`${settingsRefreshRevision}:${dockerPluginOperationRefreshToken}`}
               />
             </Suspense>
           ) : null}

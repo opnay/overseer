@@ -329,6 +329,17 @@
     gap: var(--city-space-2);
   }
 
+  .overseer-plugin-identity {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-plugin-identity > span {
+    color: var(--city-color-muted-foreground);
+    white-space: normal;
+  }
+
   .overseer-page-actions,
   .overseer-page-utilities,
   .overseer-primary-action {

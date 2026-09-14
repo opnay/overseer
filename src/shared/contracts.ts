@@ -648,6 +648,7 @@ export type OperationKind =
   | "container.start"
   | "container.stop"
   | "container.update"
+  | "docker.plugin.install"
   | "image.pull"
   | "image.remove"
   | "image.tag.remove"
@@ -673,12 +674,31 @@ export type OperationKind =
 export type OperationResource =
   | "compose"
   | "container"
+  | "dockerPlugin"
   | "image"
   | "imageRepository"
   | "network"
   | "runtime"
   | "startup"
   | "volume";
+
+export type DockerCliPluginId = "buildx" | "compose";
+
+export interface DockerCliPluginSummary {
+  description: string;
+  id: DockerCliPluginId;
+  installAvailable: boolean;
+  installUnavailableReason?: string;
+  installed: boolean;
+  label: string;
+  management: "extensions" | "startup";
+  source: "homebrew";
+  version?: string;
+}
+
+export interface DockerCliPluginSnapshot {
+  plugins: DockerCliPluginSummary[];
+}
 
 export interface OperationTarget {
   id?: string;

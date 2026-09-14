@@ -12,6 +12,7 @@ const MAX_OPERATION_PAGE_SIZE = 100;
 const operationResources = new Set<OperationResource>([
   "compose",
   "container",
+  "dockerPlugin",
   "image",
   "network",
   "runtime",

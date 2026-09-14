@@ -8,12 +8,13 @@ import {
 import type { RuntimeController } from "../src/server/application/overseer-controller.ts";
 import { ExpectedError } from "../src/server/core/errors.ts";
 import { OperationQueue } from "../src/server/modules/operations/index.ts";
+import type { DockerCliPluginController } from "../src/server/modules/docker-plugins/index.ts";
 import {
   ImageRepositoryService,
   MemoryImageRepositoryStore,
 } from "../src/server/modules/image-repositories/index.ts";
 import type { StartupPrerequisiteController } from "../src/server/modules/startup/index.ts";
-import type { StartupSnapshot } from "../src/shared/contracts.ts";
+import type { DockerCliPluginSnapshot, StartupSnapshot } from "../src/shared/contracts.ts";
 
 function createController(): RuntimeController {
   return {
@@ -373,6 +374,45 @@ describe("API boundary", () => {
     await vi.waitFor(() =>
       expect(startup.update).toHaveBeenCalledWith("docker", expect.any(Object)),
     );
+  });
+
+  it("reports Docker CLI plugins and enqueues Buildx installation", async () => {
+    const plugins: DockerCliPluginController = {
+      getSnapshot: vi.fn(async (): Promise<DockerCliPluginSnapshot> => ({
+        plugins: [
+          {
+            description: "BuildKit 기반 빌드",
+            id: "buildx",
+            installAvailable: true,
+            installed: false,
+            label: "Docker Buildx",
+            management: "extensions",
+            source: "homebrew",
+          },
+        ],
+      })),
+      install: vi.fn(async () => undefined),
+    };
+    const app = createApi(createController(), new OperationQueue(), undefined, undefined, plugins);
+
+    const snapshot = await app.request("/docker-cli/plugins", { headers: localHeaders });
+    expect(snapshot.status).toBe(200);
+    await expect(snapshot.json()).resolves.toMatchObject({ plugins: [{ id: "buildx" }] });
+
+    const install = await app.request("/docker-cli/plugins/buildx/install", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(install.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(plugins.install).toHaveBeenCalledWith("buildx", expect.any(Object)),
+    );
+
+    const unsupported = await app.request("/docker-cli/plugins/compose/install", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(unsupported.status).toBe(400);
   });
 
   it("does not enqueue automatic Homebrew installation", async () => {

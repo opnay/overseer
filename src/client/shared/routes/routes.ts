@@ -3,6 +3,7 @@ export const APP_ROUTE_GROUPS = [
   { id: "resources", label: "리소스" },
   { id: "virtualization", label: "가상화" },
   { id: "external", label: "외부 공급자" },
+  { id: "extensions", label: "확장" },
   { id: "operations", label: "운영" },
 ] as const;
 
@@ -50,6 +51,13 @@ export const APP_ROUTES = [
     group: "external",
     label: "이미지 저장소",
     path: "/image-repositories",
+  },
+  {
+    description: "Docker CLI에 연결된 확장 플러그인의 설치 상태와 버전을 관리합니다.",
+    eyebrow: "Docker 도구",
+    group: "extensions",
+    label: "Docker CLI 플러그인",
+    path: "/docker-plugins",
   },
   {
     description: "Overseer에서 요청한 모든 Docker 작업과 결과를 확인합니다.",
