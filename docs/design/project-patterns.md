@@ -35,7 +35,7 @@
 
 ### 전역 탐색
 
-- 첫 열은 도커·엔진·공급자·CLI 영역 선택입니다. 영역 선택은 두 번째 열의 메뉴만 바꾸며, 메뉴 링크를 선택할 때 본문과 URL이 이동합니다.
+- 첫 열은 도커·엔진·공급자·CLI 영역 선택입니다. 영역 선택은 해당 영역의 첫 페이지로 이동하고 본문·URL·현재 메뉴를 함께 갱신합니다. 도커는 Compose, 엔진은 인스턴스, 공급자는 이미지 저장소, CLI는 도구로 이동합니다.
 - 도커는 Compose·컨테이너·이미지·볼륨·네트워크, 엔진은 인스턴스·엔진 설정·네트워크 설정, 공급자는 이미지 저장소, CLI는 도구를 제공합니다.
 - 작업 기록·일반 설정은 첫 열 하단의 공통 링크입니다.
 - 상세 화면의 두 번째 열은 목록 복귀와 리소스 섹션을 제공합니다. 설정은 선택 영역의 설정 섹션을 표시합니다.
@@ -100,6 +100,8 @@
 `Page Header > Feedback > DataTableRegion > Table` 순서를 사용합니다. 큰 결과 집합은 같은 데이터 영역 안에서 `FilterBar > Table > Pagination` 순서로 구성하고 서버 조회도 같은 필터·페이지 계약을 사용합니다.
 
 - 데이터 영역은 outline 또는 raised surface 하나만 사용합니다.
+- CLI 도구 안내처럼 표 위에 유지하는 설명은 컨테이너 header에 배치하고 필터 header와 같은 gutter를 사용합니다.
+- 필터·표·페이지네이션을 같은 테두리 컨테이너에 넣으면 컨테이너의 header·footer가 inline `space-4` gutter를 소유합니다. `FilterBar` 자체에는 바깥 padding을 추가하지 않습니다. 필터 header는 block `space-3`을 사용합니다.
 - Table은 `sm` 크기와 compact 정보 밀도를 사용합니다.
 - 넓은 주요 열은 하나만 두고 나머지는 콘텐츠 기반 최소 폭을 사용합니다.
 - 빈 상태는 `Table.StateRow` 안의 compact `EmptyState`로 표시합니다.
@@ -200,3 +202,5 @@ ResourceCollection의 Table 구성, ResourceDetail의 summary·section 내용, S
 - 콘텐츠: 빈 데이터, 긴 이름·경로, 로딩, 오류·재시도, 비활성, 저장·작업 진행
 - 구조: 모든 route가 하나의 패턴에 매핑되고 DOM 순서와 시각 순서가 일치
 - 기술: FSD 경계 테스트, 타입 검사, 전체 테스트와 production build 통과
+
+City DS를 갱신할 때 제거된 API를 맞추는 것과 별도로 필터·설명 header의 실제 padding, 표와의 정렬선, 필터 조건 wrapper의 너비, Dialog·Drawer의 본문 padding을 브라우저에서 확인합니다. 타입·빌드 통과만으로 여백 호환성을 판단하지 않습니다.

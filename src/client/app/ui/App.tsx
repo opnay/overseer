@@ -1599,7 +1599,6 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
           currentPath={currentRoute.path}
           detail={currentDetail}
           detailLabel={pageLabel}
-          locationKey={`${resourcePath}${navigationSearch}`}
           mode={navigationMode}
           onNavigate={selectNavigationHref}
           settingsSection={settingsSection}

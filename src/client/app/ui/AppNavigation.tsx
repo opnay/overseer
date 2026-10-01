@@ -19,7 +19,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { followLink } from "@/shared/lib/follow-link";
 import {
   APP_ROUTES,
@@ -125,7 +125,6 @@ export function AppSidebar({
   currentPath,
   detail,
   detailLabel,
-  locationKey,
   mode,
   onNavigate,
   settingsSection,
@@ -133,7 +132,6 @@ export function AppSidebar({
   currentPath: AppPath;
   detail?: AppDetailLocation;
   detailLabel: string;
-  locationKey: string;
   mode: "desktop" | "rail";
   onNavigate(href: string): void;
   settingsSection: string;
@@ -141,10 +139,8 @@ export function AppSidebar({
   const route = getAppRoute(currentPath);
   const currentGroup: AppRouteGroup =
     currentPath === "/settings" && settingsSection !== "general" ? "engine" : route.group;
-  const [browsing, setBrowsing] = useState<{ group: AppRouteGroup; locationKey: string }>();
-  useEffect(() => setBrowsing(undefined), [locationKey]);
-  const group = browsing?.locationKey === locationKey ? browsing.group : currentGroup;
-  const contextVisible = group === currentGroup && Boolean(detail || currentPath === "/settings");
+  const group = currentGroup;
+  const contextVisible = Boolean(detail || currentPath === "/settings");
   const groupLabel = APP_ROUTE_GROUPS.find(({ id }) => id === group)?.label;
   const title =
     contextVisible && detail
@@ -172,7 +168,7 @@ export function AppSidebar({
                       aria-label={category.label}
                       aria-pressed={selected}
                       iconOnly
-                      onClick={() => setBrowsing({ group: category.id, locationKey })}
+                      onClick={() => onNavigate(groupItems(category.id)[0]!.href)}
                       size="xlg"
                       variant={selected ? "secondary" : "ghost"}
                     />

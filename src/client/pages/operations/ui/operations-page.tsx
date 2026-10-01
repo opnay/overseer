@@ -178,65 +178,67 @@ export function OperationsPage({
   return (
     <>
       <section className="overseer-panel" id="operations">
-        <FilterBar
-          actions={
-            <Button disabled={!hasFilters} onClick={resetFilters} size="sm" variant="outline">
-              <RotateCcw aria-hidden="true" size={14} />
-              필터 초기화
-            </Button>
-          }
-          className="overseer-operation-filters"
-          density="compact"
-        >
-          <form
-            className="overseer-operation-search-filter"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setQuery(draftQuery.trim());
-              setPage(1);
-            }}
+        <header className="overseer-operation-filter-region">
+          <FilterBar
+            actions={
+              <Button disabled={!hasFilters} onClick={resetFilters} size="sm" variant="outline">
+                <RotateCcw aria-hidden="true" size={14} />
+                필터 초기화
+              </Button>
+            }
+            className="overseer-operation-filters"
+            density="compact"
           >
-            <SearchInput.Root
-              loading={loading}
-              onValueChange={setDraftQuery}
-              size="sm"
-              value={draftQuery}
+            <form
+              className="overseer-operation-search-filter"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setQuery(draftQuery.trim());
+                setPage(1);
+              }}
             >
-              <SearchInput.Group>
-                <SearchInput.Input aria-label="작업 검색" placeholder="작업명 또는 대상" />
-                <SearchInput.Clear
-                  aria-label="검색어 지우기"
-                  onClick={() => {
-                    setDraftQuery("");
-                    setQuery("");
-                    setPage(1);
-                  }}
-                />
-                <SearchInput.Submit aria-label="검색" iconOnly>
-                  <Search aria-hidden="true" size={14} />
-                </SearchInput.Submit>
-              </SearchInput.Group>
-            </SearchInput.Root>
-          </form>
-          <OperationFilterSelect
-            label="상태"
-            onChange={(value) => {
-              setStatus(value);
-              setPage(1);
-            }}
-            options={statusOptions}
-            value={status}
-          />
-          <OperationFilterSelect
-            label="리소스"
-            onChange={(value) => {
-              setResource(value);
-              setPage(1);
-            }}
-            options={resourceOptions}
-            value={resource}
-          />
-        </FilterBar>
+              <SearchInput.Root
+                loading={loading}
+                onValueChange={setDraftQuery}
+                size="sm"
+                value={draftQuery}
+              >
+                <SearchInput.Group>
+                  <SearchInput.Input aria-label="작업 검색" placeholder="작업명 또는 대상" />
+                  <SearchInput.Clear
+                    aria-label="검색어 지우기"
+                    onClick={() => {
+                      setDraftQuery("");
+                      setQuery("");
+                      setPage(1);
+                    }}
+                  />
+                  <SearchInput.Submit aria-label="검색" iconOnly>
+                    <Search aria-hidden="true" size={14} />
+                  </SearchInput.Submit>
+                </SearchInput.Group>
+              </SearchInput.Root>
+            </form>
+            <OperationFilterSelect
+              label="상태"
+              onChange={(value) => {
+                setStatus(value);
+                setPage(1);
+              }}
+              options={statusOptions}
+              value={status}
+            />
+            <OperationFilterSelect
+              label="리소스"
+              onChange={(value) => {
+                setResource(value);
+                setPage(1);
+              }}
+              options={resourceOptions}
+              value={resource}
+            />
+          </FilterBar>
+        </header>
 
         {loadError ? (
           <Alert.Root className="overseer-operation-load-state" tone="destructive">

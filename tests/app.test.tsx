@@ -1357,12 +1357,10 @@ describe("App", () => {
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.replaceState(null, "", "/settings");
+    window.history.replaceState(null, "", "/settings?section=engine");
     render(<App />);
 
-    await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(screen.getByRole("button", { name: "엔진" }));
-    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
+    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     expect(
       within(navigation).queryByRole("link", { name: "인스턴스 설정" }),
     ).not.toBeInTheDocument();
@@ -1440,12 +1438,10 @@ describe("App", () => {
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.replaceState(null, "", "/settings");
+    window.history.replaceState(null, "", "/settings?section=engine");
     render(<App />);
 
-    await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(screen.getByRole("button", { name: "엔진" }));
-    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
+    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
     await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
     expect(window.location.search).toBe("?section=network");
     expect(await screen.findByLabelText("DNS 서버")).toBeInTheDocument();
@@ -1533,13 +1529,9 @@ describe("App", () => {
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.history.replaceState(null, "", "/settings");
+    window.history.replaceState(null, "", "/settings?section=network");
     render(<App />);
 
-    await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
-    await user.click(screen.getByRole("button", { name: "엔진" }));
-    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
-    await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
     expect(await screen.findByLabelText("Docker Engine 설정 불러오는 중")).toBeInTheDocument();
     expect(timeoutSpy).toHaveBeenCalledWith(15_000);
 
@@ -2616,7 +2608,7 @@ describe("App", () => {
     expect(await screen.findByText("전체 25개 · 1 / 2페이지")).toBeInTheDocument();
   });
 
-  it("switches sidebar groups without moving the page and navigates on link selection", async () => {
+  it("opens each category first page and keeps selection synchronized with the URL", async () => {
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
       containers: [],
@@ -2632,11 +2624,20 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/api/operations")
-          ? jsonResponse({ operations: [] })
-          : jsonResponse(dashboard),
-      ),
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith("/api/runtime/instances")) return jsonResponse(runtimeInstancesSnapshot());
+        if (url.endsWith("/api/runtime/configuration"))
+          return jsonResponse(dockerEngineSnapshot("instance", true));
+        if (url.endsWith("/api/runtime/engine/configuration"))
+          return jsonResponse(dockerDaemonSnapshot());
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+        if (url.endsWith("/api/image-repositories")) return jsonResponse({ repositories: [] });
+        if (url.endsWith("/api/docker-cli/plugins")) return jsonResponse({ plugins: [] });
+        return jsonResponse(dashboard);
+      }),
     );
     render(<App />);
     await screen.findByText("컨테이너가 없습니다.");
@@ -2654,8 +2655,8 @@ describe("App", () => {
       "true",
     );
     await user.click(within(sidebar).getByRole("button", { name: "엔진" }));
-    expect(screen.getByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/containers");
+    expect(await screen.findByRole("heading", { name: "인스턴스", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/instances");
     expect(within(navigation).getByRole("link", { name: "인스턴스" })).toHaveAttribute(
       "href",
       "/instances",
@@ -2668,12 +2669,25 @@ describe("App", () => {
       "href",
       "/settings?section=network",
     );
+    await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
+    expect(
+      await screen.findByRole("heading", { name: "네트워크 설정", level: 2 }),
+    ).toBeInTheDocument();
+    await user.click(within(sidebar).getByRole("button", { name: "엔진" }));
+    expect(await screen.findByRole("heading", { name: "인스턴스", level: 1 })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
     await user.click(within(sidebar).getByRole("button", { name: "공급자" }));
+    expect(
+      await screen.findByRole("heading", { name: "이미지 저장소", level: 1 }),
+    ).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/image-repositories");
     expect(within(navigation).getByRole("link", { name: "이미지 저장소" })).toHaveAttribute(
       "href",
       "/image-repositories",
     );
     await user.click(within(sidebar).getByRole("button", { name: "CLI" }));
+    expect(await screen.findByRole("heading", { name: "도구", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/docker-plugins");
     expect(within(navigation).getByRole("link", { name: "도구" })).toHaveAttribute(
       "href",
       "/docker-plugins",
@@ -2698,6 +2712,9 @@ describe("App", () => {
       "aria-pressed",
       "true",
     );
+    await user.click(within(sidebar).getByRole("button", { name: "도커" }));
+    expect(await screen.findByRole("heading", { name: "Compose", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/compose");
     await user.click(within(navigation).getByRole("link", { name: "이미지" }));
     expect(await screen.findByRole("heading", { name: "이미지", level: 1 })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/images");

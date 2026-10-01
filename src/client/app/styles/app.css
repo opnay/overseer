@@ -1428,13 +1428,24 @@
     gap: var(--city-space-0-5);
   }
 
-  .overseer-operation-filters {
+  .overseer-table-context,
+  .overseer-operation-filter-region {
+    padding: var(--city-space-3) var(--city-space-4);
     border-bottom: 1px solid var(--city-color-border);
   }
 
-  .overseer-operation-search-filter {
+  .overseer-table-context p {
+    margin: 0;
+  }
+
+  .overseer-operation-filters
+    [data-city-filter-bar-condition]:has(.overseer-operation-search-filter) {
     min-width: min(100%, 18rem);
     flex: 1;
+  }
+
+  .overseer-operation-search-filter {
+    width: 100%;
   }
 
   .overseer-operation-select-filter {
@@ -2563,6 +2574,17 @@
   }
 
   @media (max-width: 42rem) {
+    .overseer-operation-filters [data-city-filter-bar-content],
+    .overseer-operation-filters [data-city-filter-bar-condition] {
+      width: 100%;
+    }
+
+    .overseer-operation-filters
+      [data-city-filter-bar-condition]:has(.overseer-operation-search-filter) {
+      min-width: 0;
+      flex: none;
+    }
+
     .overseer-operation-search-filter,
     .overseer-operation-select-filter {
       width: 100%;
