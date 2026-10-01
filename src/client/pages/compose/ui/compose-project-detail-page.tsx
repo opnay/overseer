@@ -233,10 +233,7 @@ export function ComposeProjectDetailPage({
 
         {section === "services" ? (
           <section className="overseer-detail-section">
-            <DataTableRegion
-              hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-              label={`${detail.name} 서비스 컨테이너 표`}
-            >
+            <DataTableRegion label={`${detail.name} 서비스 컨테이너 표`}>
               <Table.Root
                 aria-label={`${detail.name} 서비스 컨테이너 목록`}
                 className="overseer-table overseer-table--compose-services"

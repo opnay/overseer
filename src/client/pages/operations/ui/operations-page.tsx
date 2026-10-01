@@ -185,7 +185,6 @@ export function OperationsPage({
               필터 초기화
             </Button>
           }
-          appearance="band"
           className="overseer-operation-filters"
           density="compact"
         >
@@ -259,11 +258,7 @@ export function OperationsPage({
 
         {snapshot ? (
           <>
-            <DataTableRegion
-              className="overseer-data-table-region"
-              hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-              label="작업 기록 표"
-            >
+            <DataTableRegion className="overseer-data-table-region" label="작업 기록 표">
               <Table.Root
                 aria-label="전체 작업 기록"
                 className="overseer-table overseer-table--operations"

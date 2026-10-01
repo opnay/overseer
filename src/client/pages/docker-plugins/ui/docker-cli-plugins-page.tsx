@@ -61,10 +61,8 @@ export function DockerCliPluginsPage({
 
   return (
     <section className="overseer-panel" id="docker-cli-plugins">
-      <DataTableRegion
-        hint="Docker에서 공식 지원하는 CLI 도구를 관리합니다."
-        label="Docker CLI 도구 표"
-      >
+      <p className="city-text-supporting">Docker에서 공식 지원하는 CLI 도구를 관리합니다.</p>
+      <DataTableRegion label="Docker CLI 도구 표">
         <Table.Root aria-label="Docker CLI 도구 목록" className="overseer-table" size="sm">
           <Table.Header>
             <Table.Row>

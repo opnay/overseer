@@ -122,10 +122,7 @@ function Containers({
   onOpenContainer(id: string): void;
 }) {
   return (
-    <DataTableRegion
-      hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-      label="네트워크 연결 컨테이너 표"
-    >
+    <DataTableRegion label="네트워크 연결 컨테이너 표">
       <Table.Root aria-label="연결 컨테이너 목록" className="overseer-table" size="sm">
         <Table.Caption className="overseer-table-caption">
           네트워크에 연결된 Docker 컨테이너

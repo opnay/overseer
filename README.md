@@ -18,7 +18,7 @@ QEMU VM 드라이버를 사용하려면 QEMU도 설치하십시오. 기본 VZ �
 brew install qemu
 ```
 
-City DS는 GitHub Packages의 `@opnay/city-ds-react@0.1.1`로 고정합니다. 최초 설치 전 `read:packages` 권한이 있는 GitHub 토큰을 사용자 npm 설정에 등록하십시오.
+City DS는 GitHub Packages의 `@opnay/city-ds-react@0.3.0`로 고정합니다. 최초 설치 전 `read:packages` 권한이 있는 GitHub 토큰을 사용자 npm 설정에 등록하십시오.
 
 ```bash
 gh auth refresh -s read:packages

@@ -92,11 +92,7 @@ export function ComposePage({
 }) {
   return (
     <section className="overseer-panel" id="compose">
-      <DataTableRegion
-        className="overseer-data-table-region"
-        hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-        label="Compose 프로젝트 표"
-      >
+      <DataTableRegion className="overseer-data-table-region" label="Compose 프로젝트 표">
         <Table.Root
           aria-label="Compose 프로젝트 목록"
           className="overseer-table overseer-table--compose-projects"

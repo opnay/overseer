@@ -99,11 +99,7 @@ export function RuntimeInstancesSettings({
       ) : null}
 
       {snapshot ? (
-        <DataTableRegion
-          className="overseer-data-table-region"
-          hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-          label="Lima 인스턴스 표"
-        >
+        <DataTableRegion className="overseer-data-table-region" label="Lima 인스턴스 표">
           <Table.Root aria-label="Lima 인스턴스 목록" className="overseer-table" size="sm">
             <Table.Caption className="overseer-table-caption">
               로컬 Lima VM의 상태, 가상화 방식과 할당 자원

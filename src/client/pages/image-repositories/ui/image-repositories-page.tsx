@@ -157,7 +157,7 @@ export function ImageRepositoriesPage({
 
   return (
     <section className="overseer-panel" id="image-repositories">
-      <DataTableRegion hint="모든 열을 보려면 표를 가로로 스크롤하십시오." label="이미지 저장소 표">
+      <DataTableRegion label="이미지 저장소 표">
         <Table.Root aria-label="이미지 저장소 목록" className="overseer-table" size="sm">
           <Table.Header>
             <Table.Row>

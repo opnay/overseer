@@ -293,10 +293,7 @@ export function ImageRepositoryDetailPage({
         </section>
       ) : (
         <section className="overseer-panel">
-          <DataTableRegion
-            hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-            label="이미지 저장소 태그 표"
-          >
+          <DataTableRegion label="이미지 저장소 태그 표">
             <Table.Root
               aria-label={`${repository.repository} 태그 목록`}
               className="overseer-table"

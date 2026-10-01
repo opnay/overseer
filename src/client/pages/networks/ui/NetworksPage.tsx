@@ -20,11 +20,7 @@ export function NetworksPage({
 }) {
   return (
     <section className="overseer-panel" id="networks">
-      <DataTableRegion
-        className="overseer-data-table-region"
-        hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
-        label="네트워크 표"
-      >
+      <DataTableRegion className="overseer-data-table-region" label="네트워크 표">
         <Table.Root
           aria-label="네트워크 목록"
           className="overseer-table overseer-table--networks"

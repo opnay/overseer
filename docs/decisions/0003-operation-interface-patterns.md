@@ -87,4 +87,4 @@
 
 ## 개발 환경
 
-City DS는 로컬 tarball 의존성이므로 `pnpm dev`와 `pnpm dev:direct`는 Vite `--force`로 optimized dependency를 다시 만듭니다. 이전 prebundle이 남아 최신 컴포넌트 크기·semantic surface를 가리는 상태를 허용하지 않습니다.
+City DS는 GitHub Packages의 고정 버전 의존성이며 `pnpm dev`와 `pnpm dev:direct`는 Vite `--force`로 optimized dependency를 다시 만듭니다. 이전 prebundle이 남아 최신 컴포넌트 크기·semantic surface를 가리는 상태를 허용하지 않습니다.

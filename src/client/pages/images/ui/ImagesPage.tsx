@@ -191,7 +191,6 @@ export function ImagesPage({
   return (
     <DataTableRegion
       className="overseer-data-table-region"
-      hint="모든 열을 보려면 표를 가로로 스크롤하십시오."
       label={tagView ? "이미지 태그 표" : "이미지 ID 표"}
     >
       <Table.Root

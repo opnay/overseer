@@ -22,8 +22,10 @@ describe("City DS source contract", () => {
         "- `src-tauri`의 파일 생성·이동·분리와 수명주기 변경 전에는 `docs/decisions/0008-macos-background-app-lifecycle.md`와 `docs/decisions/0009-tauri-shell-modules.md`를 읽고 Tauri shell 모듈 책임과 의존 방향을 지켜야 합니다.",
       ].join("\n"),
     );
-    expect(packageJson).toContain('"@opnay/city-ds-react": "0.2.0"');
-    expect(design).toContain("16px inline gutter");
+    expect(packageJson).toContain('"@opnay/city-ds-react": "0.3.0"');
+    expect(design).toContain(
+      "Table의 `size`는 셀 내부 밀도만 바꾸며 영역의 바깥 정렬선은 바꾸지 않습니다.",
+    );
     expect(design).toContain("Drawer의 스크롤 본문은 `Drawer.Content`를 사용하십시오.");
     expect(design).toContain("`SearchInput.Root`는 기본적으로 `div`를 렌더합니다.");
     expect(styles).toContain(".city-text-page-title");
