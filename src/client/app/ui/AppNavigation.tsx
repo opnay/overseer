@@ -153,15 +153,17 @@ export function AppSidebar({
   const currentGroup: AppRouteGroup =
     currentPath === "/settings" && settingsSection !== "general" ? "engine" : route.group;
   const group = currentGroup;
-  const contextVisible = Boolean(detail || currentPath === "/settings");
+  const contextVisible = Boolean(detail);
   const groupLabel = APP_ROUTE_GROUPS.find(({ id }) => id === group)?.label;
   const title =
     contextVisible && detail
       ? detailLabel
       : (groupLabel ?? (currentPath === "/settings" ? "일반 설정" : "작업 기록"));
-  const items = (currentPath.startsWith("/operations") ? operationItems : groupItems(group)).filter(
-    (item) => !contextVisible || currentPath !== "/settings" || item.href === "/instances",
-  );
+  const items = currentPath.startsWith("/operations")
+    ? operationItems
+    : currentPath === "/settings" && settingsSection === "general"
+      ? [utilities[1]!]
+      : groupItems(group);
 
   return (
     <aside aria-label="Overseer 주요 탐색" className="overseer-sidebar" data-navigation-mode={mode}>
@@ -227,7 +229,7 @@ export function AppSidebar({
             목록으로
           </a>
         ) : null}
-        {!contextVisible || currentPath === "/settings" ? (
+        {!contextVisible ? (
           <nav aria-label="주요 메뉴" className="overseer-secondary-navigation">
             {items.map((item) => (
               <NavigationLink

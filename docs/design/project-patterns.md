@@ -41,7 +41,7 @@
 - 작업 기록의 두 번째 열은 전체·Lima·Docker CLI입니다. 기본 진입은 `/operations` 전체이며, 분류는 `/operations/lima`, `/operations/docker-cli` URL과 페이지 제목·현재 메뉴에 반영합니다. 모바일 Drawer에도 같은 분류 링크를 제공합니다.
 - 작업 종류로 분류합니다. Lima는 VM 생성·설정·시작·중지·삭제·복구, Docker CLI는 CLI 연결과 Compose·컨테이너·이미지·볼륨·네트워크 제어입니다. Compose 등록·수정·확인, 도구 설치·업데이트, 저장소 동기화와 daemon 설정은 전체에만 포함합니다. 명령 출력이나 리소스 이름으로 분류하지 않습니다.
 - 작업 기록 분류 이동은 검색·상태·리소스·페이지·상세 선택을 초기화합니다. 서버가 분류와 필터를 먼저 적용한 뒤 페이지·총계를 계산하며, 필터 초기화는 현재 분류를 유지합니다.
-- 상세 화면의 두 번째 열은 목록 복귀와 리소스 섹션을 제공합니다. 설정은 선택 영역의 설정 섹션을 표시합니다.
+- 상세 화면의 두 번째 열은 목록 복귀와 리소스 섹션을 제공합니다. 엔진 설정·네트워크 설정에서는 인스턴스·엔진 설정·네트워크 설정 메뉴를 그대로 유지합니다. 설정 페이지가 추가 탐색 group이나 본문 Select를 삽입하지 않습니다.
 - 영역 버튼은 City DS `Button iconOnly`, `Tooltip`, `aria-pressed`와 아이콘 획 변화로 상태를 표시합니다. 링크의 현재 위치는 `aria-current="page"`로 표시합니다.
 - 직접 URL·브라우저 뒤로가기는 현재 영역·페이지·섹션을 복원합니다. 페이지가 상세 메뉴를 소유하며 shared 탐색 슬롯을 통해 App Shell에 배치합니다.
 
@@ -87,7 +87,7 @@
 | `/operations`, `/operations/lima`, `/operations/docker-cli`                                                 | ResourceCollection | 작업 상세 Dialog와 LogViewer 포함 |
 | `/compose/:name`, `/containers/:id`, `/images/:id`, `/volumes/:name`, `/networks/:name`, `/instances/:name` | ResourceDetail     | Sectioned Workspace 상세          |
 | `/image-repositories/:id`                                                                                   | ResourceDetail     | 단일 콘텐츠 상세                  |
-| `/settings`                                                                                                 | SettingsWorkspace  | 범주형 Sectioned Workspace        |
+| `/settings`                                                                                                 | SettingsWorkspace  | 전역 메뉴의 설정 페이지           |
 | `/startup`                                                                                                  | GuidedSetup        | 순차 준비 흐름                    |
 
 `ResourceDetail`의 단일 콘텐츠 변형은 현재 선택 가능한 상세 섹션이 하나뿐일 때만 Sectioned Workspace를 생략합니다. 섹션이 둘 이상 생기면 기본 ResourceDetail 구성으로 전환합니다.
@@ -151,13 +151,15 @@ Overseer와 Docker Engine 설정을 범주별로 찾고 독립적으로 저장·
 
 ### 구성과 레이아웃
 
-ResourceDetail과 같은 `Sectioned Workspace` 레이아웃을 사용하지만 탐색은 설정 범주별 group을 허용합니다.
+App Shell의 페이지 헤더·전역 탐색 다음에 설정 본문을 직접 배치합니다. 설정 간 이동은 두 번째 사이드바와 모바일 전역 Drawer가 소유합니다.
 
-- Content Header는 설정 범주, 현재 설정 영역과 변경 영향을 설명합니다.
+- 페이지 H1은 일반 설정·엔진 설정·네트워크 설정을 표시하며 현재 URL과 선택 링크에 맞춥니다. 별도의 설정 범주·중복 제목을 추가하지 않습니다.
 - 관련 입력은 `Fieldset`, 개별 입력은 `Field`를 사용합니다.
 - 각 독립 설정 섹션이 초기화·저장·오류 상태를 소유합니다.
 - 한 섹션에는 primary 저장 액션을 하나만 둡니다.
 - 일반 설정의 독립 이동 항목만 outline surface를 사용할 수 있습니다.
+- 시작 준비 이동은 `Item.Root outline`의 Media·Content·Title·Description·Actions로 구성합니다. 도구 업데이트 행과 작업 Drawer 항목은 `Item.Group` 안의 `Item.Root plain`을 사용합니다. 목록의 `li`는 Item이 소유하며 직접 중첩하지 않습니다.
+- Item이 행 내부 구조·밀도·간격을 소유합니다. 도구 업데이트의 비교 열과 좁은 화면의 액션 재배치만 프로젝트 레이아웃이 소유합니다. 현재·최신 버전의 이름·값 관계, 상태·로그·작업 명령을 유지합니다.
 - 설정 섹션을 같은 모양의 카드로 반복하지 않고 제목, 간격과 divider로 구분합니다.
 
 ### 필수 상태와 완료 기준

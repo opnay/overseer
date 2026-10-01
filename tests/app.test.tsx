@@ -1360,7 +1360,18 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings?section=engine");
     render(<App />);
 
-    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await screen.findByRole("heading", { name: "엔진 설정", level: 1 });
+    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
+    expect(
+      within(navigation)
+        .getAllByRole("link")
+        .map(({ textContent }) => textContent),
+    ).toEqual(["인스턴스", "엔진 설정", "네트워크 설정"]);
+    expect(screen.queryByRole("navigation", { name: "설정 상세 메뉴" })).not.toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: "엔진 설정" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(
       within(navigation).queryByRole("link", { name: "인스턴스 설정" }),
     ).not.toBeInTheDocument();
@@ -1441,9 +1452,17 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings?section=engine");
     render(<App />);
 
-    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await screen.findByRole("heading", { name: "엔진 설정", level: 1 });
+    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
     await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
     expect(window.location.search).toBe("?section=network");
+    expect(
+      await screen.findByRole("heading", { name: "네트워크 설정", level: 1 }),
+    ).toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: "네트워크 설정" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(await screen.findByLabelText("DNS 서버")).toBeInTheDocument();
     expect(screen.queryByRole("switch", { name: "컨테이너 실행 유지" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "추가 daemon.json 설정" })).not.toBeInTheDocument();
@@ -1984,23 +2003,23 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings");
     render(<App />);
 
-    const startupHeading = await screen.findByRole("heading", { name: "시작 준비", level: 3 });
-    const updatesHeading = screen.getByRole("heading", { name: "도구 업데이트", level: 3 });
+    const startupHeading = await screen.findByRole("heading", { name: "시작 준비", level: 2 });
+    const updatesHeading = screen.getByRole("heading", { name: "도구 업데이트", level: 2 });
     expect(startupHeading).toHaveClass("city-text-subsection-title");
     expect(updatesHeading).toHaveClass("city-text-subsection-title");
     expect(
       await screen.findByText(/^마지막 확인 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
     ).toBeInTheDocument();
-    const docker = await screen.findByRole("listitem", { name: "Docker CLI" });
+    const docker = await screen.findByRole("region", { name: "Docker CLI" });
     expect(docker).toHaveTextContent("현재29.7.2");
     expect(docker).toHaveTextContent("최신30.0.0");
     expect(docker).toHaveTextContent("업데이트 있음");
-    const compose = screen.getByRole("listitem", { name: "Docker Compose" });
+    const compose = screen.getByRole("region", { name: "Docker Compose" });
     expect(compose).toHaveTextContent("최신");
     expect(
       within(compose).getByText("최신", { selector: "[data-city-badge]" }).querySelector("svg"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("listitem", { name: "Lima" })).toHaveTextContent(
+    expect(screen.getByRole("region", { name: "Lima" })).toHaveTextContent(
       "Homebrew로 설치된 도구만 자동 업데이트할 수 있습니다.",
     );
 
@@ -2671,7 +2690,7 @@ describe("App", () => {
     );
     await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
     expect(
-      await screen.findByRole("heading", { name: "네트워크 설정", level: 2 }),
+      await screen.findByRole("heading", { name: "네트워크 설정", level: 1 }),
     ).toBeInTheDocument();
     await user.click(within(sidebar).getByRole("button", { name: "엔진" }));
     expect(await screen.findByRole("heading", { name: "인스턴스", level: 1 })).toBeInTheDocument();

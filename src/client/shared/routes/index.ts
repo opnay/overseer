@@ -2,6 +2,7 @@ export {
   APP_OPERATION_ROUTES,
   APP_ROUTES,
   APP_ROUTE_GROUPS,
+  APP_SETTINGS_SECTIONS,
   composeProjectDetailPath,
   containerDetailPath,
   getAppDetailLocation,

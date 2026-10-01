@@ -7,6 +7,20 @@ export const APP_ROUTE_GROUPS = [
 
 export type AppRouteGroup = (typeof APP_ROUTE_GROUPS)[number]["id"] | "utility";
 
+export const APP_SETTINGS_SECTIONS = [
+  { value: "general", label: "일반 설정", description: "Overseer의 기본 동작을 관리합니다." },
+  {
+    value: "engine",
+    label: "엔진 설정",
+    description: "활성 Docker Engine의 상태와 동작을 관리합니다.",
+  },
+  {
+    value: "network",
+    label: "네트워크 설정",
+    description: "Docker Engine의 네트워크와 외부 연결을 구성합니다.",
+  },
+] as const;
+
 export const APP_OPERATION_ROUTES = [
   {
     category: "all",

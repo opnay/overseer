@@ -102,7 +102,7 @@ function SectionActions({
     <>
       {error ? (
         <Alert.Root tone="destructive">
-          <Alert.Title level={3}>{label} 설정을 적용하지 못했습니다.</Alert.Title>
+          <Alert.Title level={2}>{label} 설정을 적용하지 못했습니다.</Alert.Title>
           <Alert.Description>{error}</Alert.Description>
         </Alert.Root>
       ) : null}
@@ -240,7 +240,7 @@ export function DockerDaemonSettings({
 
       {loadError ? (
         <Alert.Root tone="destructive">
-          <Alert.Title level={3}>Docker Engine 설정을 불러오지 못했습니다.</Alert.Title>
+          <Alert.Title level={2}>Docker Engine 설정을 불러오지 못했습니다.</Alert.Title>
           <Alert.Description>{loadError}</Alert.Description>
           <Alert.Action>
             <Button onClick={() => void load()} size="sm" variant="outline">
@@ -252,7 +252,7 @@ export function DockerDaemonSettings({
 
       {snapshot && !snapshot.available ? (
         <Alert.Root appearance="subtle" tone="info">
-          <Alert.Title level={3}>Docker Engine 준비가 필요합니다.</Alert.Title>
+          <Alert.Title level={2}>Docker Engine 준비가 필요합니다.</Alert.Title>
           <Alert.Description>{snapshot.message}</Alert.Description>
         </Alert.Root>
       ) : null}

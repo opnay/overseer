@@ -2,6 +2,7 @@ import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { Drawer } from "@opnay/city-ds-react/drawer";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
+import { Item } from "@opnay/city-ds-react/item";
 import { Progress } from "@opnay/city-ds-react/progress";
 import { Tooltip } from "@opnay/city-ds-react/tooltip";
 import { Activity, ListChecks, RotateCcw, X } from "lucide-react";
@@ -133,19 +134,25 @@ export function OperationsDrawer({
                   </EmptyState.Description>
                 </EmptyState.Root>
               ) : (
-                <ol className="overseer-operation-list">
-                  {visible.map((operation) => {
+                <Item.Group className="gap-0" aria-label="확인할 작업 목록" render={<ol />}>
+                  {visible.map((operation, index) => {
                     const presentation = operationStatusPresentation[operation.status];
                     const activeOperation =
                       operation.status === "queued" || operation.status === "running";
                     return (
-                      <li className="overseer-operation-item" key={operation.id}>
-                        <div className="overseer-operation-heading">
-                          <div className="overseer-operation-heading-copy">
-                            <strong>{operation.title}</strong>
-                            <span>{operation.target.name}</span>
-                          </div>
-                          <div className="overseer-operation-heading-actions">
+                      <Item.Root
+                        appearance="plain"
+                        className={`grid gap-3 rounded-none border-0 border-b border-city-border px-0 py-4 ${index === 0 ? "pt-0" : ""} ${index === visible.length - 1 ? "border-b-0" : ""}`}
+                        key={operation.id}
+                      >
+                        <Item.Header className="items-start gap-3">
+                          <Item.Content>
+                            <Item.Title render={<strong />}>{operation.title}</Item.Title>
+                            <Item.Description className="text-xs">
+                              {operation.target.name}
+                            </Item.Description>
+                          </Item.Content>
+                          <Item.Actions className="gap-1">
                             <Badge appearance="subtle" size="lg" tone={presentation.tone}>
                               {presentation.label}
                             </Badge>
@@ -171,8 +178,8 @@ export function OperationsDrawer({
                                 </Tooltip.Portal>
                               </Tooltip.Root>
                             ) : null}
-                          </div>
-                        </div>
+                          </Item.Actions>
+                        </Item.Header>
                         {activeOperation ? (
                           <Progress.Root
                             aria-label={`${operation.title} ${presentation.label}`}
@@ -218,10 +225,10 @@ export function OperationsDrawer({
                             재시도
                           </Button>
                         ) : null}
-                      </li>
+                      </Item.Root>
                     );
                   })}
-                </ol>
+                </Item.Group>
               )}
             </Drawer.Content>
             <Drawer.Footer>

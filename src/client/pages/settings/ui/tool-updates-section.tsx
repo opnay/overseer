@@ -1,6 +1,7 @@
 import { Alert } from "@opnay/city-ds-react/alert";
 import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
+import { Item } from "@opnay/city-ds-react/item";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Check, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -89,9 +90,9 @@ export function ToolUpdatesSection({
     >
       <header className="overseer-tool-updates-header">
         <div>
-          <h3 className="city-text-subsection-title" id="overseer-settings-tool-updates">
+          <h2 className="city-text-subsection-title" id="overseer-settings-tool-updates">
             도구 업데이트
-          </h3>
+          </h2>
           <p>Homebrew로 설치된 Docker CLI·Compose·Lima의 새 버전을 확인합니다.</p>
           <span aria-live="polite" className="city-text-caption">
             {snapshot?.checkedAt
@@ -117,14 +118,14 @@ export function ToolUpdatesSection({
 
       {requestError ? (
         <Alert.Root appearance="subtle" tone="destructive">
-          <Alert.Title level={4}>작업을 시작하지 못했습니다.</Alert.Title>
+          <Alert.Title level={3}>작업을 시작하지 못했습니다.</Alert.Title>
           <Alert.Description>{requestError}</Alert.Description>
         </Alert.Root>
       ) : null}
 
       {operation?.status === "failed" ? (
         <Alert.Root appearance="subtle" tone="destructive">
-          <Alert.Title level={4}>{operation.title}에 실패했습니다.</Alert.Title>
+          <Alert.Title level={3}>{operation.title}에 실패했습니다.</Alert.Title>
           <Alert.Description>
             {operation.error?.message ?? "작업 기록에서 최근 출력을 확인하십시오."}
           </Alert.Description>
@@ -133,7 +134,7 @@ export function ToolUpdatesSection({
 
       {loadError ? (
         <Alert.Root appearance="subtle" tone="destructive">
-          <Alert.Title level={4}>업데이트 상태를 불러오지 못했습니다.</Alert.Title>
+          <Alert.Title level={3}>업데이트 상태를 불러오지 못했습니다.</Alert.Title>
           <Alert.Description>{loadError}</Alert.Description>
           <Alert.Action>
             <Button onClick={() => void load()} size="sm" variant="outline">
@@ -152,27 +153,30 @@ export function ToolUpdatesSection({
       ) : null}
 
       {snapshot ? (
-        <div className="overseer-tool-update-list" role="list">
+        <Item.Group className="gap-0" aria-label="도구 업데이트 목록">
           {snapshot.items.map((item) => {
             const updating = updatingId === item.id;
             const status = statusPresentation(item, updating);
             return (
-              <section
+              <Item.Root
+                appearance="plain"
                 aria-labelledby={`overseer-tool-update-${item.id}`}
-                className="overseer-tool-update-row"
+                className="overseer-tool-update-row grid gap-3 rounded-none border-0 border-t border-city-border px-5 py-4 min-[42rem]:gap-4"
                 key={item.id}
-                role="listitem"
+                render={<section />}
               >
-                <div className="overseer-tool-update-name">
-                  <strong id={`overseer-tool-update-${item.id}`}>{item.label}</strong>
-                  <span>
+                <Item.Content>
+                  <Item.Title render={<strong />} id={`overseer-tool-update-${item.id}`}>
+                    {item.label}
+                  </Item.Title>
+                  <Item.Description className="text-xs">
                     {item.managedByHomebrew
                       ? "Homebrew 관리"
                       : item.installed
                         ? "외부 설치"
                         : "설치되지 않음"}
-                  </span>
-                </div>
+                  </Item.Description>
+                </Item.Content>
                 <dl className="overseer-tool-update-versions">
                   <div>
                     <dt>현재</dt>
@@ -183,7 +187,7 @@ export function ToolUpdatesSection({
                     <dd>{item.latestVersion ?? "-"}</dd>
                   </div>
                 </dl>
-                <div className="overseer-tool-update-controls">
+                <Item.Actions className="overseer-tool-update-controls ml-0 grid gap-2">
                   <div className="overseer-tool-update-state">
                     <Badge appearance="subtle" size="sm" tone={status.tone}>
                       {status.label === "최신" ? (
@@ -205,11 +209,11 @@ export function ToolUpdatesSection({
                       {updating ? "업데이트 중…" : `${item.label} 업데이트`}
                     </Button>
                   ) : null}
-                </div>
-              </section>
+                </Item.Actions>
+              </Item.Root>
             );
           })}
-        </div>
+        </Item.Group>
       ) : null}
     </section>
   );

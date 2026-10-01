@@ -594,63 +594,10 @@
     min-height: var(--city-control-lg);
   }
 
-  .overseer-settings-general-section,
-  .overseer-settings-runtime-section {
-    display: flex;
-    min-width: 0;
-    padding: var(--city-space-5);
-    border: 1px solid var(--city-color-border);
-    border-radius: var(--city-radius-md);
-    background: var(--city-color-surface-raised);
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--city-space-5);
-  }
-
-  .overseer-settings-general-copy {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: var(--city-space-3);
-  }
-
-  .overseer-settings-general-copy > span {
-    display: inline-flex;
-    width: var(--city-control-lg);
-    height: var(--city-control-lg);
-    border-radius: var(--city-radius-sm);
-    background: var(--city-color-muted);
-    color: var(--city-color-muted-foreground);
-    align-items: center;
-    justify-content: center;
-    flex: none;
-  }
-
-  .overseer-settings-general-copy > div {
-    display: grid;
-    min-width: 0;
-    gap: var(--city-space-1);
-  }
-
-  .overseer-settings-general-copy h3,
-  .overseer-settings-general-copy p {
-    margin: 0;
-  }
-
-  .overseer-settings-general-copy p {
-    color: var(--city-color-muted-foreground);
-    font-size: var(--city-font-size-sm);
-  }
-
   .overseer-settings-cli-context {
     color: var(--city-color-muted-foreground);
     font-size: var(--city-font-size-xs);
     overflow-wrap: anywhere;
-  }
-
-  .overseer-settings-general-section > .city-button,
-  .overseer-settings-runtime-section > .city-button {
-    flex: none;
   }
 
   .overseer-daemon-settings,
@@ -813,30 +760,22 @@
   }
 
   .overseer-tool-updates-header > div,
-  .overseer-tool-update-name,
   .overseer-tool-update-state {
     display: grid;
     min-width: 0;
     gap: var(--city-space-1);
   }
 
-  .overseer-tool-updates-header h3,
+  .overseer-tool-updates-header h2,
   .overseer-tool-updates-header p,
-  .overseer-tool-update-name strong,
-  .overseer-tool-update-name span,
   .overseer-tool-update-versions,
   .overseer-tool-update-versions dt,
   .overseer-tool-update-versions dd {
     margin: 0;
   }
 
-  .overseer-tool-update-name strong {
-    font-size: var(--city-font-size-sm);
-  }
-
   .overseer-tool-updates-header p,
   .overseer-tool-updates-header span,
-  .overseer-tool-update-name span,
   .overseer-tool-update-state > span {
     color: var(--city-color-muted-foreground);
   }
@@ -863,19 +802,8 @@
     height: var(--city-control-xlg);
   }
 
-  .overseer-tool-update-list {
-    display: grid;
-    min-width: 0;
-  }
-
   .overseer-tool-update-row {
-    display: grid;
-    min-width: 0;
-    padding: var(--city-space-4) var(--city-space-5);
-    border-top: 1px solid var(--city-color-border);
-    align-items: center;
     grid-template-columns: minmax(0, 1fr) minmax(7rem, 1fr) auto;
-    gap: var(--city-space-4);
   }
 
   .overseer-tool-update-versions {
@@ -892,7 +820,6 @@
   }
 
   .overseer-tool-update-versions dt,
-  .overseer-tool-update-name span,
   .overseer-tool-update-state > span {
     font-size: var(--city-font-size-xs);
   }
@@ -918,10 +845,8 @@
   }
 
   .overseer-tool-update-controls {
-    display: grid;
     max-width: 11rem;
     justify-items: end;
-    gap: var(--city-space-2);
   }
 
   .overseer-settings-status {
@@ -1670,26 +1595,6 @@
     white-space: nowrap;
   }
 
-  .overseer-operation-list {
-    display: grid;
-  }
-
-  .overseer-operation-item {
-    display: grid;
-    padding-block: var(--city-space-4);
-    border-bottom: 1px solid var(--city-color-border);
-    gap: var(--city-space-3);
-  }
-
-  .overseer-operation-item:first-child {
-    padding-top: 0;
-  }
-
-  .overseer-operation-item:last-child {
-    border-bottom: 0;
-  }
-
-  .overseer-operation-heading,
   .overseer-operation-meta {
     display: flex;
     align-items: flex-start;
@@ -1697,20 +1602,6 @@
     gap: var(--city-space-3);
   }
 
-  .overseer-operation-heading-copy {
-    display: grid;
-    min-width: 0;
-    gap: var(--city-space-0-5);
-  }
-
-  .overseer-operation-heading-actions {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: var(--city-space-1);
-  }
-
-  .overseer-operation-heading span,
   .overseer-operation-meta {
     color: var(--city-color-muted-foreground);
     font-size: var(--city-font-size-xs);
@@ -2826,15 +2717,8 @@
       grid-template-columns: 1fr;
     }
 
-    .overseer-settings-general-section,
-    .overseer-settings-runtime-section {
-      align-items: stretch;
-      flex-direction: column;
-      gap: var(--city-space-4);
-    }
-
-    .overseer-settings-general-section > .city-button,
-    .overseer-settings-runtime-section > .city-button {
+    .overseer-settings-general-section [data-city-item-actions],
+    .overseer-settings-general-section [data-city-item-actions] > .city-button {
       width: 100%;
     }
 
@@ -2850,9 +2734,7 @@
     }
 
     .overseer-tool-update-row {
-      align-items: stretch;
       grid-template-columns: 1fr;
-      gap: var(--city-space-3);
     }
 
     .overseer-tool-update-controls {

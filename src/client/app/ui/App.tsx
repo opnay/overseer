@@ -66,6 +66,7 @@ import { NamedResourceDialog } from "@/shared/ui/named-resource-dialog";
 import {
   APP_OPERATION_ROUTES,
   APP_ROUTE_GROUPS,
+  APP_SETTINGS_SECTIONS,
   composeProjectDetailPath,
   containerDetailPath,
   getAppDetailLocation,
@@ -277,9 +278,26 @@ function CollectionLoadingBody() {
 }
 
 function SectionedLoadingBody({ pattern }: { pattern: Exclude<PageLoadingPattern, "collection"> }) {
+  if (pattern === "settings") {
+    return (
+      <section
+        aria-label="설정 불러오는 중"
+        className="overseer-settings-loading"
+        data-loading-pattern="settings"
+      >
+        {LOADING_SECTIONS.map((item) => (
+          <div aria-hidden="true" className="overseer-loading-form-section" key={item}>
+            <Skeleton className="overseer-loading-form-title" />
+            <Skeleton className="overseer-loading-form-field" />
+            <Skeleton className="overseer-loading-form-field" />
+          </div>
+        ))}
+      </section>
+    );
+  }
   return (
     <section
-      aria-label={pattern === "settings" ? "설정 불러오는 중" : "상세 정보 불러오는 중"}
+      aria-label="상세 정보 불러오는 중"
       className="overseer-sectioned-workspace overseer-loading-sectioned"
       data-loading-pattern={pattern}
     >
@@ -1330,11 +1348,11 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   const detailRefreshToken = `${detailRefreshRevision}:${latestFinishedDetailOperation?.id ?? ""}:${latestFinishedDetailOperation?.status ?? ""}`;
   const requestedSettingsSection = new URLSearchParams(navigationSearch).get("section");
   const settingsSection =
-    requestedSettingsSection && ["general", "engine", "network"].includes(requestedSettingsSection)
-      ? requestedSettingsSection
-      : dashboard?.runtime.phase === "running"
-        ? "general"
-        : "engine";
+    APP_SETTINGS_SECTIONS.find(({ value }) => value === requestedSettingsSection)?.value ??
+    (dashboard?.runtime.phase === "running" ? "general" : "engine");
+  const settingsPresentation = APP_SETTINGS_SECTIONS.find(
+    ({ value }) => value === settingsSection,
+  )!;
   const pageEyebrow =
     currentRoute.path === "/settings" && settingsSection !== "general"
       ? "엔진"
@@ -1357,7 +1375,9 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
                 : currentDetail.type === "volume"
                   ? (currentVolume?.name ?? currentDetail.identifier)
                   : currentDetail.identifier
-    : currentRoute.label;
+    : currentRoute.path === "/settings"
+      ? settingsPresentation.label
+      : currentRoute.label;
   const pageDescription = currentDetail
     ? currentDetail.type === "compose"
       ? "서비스 운영과 Compose 구성을 한곳에서 관리합니다."
@@ -1372,7 +1392,9 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
               : currentDetail.type === "network"
                 ? "Docker 네트워크의 연결 관계와 원본 구성을 탐색합니다."
                 : "Docker 볼륨의 저장 위치와 원본 구성을 탐색합니다."
-    : currentRoute.description;
+    : currentRoute.path === "/settings"
+      ? settingsPresentation.description
+      : currentRoute.description;
   const detailBreadcrumbs: Array<{ label: string; path?: AppLocationPath }> = currentDetail
     ? currentDetail.type === "container" && currentContainer?.composeProject
       ? [
