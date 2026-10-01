@@ -23,6 +23,7 @@ import { useState } from "react";
 import { followLink } from "@/shared/lib/follow-link";
 import {
   APP_ROUTES,
+  APP_OPERATION_ROUTES,
   APP_ROUTE_GROUPS,
   getAppRoute,
   type AppDetailLocation,
@@ -42,6 +43,8 @@ const routeIcons = {
   "/instances": Server,
   "/networks": Network,
   "/operations": ListChecks,
+  "/operations/lima": Server,
+  "/operations/docker-cli": Terminal,
   "/settings": Settings2,
   "/volumes": Database,
 } satisfies Record<AppPath, LucideIcon>;
@@ -51,6 +54,16 @@ const utilities: NavigationItem[] = [
   { href: "/operations", label: "작업 기록", icon: ListChecks },
   { href: "/settings?section=general", label: "일반 설정", icon: Settings2 },
 ];
+const operationItems: NavigationItem[] = APP_OPERATION_ROUTES.map((route) => ({
+  href: route.path,
+  label: route.navigationLabel,
+  icon: routeIcons[route.path],
+}));
+
+function isUtilityCurrent(item: NavigationItem, currentPath: AppPath, settingsSection: string) {
+  if (item.href === "/operations") return currentPath.startsWith("/operations");
+  return isCurrent(item, currentPath, settingsSection);
+}
 
 function groupItems(group: AppRouteGroup): NavigationItem[] {
   if (group === "utility") return [];
@@ -146,7 +159,7 @@ export function AppSidebar({
     contextVisible && detail
       ? detailLabel
       : (groupLabel ?? (currentPath === "/settings" ? "일반 설정" : "작업 기록"));
-  const items = groupItems(group).filter(
+  const items = (currentPath.startsWith("/operations") ? operationItems : groupItems(group)).filter(
     (item) => !contextVisible || currentPath !== "/settings" || item.href === "/instances",
   );
 
@@ -188,7 +201,7 @@ export function AppSidebar({
         <nav aria-label="유틸리티 메뉴" className="overseer-rail-utilities">
           {utilities.map((item) => (
             <NavigationLink
-              current={isCurrent(item, currentPath, settingsSection)}
+              current={isUtilityCurrent(item, currentPath, settingsSection)}
               iconOnly
               item={item}
               key={item.href}
@@ -298,10 +311,25 @@ export function MobileNavigationDrawer({
                   </div>
                 ))}
               </nav>
+              <nav aria-label="작업 기록 메뉴" className="overseer-navigation">
+                <div aria-label="작업 기록" className="overseer-nav-group" role="group">
+                  <span className="overseer-nav-group-label">작업 기록</span>
+                  <div className="overseer-nav-group-items">
+                    {operationItems.map((item) => (
+                      <NavigationLink
+                        current={isCurrent(item, currentPath, settingsSection)}
+                        item={item}
+                        key={item.href}
+                        onNavigate={navigate}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </nav>
               <nav aria-label="유틸리티 메뉴" className="overseer-sidebar-utility">
                 {utilities.map((item) => (
                   <NavigationLink
-                    current={isCurrent(item, currentPath, settingsSection)}
+                    current={isUtilityCurrent(item, currentPath, settingsSection)}
                     item={item}
                     key={item.href}
                     onNavigate={navigate}

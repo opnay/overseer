@@ -38,6 +38,9 @@
 - 첫 열은 도커·엔진·공급자·CLI 영역 선택입니다. 영역 선택은 해당 영역의 첫 페이지로 이동하고 본문·URL·현재 메뉴를 함께 갱신합니다. 도커는 Compose, 엔진은 인스턴스, 공급자는 이미지 저장소, CLI는 도구로 이동합니다.
 - 도커는 Compose·컨테이너·이미지·볼륨·네트워크, 엔진은 인스턴스·엔진 설정·네트워크 설정, 공급자는 이미지 저장소, CLI는 도구를 제공합니다.
 - 작업 기록·일반 설정은 첫 열 하단의 공통 링크입니다.
+- 작업 기록의 두 번째 열은 전체·Lima·Docker CLI입니다. 기본 진입은 `/operations` 전체이며, 분류는 `/operations/lima`, `/operations/docker-cli` URL과 페이지 제목·현재 메뉴에 반영합니다. 모바일 Drawer에도 같은 분류 링크를 제공합니다.
+- 작업 종류로 분류합니다. Lima는 VM 생성·설정·시작·중지·삭제·복구, Docker CLI는 CLI 연결과 Compose·컨테이너·이미지·볼륨·네트워크 제어입니다. Compose 등록·수정·확인, 도구 설치·업데이트, 저장소 동기화와 daemon 설정은 전체에만 포함합니다. 명령 출력이나 리소스 이름으로 분류하지 않습니다.
+- 작업 기록 분류 이동은 검색·상태·리소스·페이지·상세 선택을 초기화합니다. 서버가 분류와 필터를 먼저 적용한 뒤 페이지·총계를 계산하며, 필터 초기화는 현재 분류를 유지합니다.
 - 상세 화면의 두 번째 열은 목록 복귀와 리소스 섹션을 제공합니다. 설정은 선택 영역의 설정 섹션을 표시합니다.
 - 영역 버튼은 City DS `Button iconOnly`, `Tooltip`, `aria-pressed`와 아이콘 획 변화로 상태를 표시합니다. 링크의 현재 위치는 `aria-current="page"`로 표시합니다.
 - 직접 URL·브라우저 뒤로가기는 현재 영역·페이지·섹션을 복원합니다. 페이지가 상세 메뉴를 소유하며 shared 탐색 슬롯을 통해 App Shell에 배치합니다.
@@ -81,7 +84,7 @@
 | `/compose`, `/containers`, `/images`, `/volumes`, `/networks`, `/instances`                                 | ResourceCollection | 기본 리소스 목록                  |
 | `/image-repositories`                                                                                       | ResourceCollection | 외부 저장소 목록                  |
 | `/docker-plugins`                                                                                           | ResourceCollection | Docker CLI 도구 목록              |
-| `/operations`                                                                                               | ResourceCollection | 작업 상세 Dialog와 LogViewer 포함 |
+| `/operations`, `/operations/lima`, `/operations/docker-cli`                                                 | ResourceCollection | 작업 상세 Dialog와 LogViewer 포함 |
 | `/compose/:name`, `/containers/:id`, `/images/:id`, `/volumes/:name`, `/networks/:name`, `/instances/:name` | ResourceDetail     | Sectioned Workspace 상세          |
 | `/image-repositories/:id`                                                                                   | ResourceDetail     | 단일 콘텐츠 상세                  |
 | `/settings`                                                                                                 | SettingsWorkspace  | 범주형 Sectioned Workspace        |

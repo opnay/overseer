@@ -1,0 +1,50 @@
+import type { OperationCategory, OperationKind, OperationResource } from "./contracts.ts";
+
+// Classify the requested work, not every command a composite operation runs.
+// Metadata, installation, repository sync and daemon configuration stay in the full history.
+export const operationCategoryByKind: Record<OperationKind, OperationCategory | undefined> = {
+  "compose.builder.register": undefined,
+  "compose.builder.remove": undefined,
+  "compose.builder.update": undefined,
+  "compose.down": "docker-cli",
+  "compose.remote.check": undefined,
+  "compose.remote.register": undefined,
+  "compose.remote.remove": undefined,
+  "compose.remote.update": undefined,
+  "compose.restart": "docker-cli",
+  "compose.stop": "docker-cli",
+  "compose.up": "docker-cli",
+  "container.create": "docker-cli",
+  "container.remove": "docker-cli",
+  "container.restart": "docker-cli",
+  "container.start": "docker-cli",
+  "container.stop": "docker-cli",
+  "container.update": "docker-cli",
+  "docker.plugin.install": undefined,
+  "image.pull": "docker-cli",
+  "image.remove": "docker-cli",
+  "image.tag.remove": "docker-cli",
+  "image.repository.sync": undefined,
+  "network.create": "docker-cli",
+  "network.remove": "docker-cli",
+  "runtime.daemon.configure": undefined,
+  "runtime.start": "lima",
+  "runtime.connect": "docker-cli",
+  "runtime.instance.delete": "lima",
+  "runtime.instance.force-stop": "lima",
+  "runtime.instance.update": "lima",
+  "runtime.force-restart": "lima",
+  "runtime.recreate": "lima",
+  "runtime.restart": "lima",
+  "runtime.stop": "lima",
+  "startup.install": undefined,
+  "startup.update": undefined,
+  "startup.update.check": undefined,
+  "volume.create": "docker-cli",
+  "volume.remove": "docker-cli",
+};
+
+export const operationCategoryResources: Record<OperationCategory, readonly OperationResource[]> = {
+  lima: ["runtime"],
+  "docker-cli": ["compose", "container", "image", "network", "runtime", "volume"],
+};

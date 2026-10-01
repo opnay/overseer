@@ -14,7 +14,13 @@ import {
   MemoryImageRepositoryStore,
 } from "../src/server/modules/image-repositories/index.ts";
 import type { StartupPrerequisiteController } from "../src/server/modules/startup/index.ts";
-import type { DockerCliPluginSnapshot, StartupSnapshot } from "../src/shared/contracts.ts";
+import type {
+  DockerCliPluginSnapshot,
+  OperationKind,
+  OperationListResponse,
+  OperationResource,
+  StartupSnapshot,
+} from "../src/shared/contracts.ts";
 
 function createController(): RuntimeController {
   return {
@@ -528,6 +534,82 @@ describe("API boundary", () => {
       headers: localHeaders,
     });
     expect([invalidStatus.status, oversizedPage.status]).toEqual([400, 400]);
+  });
+
+  it("classifies operation kinds before filtering and paginating without losing other history", async () => {
+    const entries: Array<[OperationKind, OperationResource]> = [
+      ["runtime.start", "runtime"],
+      ["runtime.instance.update", "runtime"],
+      ["runtime.stop", "runtime"],
+      ["runtime.recreate", "runtime"],
+      ["runtime.connect", "runtime"],
+      ["runtime.daemon.configure", "runtime"],
+      ["compose.up", "compose"],
+      ["compose.builder.register", "compose"],
+      ["compose.remote.check", "compose"],
+      ["container.start", "container"],
+      ["image.pull", "image"],
+      ["volume.create", "volume"],
+      ["network.create", "network"],
+      ["docker.plugin.install", "dockerPlugin"],
+      ["image.repository.sync", "imageRepository"],
+      ["startup.update", "startup"],
+    ];
+    const queue = new OperationQueue(30);
+    for (const [kind, resource] of entries) {
+      queue.enqueue({
+        kind,
+        locks: [],
+        run: async () => undefined,
+        successMessage: "완료",
+        target: { name: kind, resource },
+        title: kind,
+      });
+    }
+    await vi.waitFor(() =>
+      expect(queue.list().filter(({ status }) => status === "succeeded")).toHaveLength(16),
+    );
+    const app = createApi(createController(), queue);
+    const history = async (search = "") => {
+      const response = await app.request(`/operations${search}`, { headers: localHeaders });
+      expect(response.status).toBe(200);
+      return (await response.json()) as OperationListResponse;
+    };
+
+    expect((await history()).pagination.total).toBe(16);
+    const lima = await history("?category=lima&page=2&pageSize=2");
+    expect(lima.pagination).toEqual({ page: 2, pageSize: 2, total: 4, totalPages: 2 });
+    expect(lima.operations).toHaveLength(2);
+    for (const operation of lima.operations) {
+      expect([
+        "runtime.start",
+        "runtime.instance.update",
+        "runtime.stop",
+        "runtime.recreate",
+      ]).toContain(operation.kind);
+    }
+    const docker = await history("?category=docker-cli");
+    expect(docker.pagination.total).toBe(6);
+    expect(docker.operations.map(({ kind }) => kind).sort()).toEqual([
+      "compose.up",
+      "container.start",
+      "image.pull",
+      "network.create",
+      "runtime.connect",
+      "volume.create",
+    ]);
+    const connection = await history(
+      "?category=docker-cli&resource=runtime&status=succeeded&query=connect",
+    );
+    expect(connection.pagination.total).toBe(1);
+    expect(connection.operations[0]?.kind).toBe("runtime.connect");
+    expect((await history("?category=lima&resource=image")).pagination.total).toBe(0);
+    expect((await history("?resource=imageRepository")).operations[0]?.kind).toBe(
+      "image.repository.sync",
+    );
+    const invalid = await app.request("/operations?category=unknown", { headers: localHeaders });
+    expect(invalid.status).toBe(400);
+    expect(queue.list()).toHaveLength(16);
   });
 
   it("validates and creates a named Lima instance without retry", async () => {

@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import type {
   OperationAccepted,
+  OperationCategory,
   OperationResource,
   OperationStatus,
 } from "../../../shared/contracts.ts";
@@ -14,6 +15,7 @@ const operationResources = new Set<OperationResource>([
   "container",
   "dockerPlugin",
   "image",
+  "imageRepository",
   "network",
   "runtime",
   "startup",
@@ -55,6 +57,10 @@ export function registerOperationRoutes(app: Hono, operations: OperationQueue): 
     }
     const statusValue = context.req.query("status");
     const resourceValue = context.req.query("resource");
+    const categoryValue = context.req.query("category");
+    if (categoryValue && categoryValue !== "lima" && categoryValue !== "docker-cli") {
+      throw new ExpectedError("invalid_operation_query", "작업 분류가 올바르지 않습니다.", 400);
+    }
     if (statusValue && !operationStatuses.has(statusValue as OperationStatus)) {
       throw new ExpectedError("invalid_operation_query", "작업 상태가 올바르지 않습니다.", 400);
     }
@@ -64,6 +70,7 @@ export function registerOperationRoutes(app: Hono, operations: OperationQueue): 
     const result = operations.query({
       page,
       pageSize,
+      ...(categoryValue ? { category: categoryValue as OperationCategory } : {}),
       ...(query ? { query } : {}),
       ...(resourceValue ? { resource: resourceValue as OperationResource } : {}),
       ...(statusValue ? { status: statusValue as OperationStatus } : {}),

@@ -24,6 +24,8 @@ describe("application routes", () => {
       "/instances": "엔진",
       "/networks": "도커",
       "/operations": "Overseer",
+      "/operations/lima": "Overseer",
+      "/operations/docker-cli": "Overseer",
       "/settings": "Overseer",
       "/volumes": "도커",
     });

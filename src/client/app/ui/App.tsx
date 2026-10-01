@@ -64,6 +64,7 @@ import { LogViewer } from "@/shared/ui/log-viewer";
 import { ConfirmAction } from "@/shared/ui/confirm-action";
 import { NamedResourceDialog } from "@/shared/ui/named-resource-dialog";
 import {
+  APP_OPERATION_ROUTES,
   APP_ROUTE_GROUPS,
   composeProjectDetailPath,
   containerDetailPath,
@@ -685,6 +686,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   const [operationError, setOperationError] = useState<string>();
   const [submitting, setSubmitting] = useState<string>();
   const [operations, setOperations] = useState<OperationSnapshot[]>([]);
+  const [operationsRefreshRevision, setOperationsRefreshRevision] = useState(0);
   const [editContainer, setEditContainer] = useState<ContainerSummary>();
   const [runContainerImage, setRunContainerImage] = useState<string>();
   const [logsTarget, setLogsTarget] = useState<LogsTarget>();
@@ -693,6 +695,10 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   const [navigationSearch, setNavigationSearch] = useState(window.location.search);
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
+  const operationCategory = APP_OPERATION_ROUTES.find(
+    ({ path }) => path === resourcePath,
+  )?.category;
+  const isOperationsPage = operationCategory !== undefined;
   const [imageRepositoryRefreshRevision, setImageRepositoryRefreshRevision] = useState(0);
   const [imageView, setImageView] = useState<"id" | "tag">("tag");
   const [imageRepositoryHeader, setImageRepositoryHeader] = useState<ImageRepositoryDetail>();
@@ -781,7 +787,8 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
       : detectedStartupStep;
   const engineManagementRoute =
     requiredStartupStep === "engine" &&
-    (resourcePath === "/settings" ||
+    (isOperationsPage ||
+      resourcePath === "/settings" ||
       resourcePath === "/docker-plugins" ||
       resourcePath.startsWith("/image-repositories") ||
       resourcePath.startsWith("/instances"));
@@ -823,7 +830,8 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
       startupRoute ||
       !requiredStartupStep ||
       (requiredStartupStep === "engine" &&
-        (resourcePath === "/settings" ||
+        (isOperationsPage ||
+          resourcePath === "/settings" ||
           resourcePath === "/docker-plugins" ||
           resourcePath.startsWith("/image-repositories") ||
           resourcePath.startsWith("/instances")))
@@ -833,7 +841,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     setStartupReviewMode(false);
     setStartupRoute(true);
     window.history.replaceState(null, "", `/startup${window.location.search}`);
-  }, [displayedStartup, requiredStartupStep, resourcePath, startupRoute]);
+  }, [displayedStartup, isOperationsPage, requiredStartupStep, resourcePath, startupRoute]);
 
   useEffect(() => {
     if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview && !startupRoute)) {
@@ -1737,7 +1745,8 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
               <div className="overseer-page-utilities">
                 <Button
                   onClick={() => {
-                    if (resourcePath === "/operations") {
+                    if (isOperationsPage) {
+                      setOperationsRefreshRevision((value) => value + 1);
                       void loadOperations();
                       return;
                     }
@@ -1820,7 +1829,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
 
           {dashboard &&
           !runtimeRunning &&
-          resourcePath !== "/operations" &&
+          !isOperationsPage &&
           resourcePath !== "/settings" &&
           resourcePath !== "/docker-plugins" &&
           !resourcePath.startsWith("/image-repositories") &&
@@ -1892,14 +1901,16 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
             </Suspense>
           ) : null}
 
-          {resourcePath === "/operations" ? (
+          {operationCategory !== undefined ? (
             <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <OperationsPage
+                category={operationCategory}
+                key={operationCategory}
                 busyId={
                   submitting?.startsWith("operation-retry-") ? submitting.slice(16) : undefined
                 }
                 onRetry={retryOperation}
-                refreshToken={operationsRefreshToken}
+                refreshToken={`${operationsRefreshToken}:${operationsRefreshRevision}`}
               />
             </Suspense>
           ) : null}
@@ -2087,7 +2098,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
           {dashboard &&
           runtimeRunning &&
           !currentDetail &&
-          resourcePath !== "/operations" &&
+          !isOperationsPage &&
           resourcePath !== "/image-repositories" &&
           resourcePath !== "/settings" ? (
             <>

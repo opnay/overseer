@@ -671,6 +671,8 @@ export type OperationKind =
   | "volume.create"
   | "volume.remove";
 
+export type OperationCategory = "lima" | "docker-cli";
+
 export type OperationResource =
   | "compose"
   | "container"

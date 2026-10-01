@@ -2720,6 +2720,96 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/images");
   });
 
+  it.each([
+    { width: 1280, path: "/operations/lima", category: "lima", label: "Lima" },
+    { width: 783, path: "/operations/docker-cli", category: "docker-cli", label: "Docker CLI" },
+    { width: 390, path: "/operations/lima", category: "lima", label: "Lima" },
+  ])(
+    "restores and switches operation categories at $width px",
+    async ({ width, path, category, label }) => {
+      mockViewport(width);
+      const dashboard: DashboardSnapshot = {
+        composeProjects: [],
+        containers: [],
+        images: [],
+        networks: [],
+        volumes: [],
+        runtime: { instance: "overseer", message: "중지됨", phase: "stopped" },
+      };
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        if (url.includes("/api/operations"))
+          return jsonResponse({
+            operations: [],
+            pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
+          });
+        return jsonResponse(dashboard);
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      window.history.replaceState(null, "", path);
+      render(<App />);
+      await screen.findByRole("heading", { name: `${label} 작업 기록`, level: 1 });
+      await screen.findByRole("table", { name: `${label} 작업 기록` });
+      const user = userEvent.setup();
+      const menu = async () => {
+        if (width > 672) return within(screen.getByRole("navigation", { name: "주요 메뉴" }));
+        await user.click(screen.getByRole("button", { name: "주요 메뉴 열기" }));
+        return within(await screen.findByRole("navigation", { name: "작업 기록 메뉴" }));
+      };
+      const initialMenu = await menu();
+      expect(initialMenu.getByRole("link", { name: label })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(initialMenu.getAllByRole("link").map(({ textContent }) => textContent)).toEqual([
+        "전체",
+        "Lima",
+        "Docker CLI",
+      ]);
+      if (width <= 672) await user.click(screen.getByRole("button", { name: "주요 메뉴 닫기" }));
+      expect(
+        fetchMock.mock.calls.some(
+          ([input]) =>
+            new URL(String(input), "http://localhost").searchParams.get("category") === category,
+        ),
+      ).toBe(true);
+      await user.type(screen.getByRole("searchbox", { name: "작업 검색" }), "old-query");
+      await user.click(screen.getByRole("button", { name: "검색" }));
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(([input]) => String(input).includes("query=old-query")),
+        ).toBe(true),
+      );
+      await user.click(
+        (await menu()).getByRole("link", { name: category === "lima" ? "Docker CLI" : "Lima" }),
+      );
+      const nextLabel = category === "lima" ? "Docker CLI" : "Lima";
+      const nextCategory = category === "lima" ? "docker-cli" : "lima";
+      await screen.findByRole("table", { name: `${nextLabel} 작업 기록` });
+      expect(window.location.pathname).toBe(`/operations/${nextCategory}`);
+      expect(screen.getByRole("searchbox", { name: "작업 검색" })).toHaveValue("");
+      const lastHistoryRequest = fetchMock.mock.calls
+        .map(([input]) => String(input))
+        .filter((url) => url.includes("/operations?"))
+        .at(-1)!;
+      expect(new URL(lastHistoryRequest, "http://localhost").searchParams.get("query")).toBeNull();
+      expect(new URL(lastHistoryRequest, "http://localhost").searchParams.get("page")).toBe("1");
+      await user.click((await menu()).getByRole("link", { name: "전체" }));
+      await screen.findByRole("table", { name: "전체 작업 기록" });
+      expect(window.location.pathname).toBe("/operations");
+      act(() => {
+        window.history.replaceState(null, "", path);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+      await screen.findByRole("table", { name: `${label} 작업 기록` });
+      expect((await menu()).getByRole("link", { name: label })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    },
+  );
+
   it("shows Docker CLI plugins and requests a Buildx installation", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {

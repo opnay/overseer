@@ -7,6 +7,36 @@ export const APP_ROUTE_GROUPS = [
 
 export type AppRouteGroup = (typeof APP_ROUTE_GROUPS)[number]["id"] | "utility";
 
+export const APP_OPERATION_ROUTES = [
+  {
+    category: "all",
+    description: "Overseer에서 요청한 모든 작업과 결과를 확인합니다.",
+    eyebrow: "Overseer",
+    group: "utility",
+    label: "작업 기록",
+    navigationLabel: "전체",
+    path: "/operations",
+  },
+  {
+    category: "lima",
+    description: "Lima 인스턴스 생성·설정·시작·중지·삭제 작업을 확인합니다.",
+    eyebrow: "Overseer",
+    group: "utility",
+    label: "Lima 작업 기록",
+    navigationLabel: "Lima",
+    path: "/operations/lima",
+  },
+  {
+    category: "docker-cli",
+    description: "Docker CLI 연결과 Compose·컨테이너·이미지·볼륨·네트워크 작업을 확인합니다.",
+    eyebrow: "Overseer",
+    group: "utility",
+    label: "Docker CLI 작업 기록",
+    navigationLabel: "Docker CLI",
+    path: "/operations/docker-cli",
+  },
+] as const;
+
 export const APP_ROUTES = [
   {
     description: "실행 이력과 폼·URL Compose 프로젝트, 서비스 상태를 함께 관리합니다.",
@@ -57,13 +87,7 @@ export const APP_ROUTES = [
     label: "도구",
     path: "/docker-plugins",
   },
-  {
-    description: "Overseer에서 요청한 모든 Docker 작업과 결과를 확인합니다.",
-    eyebrow: "Overseer",
-    group: "utility",
-    label: "작업 기록",
-    path: "/operations",
-  },
+  ...APP_OPERATION_ROUTES,
   {
     description: "로컬 VM의 상태, 가상화 방식과 할당 자원을 확인하고 인스턴스를 관리합니다.",
     eyebrow: "엔진",

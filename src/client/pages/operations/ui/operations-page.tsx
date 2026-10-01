@@ -10,14 +10,17 @@ import { SearchInput } from "@opnay/city-ds-react/search-input";
 import { Select } from "@opnay/city-ds-react/select";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
-import { History, RotateCcw, Search } from "lucide-react";
+import { Tooltip } from "@opnay/city-ds-react/tooltip";
+import { Eye, History, RotateCcw, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   OperationListResponse,
+  OperationCategory,
   OperationResource,
   OperationSnapshot,
   OperationStatus,
 } from "@contracts/contracts.ts";
+import { operationCategoryResources } from "@contracts/operation-categories.ts";
 import { apiRequest } from "@/shared/api";
 import { LogViewer } from "@/shared/ui/log-viewer";
 import {
@@ -104,10 +107,12 @@ function isAbortError(error: unknown): boolean {
 
 export function OperationsPage({
   busyId,
+  category,
   onRetry,
   refreshToken,
 }: {
   busyId?: string;
+  category: "all" | OperationCategory;
   onRetry: (id: string) => Promise<void>;
   refreshToken: string;
 }) {
@@ -121,6 +126,11 @@ export function OperationsPage({
   const [selectedId, setSelectedId] = useState<string>();
   const [snapshot, setSnapshot] = useState<OperationListResponse>();
   const [status, setStatus] = useState<"all" | OperationStatus>("all");
+  const categoryLabel = category === "all" ? "전체" : category === "lima" ? "Lima" : "Docker CLI";
+  const availableResourceOptions = resourceOptions.filter(
+    ({ value }) =>
+      value === "all" || category === "all" || operationCategoryResources[category].includes(value),
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -129,6 +139,7 @@ export function OperationsPage({
       pageSize: String(OPERATION_PAGE_SIZE),
     });
     if (query) params.set("query", query);
+    if (category !== "all") params.set("category", category);
     if (resource !== "all") params.set("resource", resource);
     if (status !== "all") params.set("status", status);
     setLoading(true);
@@ -137,6 +148,7 @@ export function OperationsPage({
       signal: controller.signal,
     })
       .then((next) => {
+        if (controller.signal.aborted) return;
         const operations = Array.isArray(next.operations) ? next.operations : [];
         const pagination = next.pagination ?? {
           page: 1,
@@ -148,14 +160,14 @@ export function OperationsPage({
         if (pagination.page !== page) setPage(pagination.page);
       })
       .catch((error: unknown) => {
-        if (isAbortError(error)) return;
+        if (controller.signal.aborted || isAbortError(error)) return;
         setLoadError(error instanceof Error ? error.message : "작업 기록을 불러오지 못했습니다.");
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [page, query, refreshToken, requestRevision, resource, status]);
+  }, [category, page, query, refreshToken, requestRevision, resource, status]);
 
   const operations = snapshot?.operations ?? [];
   const selected = operations.find(({ id }) => id === selectedId);
@@ -234,7 +246,7 @@ export function OperationsPage({
                 setResource(value);
                 setPage(1);
               }}
-              options={resourceOptions}
+              options={availableResourceOptions}
               value={resource}
             />
           </FilterBar>
@@ -262,12 +274,12 @@ export function OperationsPage({
           <>
             <DataTableRegion className="overseer-data-table-region" label="작업 기록 표">
               <Table.Root
-                aria-label="전체 작업 기록"
+                aria-label={`${categoryLabel} 작업 기록`}
                 className="overseer-table overseer-table--operations"
                 size="sm"
               >
                 <Table.Caption className="overseer-table-caption">
-                  Overseer에서 요청한 전체 작업 기록
+                  Overseer에서 요청한 {categoryLabel} 작업 기록
                 </Table.Caption>
                 <Table.Header>
                   <Table.Row>
@@ -291,7 +303,9 @@ export function OperationsPage({
                         <EmptyState.Description>
                           {hasFilters
                             ? "검색어나 필터를 바꾸어 다시 확인하십시오."
-                            : "Overseer에서 Docker 작업을 시작하면 여기에 계속 저장됩니다."}
+                            : category === "all"
+                              ? "Overseer에서 작업을 시작하면 여기에 계속 저장됩니다."
+                              : `${categoryLabel} 작업을 시작하면 여기에 계속 저장됩니다.`}
                         </EmptyState.Description>
                       </EmptyState.Root>
                     </Table.StateRow>
@@ -346,13 +360,26 @@ export function OperationsPage({
                           </Table.Cell>
                           <Table.Cell>
                             <div className="overseer-row-actions">
-                              <Button
-                                onClick={() => setSelectedId(operation.id)}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                상세
-                              </Button>
+                              <Tooltip.Root>
+                                <Tooltip.Trigger
+                                  render={
+                                    <Button
+                                      aria-label="상세"
+                                      iconOnly
+                                      onClick={() => setSelectedId(operation.id)}
+                                      size="sm"
+                                      variant="ghost"
+                                    />
+                                  }
+                                >
+                                  <Eye aria-hidden="true" size={14} />
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                  <Tooltip.Positioner>
+                                    <Tooltip.Popup>상세</Tooltip.Popup>
+                                  </Tooltip.Positioner>
+                                </Tooltip.Portal>
+                              </Tooltip.Root>
                             </div>
                           </Table.Cell>
                         </Table.Row>

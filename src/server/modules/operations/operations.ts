@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
 import type {
+  OperationCategory,
   OperationKind,
   OperationResource,
   OperationSnapshot,
   OperationStatus,
   OperationTarget,
 } from "../../../shared/contracts.ts";
+import { operationCategoryByKind } from "../../../shared/operation-categories.ts";
 import { ExpectedError } from "../../core/errors.ts";
 import type {
   OperationHistoryStore,
@@ -37,6 +39,7 @@ export interface EnqueueOperation {
 }
 
 export interface OperationListQuery {
+  category?: OperationCategory;
   page: number;
   pageSize: number;
   query?: string;
@@ -141,6 +144,8 @@ export class OperationQueue {
   query(input: OperationListQuery): OperationListResult {
     const query = input.query?.trim().toLowerCase();
     const filtered = this.sorted().filter((operation) => {
+      if (input.category && operationCategoryByKind[operation.kind] !== input.category)
+        return false;
       if (input.status && operation.status !== input.status) return false;
       if (input.resource && operation.target.resource !== input.resource) return false;
       if (!query) return true;
