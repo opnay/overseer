@@ -9,7 +9,11 @@ import type {
   UpdateDockerDaemonConfigurationSectionInput,
 } from "@contracts/contracts.ts";
 import { useUrlSection } from "@/shared/lib/url-section";
-import { SectionedWorkspace, type SectionedWorkspaceGroup } from "@/shared/ui/sectioned-workspace";
+import {
+  SectionedWorkspace,
+  useWorkspaceNavigation,
+  type SectionedWorkspaceGroup,
+} from "@/shared/ui/sectioned-workspace";
 import { DockerDaemonSettings } from "./docker-daemon-settings.tsx";
 import { ToolUpdatesSection } from "./tool-updates-section.tsx";
 
@@ -91,6 +95,12 @@ export function SettingsPage({
 
   const status = runtimeStatus[dashboard.runtime.phase];
   const presentation = sectionPresentation[section];
+  const navigation = useWorkspaceNavigation();
+  const groups = navigation?.enabled
+    ? settingsNavigation.filter(({ label }) =>
+        section === "general" ? label === "Overseer" : label === "Docker Engine",
+      )
+    : settingsNavigation;
 
   return (
     <section className="overseer-settings" aria-label="설정">
@@ -98,7 +108,7 @@ export function SettingsPage({
         category={presentation.category}
         description={presentation.description}
         getSectionHref={getSectionHref}
-        groups={settingsNavigation}
+        groups={groups}
         navigationLabel="설정 상세 메뉴"
         onSectionChange={setSection}
         section={section}

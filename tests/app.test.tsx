@@ -268,7 +268,10 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelectorAll(".overseer-loading-nav-item")).toHaveLength(9);
+    expect(container.querySelectorAll(".overseer-loading-rail-icon")).toHaveLength(5);
+    expect(
+      container.querySelector(".overseer-secondary-sidebar .overseer-loading-nav-items"),
+    ).toBeInTheDocument();
     expect(container.querySelector('[data-loading-pattern="collection"]')).toBeInTheDocument();
     expect(container.querySelectorAll(".overseer-loading-table-row")).toHaveLength(6);
     expect(container.querySelector(".overseer-stat-grid")).not.toBeInTheDocument();
@@ -1175,7 +1178,7 @@ describe("App", () => {
 
     const pageHeading = await screen.findByRole("heading", { name: "인스턴스", level: 1 });
     expect(
-      within(pageHeading.closest(".overseer-page-header") as HTMLElement).getByText("가상화"),
+      within(pageHeading.closest(".overseer-page-header") as HTMLElement).getByText("엔진"),
     ).toBeInTheDocument();
     expect(await screen.findByRole("columnheader", { name: "가상화" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "컨테이너" })).not.toBeInTheDocument();
@@ -1242,6 +1245,8 @@ describe("App", () => {
         const url = String(input);
         if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
+        if (url.endsWith("/api/runtime/configuration"))
+          return jsonResponse(dockerEngineSnapshot("instance", true));
         if (url.endsWith("/api/runtime/instances")) {
           return jsonResponse(runtimeInstancesSnapshot([runtimeInstance()]));
         }
@@ -1272,6 +1277,13 @@ describe("App", () => {
     await user.keyboard("{Escape}");
 
     const navigation = screen.getByRole("navigation", { name: "VM 인스턴스 상세 메뉴" });
+    const sidebar = screen.getByRole("complementary", { name: "Overseer 주요 탐색" });
+    expect(sidebar).toContainElement(navigation);
+    expect(screen.getByRole("main")).not.toContainElement(navigation);
+    expect(within(sidebar).getByRole("link", { name: "인스턴스 목록으로" })).toHaveAttribute(
+      "href",
+      "/instances",
+    );
     await user.click(within(navigation).getByRole("link", { name: "VM 설정" }));
     expect(window.location.search).toBe("?section=settings");
     expect(screen.getByText("Lima VM")).toBeInTheDocument();
@@ -1290,6 +1302,21 @@ describe("App", () => {
     expect(screen.getByText("현재 사용 중")).toBeInTheDocument();
     expect(screen.getByText("29.7.2")).toBeInTheDocument();
     expect(screen.getByText("읽기/쓰기")).toBeInTheDocument();
+    act(() => {
+      window.history.replaceState(null, "", "/instances/overseer?section=settings");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(await screen.findByText("Lima VM")).toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: "VM 설정" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await user.click(within(sidebar).getByRole("link", { name: "인스턴스 목록으로" }));
+    expect(await screen.findByRole("heading", { name: "인스턴스", level: 1 })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+    expect(
+      screen.queryByRole("navigation", { name: "VM 인스턴스 상세 메뉴" }),
+    ).not.toBeInTheDocument();
   });
 
   it("edits Docker daemon settings without network fields from Engine settings", async () => {
@@ -1333,7 +1360,9 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings");
     render(<App />);
 
-    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(screen.getByRole("button", { name: "엔진" }));
+    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
     expect(
       within(navigation).queryByRole("link", { name: "인스턴스 설정" }),
     ).not.toBeInTheDocument();
@@ -1414,7 +1443,9 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings");
     render(<App />);
 
-    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(screen.getByRole("button", { name: "엔진" }));
+    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
     await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
     expect(window.location.search).toBe("?section=network");
     expect(await screen.findByLabelText("DNS 서버")).toBeInTheDocument();
@@ -1505,7 +1536,9 @@ describe("App", () => {
     window.history.replaceState(null, "", "/settings");
     render(<App />);
 
-    const navigation = await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await screen.findByRole("navigation", { name: "설정 상세 메뉴" });
+    await user.click(screen.getByRole("button", { name: "엔진" }));
+    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
     await user.click(within(navigation).getByRole("link", { name: "네트워크 설정" }));
     expect(await screen.findByLabelText("Docker Engine 설정 불러오는 중")).toBeInTheDocument();
     expect(timeoutSpy).toHaveBeenCalledWith(15_000);
@@ -1642,6 +1675,7 @@ describe("App", () => {
       expect(screen.queryByRole("button", { name: "런타임 중지" })).not.toBeInTheDocument();
     }
 
+    await user.click(screen.getByRole("button", { name: "엔진" }));
     await user.click(screen.getByRole("link", { name: "인스턴스" }));
     await user.click(await screen.findByRole("button", { name: "overseer 인스턴스 중지" }));
     await waitFor(() =>
@@ -2582,7 +2616,7 @@ describe("App", () => {
     expect(await screen.findByText("전체 25개 · 1 / 2페이지")).toBeInTheDocument();
   });
 
-  it("groups desktop navigation and keeps settings as a utility", async () => {
+  it("switches sidebar groups without moving the page and navigates on link selection", async () => {
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
       containers: [],
@@ -2607,44 +2641,66 @@ describe("App", () => {
     render(<App />);
     await screen.findByText("컨테이너가 없습니다.");
 
-    const navigation = screen.getByRole("navigation", { name: "주요 메뉴" });
-    const workloads = within(navigation).getByRole("group", { name: "워크로드" });
-    const resources = within(navigation).getByRole("group", { name: "리소스" });
-    const external = within(navigation).getByRole("group", { name: "외부 공급자" });
-    const extensions = within(navigation).getByRole("group", { name: "CLI" });
-    const operations = within(navigation).getByRole("group", { name: "운영" });
-    const virtualization = within(navigation).getByRole("group", { name: "가상화" });
+    const user = userEvent.setup();
+    const sidebar = screen.getByRole("complementary", { name: "Overseer 주요 탐색" });
+    const navigation = within(sidebar).getByRole("navigation", { name: "주요 메뉴" });
     expect(
-      within(workloads)
+      within(navigation)
         .getAllByRole("link")
         .map(({ textContent }) => textContent),
-    ).toEqual(["Compose", "컨테이너"]);
-    expect(
-      within(resources)
-        .getAllByRole("link")
-        .map(({ textContent }) => textContent),
-    ).toEqual(["이미지", "볼륨", "네트워크"]);
-    expect(within(operations).getByRole("link", { name: "작업 기록" })).toHaveAttribute(
-      "href",
-      "/operations",
+    ).toEqual(["Compose", "컨테이너", "이미지", "볼륨", "네트워크"]);
+    expect(within(sidebar).getByRole("button", { name: "도커" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
-    expect(within(virtualization).getByRole("link", { name: "인스턴스" })).toHaveAttribute(
+    await user.click(within(sidebar).getByRole("button", { name: "엔진" }));
+    expect(screen.getByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/containers");
+    expect(within(navigation).getByRole("link", { name: "인스턴스" })).toHaveAttribute(
       "href",
       "/instances",
     );
-    expect(within(external).getByRole("link", { name: "이미지 저장소" })).toHaveAttribute(
+    expect(within(navigation).getByRole("link", { name: "엔진 설정" })).toHaveAttribute(
+      "href",
+      "/settings?section=engine",
+    );
+    expect(within(navigation).getByRole("link", { name: "네트워크 설정" })).toHaveAttribute(
+      "href",
+      "/settings?section=network",
+    );
+    await user.click(within(sidebar).getByRole("button", { name: "공급자" }));
+    expect(within(navigation).getByRole("link", { name: "이미지 저장소" })).toHaveAttribute(
       "href",
       "/image-repositories",
     );
-    expect(within(extensions).getByRole("link", { name: "도구" })).toHaveAttribute(
+    await user.click(within(sidebar).getByRole("button", { name: "CLI" }));
+    expect(within(navigation).getByRole("link", { name: "도구" })).toHaveAttribute(
       "href",
       "/docker-plugins",
     );
-    expect(external.compareDocumentPosition(operations) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
+    const utilities = within(sidebar).getByRole("navigation", { name: "유틸리티 메뉴" });
+    expect(within(utilities).getByRole("link", { name: "작업 기록" })).toHaveAttribute(
+      "href",
+      "/operations",
     );
-    expect(within(navigation).queryByRole("link", { name: "설정" })).not.toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "유틸리티 메뉴" })).toHaveTextContent("설정");
+    expect(within(utilities).getByRole("link", { name: "일반 설정" })).toHaveAttribute(
+      "href",
+      "/settings?section=general",
+    );
+    await user.click(within(utilities).getByRole("link", { name: "작업 기록" }));
+    expect(await screen.findByRole("heading", { name: "작업 기록", level: 1 })).toBeInTheDocument();
+    act(() => {
+      window.history.replaceState(null, "", "/containers");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(await screen.findByRole("heading", { name: "컨테이너", level: 1 })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("button", { name: "도커" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.click(within(navigation).getByRole("link", { name: "이미지" }));
+    expect(await screen.findByRole("heading", { name: "이미지", level: 1 })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/images");
   });
 
   it("shows Docker CLI plugins and requests a Buildx installation", async () => {
@@ -2752,8 +2808,8 @@ describe("App", () => {
     expect(sidebar).toHaveAttribute("data-navigation-mode", "rail");
     const composeLink = within(sidebar).getByRole("link", { name: "Compose" });
     expect(composeLink).toHaveAttribute("aria-current", "page");
-    await user.hover(composeLink);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("Compose");
+    await user.hover(within(sidebar).getByRole("button", { name: "도커" }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("도커");
   });
 
   it("adds registry addresses without a provider selection", async () => {
@@ -2957,11 +3013,10 @@ describe("App", () => {
 
     const drawer = await screen.findByRole("dialog", { name: "주요 메뉴" });
     const navigation = within(drawer).getByRole("navigation", { name: "주요 메뉴" });
-    expect(within(navigation).getByRole("group", { name: "워크로드" })).toBeInTheDocument();
-    expect(within(navigation).getByRole("group", { name: "리소스" })).toBeInTheDocument();
-    expect(within(navigation).getByRole("group", { name: "외부 공급자" })).toBeInTheDocument();
-    expect(within(navigation).getByRole("group", { name: "운영" })).toBeInTheDocument();
-    expect(within(navigation).getByRole("group", { name: "가상화" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "도커" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "CLI" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "공급자" })).toBeInTheDocument();
+    expect(within(navigation).getByRole("group", { name: "엔진" })).toBeInTheDocument();
     expect(within(navigation).getByRole("link", { name: "컨테이너" })).toHaveAttribute(
       "aria-current",
       "page",

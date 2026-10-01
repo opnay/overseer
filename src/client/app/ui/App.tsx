@@ -3,38 +3,26 @@ import { Badge } from "@opnay/city-ds-react/badge";
 import { Breadcrumbs } from "@opnay/city-ds-react/breadcrumbs";
 import { Button } from "@opnay/city-ds-react/button";
 import { Dialog } from "@opnay/city-ds-react/dialog";
-import { Drawer } from "@opnay/city-ds-react/drawer";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Toolbar } from "@opnay/city-ds-react/toolbar";
 import { Toaster, toast } from "@opnay/city-ds-react/toast";
-import { Tooltip } from "@opnay/city-ds-react/tooltip";
 import {
   ArrowDownToLine,
-  Boxes,
   Check,
-  Cloud,
   Container,
   Copy,
-  Database,
   Download,
-  HardDrive,
   Layers3,
-  ListChecks,
-  Menu,
   Moon,
-  Network as NetworkIcon,
   Play,
-  Puzzle,
   Radio,
   RefreshCw,
   RotateCcw,
-  Settings2,
   Server,
   Square,
   Sun,
   Terminal,
-  X,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -69,12 +57,13 @@ import type {
   VolumeSummary,
 } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
+import { WorkspaceNavigationProvider } from "@/shared/ui/sectioned-workspace";
+import { AppSidebar, MobileNavigationDrawer } from "./AppNavigation.tsx";
 import { followLink } from "@/shared/lib/follow-link";
 import { LogViewer } from "@/shared/ui/log-viewer";
 import { ConfirmAction } from "@/shared/ui/confirm-action";
 import { NamedResourceDialog } from "@/shared/ui/named-resource-dialog";
 import {
-  APP_ROUTES,
   APP_ROUTE_GROUPS,
   composeProjectDetailPath,
   containerDetailPath,
@@ -86,7 +75,6 @@ import {
   networkDetailPath,
   runtimeInstanceDetailPath,
   type AppLocationPath,
-  type AppPath,
   volumeDetailPath,
 } from "@/shared/routes";
 
@@ -205,19 +193,6 @@ const CreateBuilderComposeDialog = lazy(() =>
   })),
 );
 
-const resourceRouteIcon = {
-  "/compose": Layers3,
-  "/containers": Boxes,
-  "/docker-plugins": Puzzle,
-  "/images": HardDrive,
-  "/image-repositories": Cloud,
-  "/instances": Server,
-  "/networks": NetworkIcon,
-  "/operations": ListChecks,
-  "/settings": Settings2,
-  "/volumes": Database,
-} satisfies Record<AppPath, typeof Layers3>;
-
 const STARTUP_REFRESH_FEEDBACK_MS = 500;
 
 type NavigationMode = "desktop" | "mobile" | "rail";
@@ -247,115 +222,6 @@ function useNavigationMode(): NavigationMode {
   return mode;
 }
 
-function AppBrand() {
-  return (
-    <div className="overseer-brand">
-      <span aria-hidden="true">
-        <Container size={20} strokeWidth={1.8} />
-      </span>
-      <div>
-        <strong>Overseer</strong>
-        <small>Lima 제어판</small>
-      </div>
-    </div>
-  );
-}
-
-function PrimaryNavigation({
-  currentPath,
-  mode,
-  onSelect,
-}: {
-  currentPath: AppPath;
-  mode: Exclude<NavigationMode, "mobile"> | "drawer";
-  onSelect(path: AppPath): void;
-}) {
-  return (
-    <nav aria-label="주요 메뉴" className="overseer-navigation">
-      {APP_ROUTE_GROUPS.map((group) => {
-        const labelId = `overseer-nav-${mode}-${group.id}`;
-        return (
-          <div aria-labelledby={labelId} className="overseer-nav-group" key={group.id} role="group">
-            <span className="overseer-nav-group-label" id={labelId}>
-              {group.label}
-            </span>
-            <div className="overseer-nav-group-items">
-              {APP_ROUTES.filter((route) => route.group === group.id).map((route) => {
-                const Icon = resourceRouteIcon[route.path];
-                const link = (
-                  <a
-                    aria-current={currentPath === route.path ? "page" : undefined}
-                    aria-label={mode === "rail" ? route.label : undefined}
-                    href={route.path}
-                    key={route.path}
-                    onClick={(event) => followLink(event, () => onSelect(route.path))}
-                  >
-                    <Icon aria-hidden="true" size={16} />
-                    <span className="overseer-nav-link-label">{route.label}</span>
-                  </a>
-                );
-                if (mode !== "rail") return link;
-                return (
-                  <Tooltip.Root key={route.path}>
-                    <Tooltip.Trigger render={link} />
-                    <Tooltip.Portal>
-                      <Tooltip.Positioner side="right" sideOffset={8}>
-                        <Tooltip.Popup>{route.label}</Tooltip.Popup>
-                      </Tooltip.Positioner>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </nav>
-  );
-}
-
-function UtilityNavigation({
-  currentPath,
-  mode,
-  onSelect,
-}: {
-  currentPath: AppPath;
-  mode: Exclude<NavigationMode, "mobile"> | "drawer";
-  onSelect(path: AppPath): void;
-}) {
-  const route = APP_ROUTES.find(({ path }) => path === "/settings")!;
-  const link = (
-    <a
-      aria-current={currentPath === route.path ? "page" : undefined}
-      aria-label={mode === "rail" ? route.label : undefined}
-      href={route.path}
-      onClick={(event) => followLink(event, () => onSelect(route.path))}
-    >
-      <Settings2 aria-hidden="true" size={16} />
-      <span className="overseer-nav-link-label">{route.label}</span>
-    </a>
-  );
-  if (mode !== "rail") {
-    return (
-      <nav aria-label="유틸리티 메뉴" className="overseer-sidebar-utility">
-        {link}
-      </nav>
-    );
-  }
-  return (
-    <nav aria-label="유틸리티 메뉴" className="overseer-sidebar-utility">
-      <Tooltip.Root>
-        <Tooltip.Trigger render={link} />
-        <Tooltip.Portal>
-          <Tooltip.Positioner side="right" sideOffset={8}>
-            <Tooltip.Popup>{route.label}</Tooltip.Popup>
-          </Tooltip.Positioner>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </nav>
-  );
-}
-
 const runtimePresentation: Record<
   RuntimePhase,
   { label: string; tone: "destructive" | "info" | "neutral" | "success" | "warning" }
@@ -367,62 +233,6 @@ const runtimePresentation: Record<
   stopped: { label: "중지됨", tone: "warning" },
   stopping: { label: "중지 중", tone: "info" },
 };
-
-function MobileNavigationDrawer({
-  currentPath,
-  onSelect,
-}: {
-  currentPath: AppPath;
-  onSelect(path: AppPath): void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Drawer.Root modal onOpenChange={setOpen} open={open} swipeDirection="left">
-      <Drawer.Trigger
-        render={<Button aria-label="주요 메뉴 열기" iconOnly size="sm" variant="ghost" />}
-      >
-        <Menu aria-hidden="true" size={17} />
-      </Drawer.Trigger>
-      <Drawer.Portal>
-        <Drawer.Backdrop />
-        <Drawer.Viewport side="left">
-          <Drawer.Popup side="left" size="sm">
-            <Drawer.Header>
-              <div>
-                <Drawer.Title>주요 메뉴</Drawer.Title>
-                <Drawer.Description>Overseer 전역 화면으로 이동합니다.</Drawer.Description>
-              </div>
-              <Drawer.Close
-                render={<Button aria-label="주요 메뉴 닫기" iconOnly size="sm" variant="ghost" />}
-              >
-                <X aria-hidden="true" size={16} />
-              </Drawer.Close>
-            </Drawer.Header>
-            <Drawer.Content className="overseer-mobile-navigation-body">
-              <PrimaryNavigation
-                currentPath={currentPath}
-                mode="drawer"
-                onSelect={(path) => {
-                  setOpen(false);
-                  onSelect(path);
-                }}
-              />
-              <UtilityNavigation
-                currentPath={currentPath}
-                mode="drawer"
-                onSelect={(path) => {
-                  setOpen(false);
-                  onSelect(path);
-                }}
-              />
-            </Drawer.Content>
-          </Drawer.Popup>
-        </Drawer.Viewport>
-      </Drawer.Portal>
-    </Drawer.Root>
-  );
-}
 
 function actionError(error: unknown): string {
   return error instanceof Error ? error.message : "요청을 완료하지 못했습니다.";
@@ -587,18 +397,21 @@ function LoadingScreen({ path, startup = false }: { path: AppLocationPath; start
           className="overseer-sidebar overseer-loading-sidebar"
           data-navigation-mode={mode}
         >
-          <Skeleton className="overseer-loading-brand" />
-          <div className="overseer-loading-nav">
-            {APP_ROUTE_GROUPS.map((group) => (
-              <div className="overseer-loading-nav-group" key={group.id}>
-                <Skeleton className="overseer-loading-nav-label" />
-                <div className="overseer-loading-nav-items">
-                  {APP_ROUTES.filter((route) => route.group === group.id).map((route) => (
-                    <Skeleton className="overseer-loading-nav-item" key={route.path} />
-                  ))}
-                </div>
-              </div>
-            ))}
+          <div className="overseer-category-rail">
+            <Skeleton className="overseer-loading-rail-icon" />
+            <div className="overseer-category-navigation">
+              {APP_ROUTE_GROUPS.map((group) => (
+                <Skeleton className="overseer-loading-rail-icon" key={group.id} />
+              ))}
+            </div>
+          </div>
+          <div className="overseer-secondary-sidebar">
+            <Skeleton className="overseer-loading-nav-label" />
+            <div className="overseer-loading-nav-items">
+              {LOADING_NAV_ITEMS.map((item) => (
+                <Skeleton className="overseer-loading-nav-item" key={item} />
+              ))}
+            </div>
           </div>
         </aside>
       ) : null}
@@ -835,9 +648,12 @@ function withStartupPreview(snapshot: StartupSnapshot, preview: StartupPreview):
 }
 
 export function App() {
+  const navigationMode = useNavigationMode();
   return (
     <>
-      <AppContent />
+      <WorkspaceNavigationProvider enabled={navigationMode !== "mobile"}>
+        <AppContent navigationMode={navigationMode} />
+      </WorkspaceNavigationProvider>
       <Toaster
         duration={5_000}
         toastOptions={{ closeButtonAriaLabel: "알림 닫기" }}
@@ -847,8 +663,7 @@ export function App() {
   );
 }
 
-function AppContent() {
-  const navigationMode = useNavigationMode();
+function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   const [startupPreview] = useState(startupPreviewFromLocation);
   const [startupRoute, setStartupRoute] = useState(startupRouteFromLocation);
   const [startupReviewMode, setStartupReviewMode] = useState(startupRouteFromLocation);
@@ -875,6 +690,7 @@ function AppContent() {
   const [logsTarget, setLogsTarget] = useState<LogsTarget>();
   const [dark, setDark] = useState(() => window.localStorage.getItem("overseer-theme") === "dark");
   const [resourcePath, setResourcePath] = useState<AppLocationPath>(resourcePathFromLocation);
+  const [navigationSearch, setNavigationSearch] = useState(window.location.search);
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
   const [imageRepositoryRefreshRevision, setImageRepositoryRefreshRevision] = useState(0);
@@ -1174,17 +990,31 @@ function AppContent() {
       setStartupOperationId(undefined);
       setStartupStep(nextStartupRoute ? "homebrew" : undefined);
       if (!nextStartupRoute) setResourcePath(resourcePathFromLocation());
+      setNavigationSearch(window.location.search);
     };
     window.addEventListener("popstate", syncResourcePath);
     return () => window.removeEventListener("popstate", syncResourcePath);
   }, []);
 
-  const selectResourcePath = useCallback((nextPath: AppLocationPath) => {
+  const selectResourcePath = useCallback((nextPath: AppLocationPath, search = "") => {
     setStartupRoute(false);
     setStartupReviewMode(false);
     setResourcePath(nextPath);
-    if (window.location.pathname !== nextPath) window.history.pushState(null, "", nextPath);
+    const href = `${nextPath}${search}`;
+    if (`${window.location.pathname}${window.location.search}` !== href) {
+      window.history.pushState(null, "", href);
+    }
+    setNavigationSearch(search);
+    window.dispatchEvent(new PopStateEvent("popstate"));
   }, []);
+
+  const selectNavigationHref = useCallback(
+    (href: string) => {
+      const url = new URL(href, window.location.href);
+      selectResourcePath(getAppLocation(url.pathname), url.search);
+    },
+    [selectResourcePath],
+  );
 
   const mutate = async ({ key, onAccepted, request }: MutationOptions) => {
     setSubmitting(key);
@@ -1490,7 +1320,17 @@ function AppContent() {
       )
     : undefined;
   const detailRefreshToken = `${detailRefreshRevision}:${latestFinishedDetailOperation?.id ?? ""}:${latestFinishedDetailOperation?.status ?? ""}`;
-  const pageEyebrow = currentRoute.eyebrow;
+  const requestedSettingsSection = new URLSearchParams(navigationSearch).get("section");
+  const settingsSection =
+    requestedSettingsSection && ["general", "engine", "network"].includes(requestedSettingsSection)
+      ? requestedSettingsSection
+      : dashboard?.runtime.phase === "running"
+        ? "general"
+        : "engine";
+  const pageEyebrow =
+    currentRoute.path === "/settings" && settingsSection !== "general"
+      ? "엔진"
+      : currentRoute.eyebrow;
   const pageLabel = currentDetail
     ? currentDetail.type === "compose"
       ? currentDetail.identifier
@@ -1755,23 +1595,15 @@ function AppContent() {
         본문으로 건너뛰기
       </a>
       {navigationMode !== "mobile" ? (
-        <aside
-          aria-label="Overseer 주요 탐색"
-          className="overseer-sidebar"
-          data-navigation-mode={navigationMode}
-        >
-          <AppBrand />
-          <PrimaryNavigation
-            currentPath={currentRoute.path}
-            mode={navigationMode}
-            onSelect={selectResourcePath}
-          />
-          <UtilityNavigation
-            currentPath={currentRoute.path}
-            mode={navigationMode}
-            onSelect={selectResourcePath}
-          />
-        </aside>
+        <AppSidebar
+          currentPath={currentRoute.path}
+          detail={currentDetail}
+          detailLabel={pageLabel}
+          locationKey={`${resourcePath}${navigationSearch}`}
+          mode={navigationMode}
+          onNavigate={selectNavigationHref}
+          settingsSection={settingsSection}
+        />
       ) : null}
 
       <div className="overseer-workspace">
@@ -1814,7 +1646,8 @@ function AppContent() {
               </Button>
               <MobileNavigationDrawer
                 currentPath={currentRoute.path}
-                onSelect={selectResourcePath}
+                onNavigate={selectNavigationHref}
+                settingsSection={settingsSection}
               />
             </div>
           </header>

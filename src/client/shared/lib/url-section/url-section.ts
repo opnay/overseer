@@ -35,6 +35,7 @@ export function useUrlSection<Section extends string>({
       else url.searchParams.set(parameter, next);
       window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
       setSection(next);
+      window.dispatchEvent(new PopStateEvent("popstate"));
     },
     [defaultValue, parameter, section],
   );

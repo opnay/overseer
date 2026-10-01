@@ -20,7 +20,7 @@
 @layer city-app {
   .overseer-shell {
     display: grid;
-    grid-template-columns: 14.5rem minmax(0, 1fr);
+    grid-template-columns: 15rem minmax(0, 1fr);
     min-height: 100vh;
     min-height: 100dvh;
     background: var(--city-color-background);
@@ -46,15 +46,96 @@
   .overseer-sidebar {
     position: sticky;
     top: 0;
-    display: flex;
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr);
     height: 100vh;
     height: 100dvh;
     min-width: 0;
-    padding: var(--city-space-5) var(--city-space-3);
     border-right: 1px solid var(--city-color-border);
     background: var(--city-color-surface-raised);
+  }
+
+  .overseer-category-rail {
+    display: flex;
+    min-height: 0;
+    padding: var(--city-space-4) var(--city-space-2);
+    border-right: 1px solid var(--city-color-border);
     flex-direction: column;
+    align-items: center;
     gap: var(--city-space-6);
+  }
+
+  .overseer-rail-brand {
+    display: flex;
+    height: var(--city-control-xlg);
+    color: var(--city-color-foreground);
+    align-items: center;
+    justify-content: center;
+  }
+
+  .overseer-category-navigation,
+  .overseer-rail-utilities {
+    display: grid;
+    gap: var(--city-space-2);
+  }
+
+  .overseer-rail-utilities {
+    margin-top: auto;
+    padding-top: var(--city-space-3);
+    border-top: 1px solid var(--city-color-border);
+  }
+
+  .overseer-secondary-sidebar {
+    overflow-y: auto;
+    min-width: 0;
+    padding: var(--city-space-5) var(--city-space-2);
+  }
+
+  .overseer-secondary-heading {
+    display: grid;
+    min-width: 0;
+    padding-inline: var(--city-space-2-5);
+    margin-bottom: var(--city-space-6);
+    gap: var(--city-space-1);
+  }
+
+  .overseer-secondary-heading > span {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-secondary-heading strong {
+    overflow-wrap: anywhere;
+    font-size: var(--city-font-size-sm);
+  }
+
+  .overseer-secondary-navigation {
+    display: grid;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-navigation-back {
+    margin-bottom: var(--city-space-4);
+  }
+
+  .overseer-workspace-navigation-outlet .overseer-sectioned-workspace-sidebar {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .overseer-sectioned-workspace[data-navigation-external],
+  .overseer-loading-sectioned {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .overseer-loading-sectioned > .overseer-sectioned-workspace-sidebar {
+    display: none;
+  }
+
+  .overseer-loading-rail-icon {
+    width: var(--city-control-xlg);
+    height: var(--city-control-xlg);
   }
 
   .overseer-brand {
@@ -117,7 +198,9 @@
   }
 
   .overseer-navigation a,
-  .overseer-sidebar-utility a {
+  .overseer-sidebar-utility a,
+  .overseer-secondary-navigation a,
+  .overseer-navigation-back {
     display: flex;
     min-height: var(--city-control-md);
     padding: var(--city-space-2) var(--city-space-2-5);
@@ -132,19 +215,25 @@
   }
 
   .overseer-navigation a:hover,
-  .overseer-sidebar-utility a:hover {
+  .overseer-sidebar-utility a:hover,
+  .overseer-secondary-navigation a:hover,
+  .overseer-navigation-back:hover {
     background: var(--city-color-accent);
     color: var(--city-color-foreground);
   }
 
   .overseer-navigation a:focus-visible,
-  .overseer-sidebar-utility a:focus-visible {
+  .overseer-sidebar-utility a:focus-visible,
+  .overseer-secondary-navigation a:focus-visible,
+  .overseer-navigation-back:focus-visible {
     outline: 2px solid var(--city-color-ring);
     outline-offset: 2px;
   }
 
   .overseer-navigation a[aria-current="page"],
-  .overseer-sidebar-utility a[aria-current="page"] {
+  .overseer-sidebar-utility a[aria-current="page"],
+  .overseer-secondary-navigation a[aria-current="page"],
+  .overseer-navigation-back[aria-current="page"] {
     border-color: var(--city-color-border);
     background: var(--city-color-muted);
     color: var(--city-color-foreground);
@@ -2455,85 +2544,21 @@
 
   @media (max-width: 52rem) {
     .overseer-shell {
-      grid-template-columns: 4rem minmax(0, 1fr);
+      grid-template-columns: 14rem minmax(0, 1fr);
     }
 
-    .overseer-sidebar {
-      padding: var(--city-space-4) var(--city-space-2);
-      gap: var(--city-space-5);
-    }
-
-    .overseer-brand {
-      padding: 0;
-      justify-content: center;
-    }
-
-    .overseer-brand > div {
-      display: none;
-    }
-
-    .overseer-sidebar .overseer-navigation,
-    .overseer-loading-nav {
-      gap: var(--city-space-3);
-    }
-
-    .overseer-sidebar .overseer-nav-group-label,
-    .overseer-loading-nav-label {
-      display: none;
-    }
-
-    .overseer-sidebar .overseer-nav-group + .overseer-nav-group,
-    .overseer-loading-nav-group + .overseer-loading-nav-group {
-      padding-top: var(--city-space-3);
-      border-top: 1px solid var(--city-color-border);
-    }
-
-    .overseer-sidebar .overseer-navigation a,
-    .overseer-sidebar .overseer-sidebar-utility a {
-      min-height: var(--city-control-lg);
-      padding: var(--city-space-2);
-      justify-content: center;
-      gap: 0;
-    }
-
-    .overseer-sidebar .overseer-nav-link-label {
-      display: none;
-    }
-
-    .overseer-sidebar .overseer-sidebar-utility {
-      padding-top: var(--city-space-3);
-    }
-
-    .overseer-loading-brand {
-      width: var(--city-control-md);
-      margin-inline: auto;
-    }
-
-    .overseer-loading-nav-item {
-      width: 100%;
-    }
-
-    .overseer-sectioned-workspace {
+    .overseer-sectioned-workspace:not([data-navigation-external]) {
       grid-template-columns: 1fr;
       gap: var(--city-space-5);
     }
 
-    .overseer-sectioned-workspace-sidebar {
+    .overseer-sectioned-workspace:not([data-navigation-external])
+      > .overseer-sectioned-workspace-sidebar {
       min-height: 0;
       padding-right: 0;
       padding-bottom: var(--city-space-4);
       border-right: 0;
       border-bottom: 1px solid var(--city-color-border);
-    }
-
-    .overseer-sectioned-workspace-nav-items {
-      display: flex;
-      overflow-x: auto;
-    }
-
-    .overseer-sectioned-workspace-nav-items a {
-      width: auto;
-      flex: none;
     }
   }
 
@@ -2665,6 +2690,10 @@
 
     .overseer-sectioned-workspace-sidebar .overseer-sectioned-workspace-desktop-navigation {
       display: none;
+    }
+
+    .overseer-loading-sectioned > .overseer-sectioned-workspace-sidebar {
+      display: block;
     }
 
     .overseer-sectioned-workspace-mobile-navigation {
