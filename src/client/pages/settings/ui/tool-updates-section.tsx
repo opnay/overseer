@@ -161,7 +161,7 @@ export function ToolUpdatesSection({
               <Item.Root
                 appearance="plain"
                 aria-labelledby={`overseer-tool-update-${item.id}`}
-                className="overseer-tool-update-row grid gap-3 rounded-none border-0 border-t border-city-border px-5 py-4 min-[42rem]:gap-4"
+                className="overseer-tool-update-row grid rounded-none border-0 border-t border-city-border px-5 py-4"
                 key={item.id}
                 render={<section />}
               >
@@ -187,7 +187,7 @@ export function ToolUpdatesSection({
                     <dd>{item.latestVersion ?? "-"}</dd>
                   </div>
                 </dl>
-                <Item.Actions className="overseer-tool-update-controls ml-0 grid gap-2">
+                <Item.Actions className="overseer-tool-update-controls grid gap-2">
                   <div className="overseer-tool-update-state">
                     <Badge appearance="subtle" size="sm" tone={status.tone}>
                       {status.label === "최신" ? (

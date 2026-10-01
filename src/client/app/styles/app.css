@@ -584,10 +584,27 @@
     gap: var(--city-space-8);
   }
 
-  .overseer-settings-panel,
   .overseer-settings-form,
   .overseer-settings-loading {
     gap: var(--city-space-6);
+  }
+
+  .overseer-settings-panel {
+    gap: var(--city-space-8);
+  }
+
+  .overseer-settings-general-section {
+    container: settings-item / inline-size;
+  }
+
+  .overseer-settings-general-section [data-city-item-media] {
+    align-self: center;
+  }
+
+  .overseer-settings-general-section [data-city-item-title] {
+    font-size: var(--city-font-size-xl);
+    line-height: var(--city-line-height-xl);
+    font-weight: var(--city-font-weight-semibold);
   }
 
   .overseer-settings-loading > * {
@@ -804,6 +821,7 @@
 
   .overseer-tool-update-row {
     grid-template-columns: minmax(0, 1fr) minmax(7rem, 1fr) auto;
+    gap: var(--city-space-4);
   }
 
   .overseer-tool-update-versions {
@@ -845,6 +863,7 @@
   }
 
   .overseer-tool-update-controls {
+    margin-left: 0;
     max-width: 11rem;
     justify-items: end;
   }
@@ -1593,6 +1612,14 @@
     color: var(--city-color-foreground);
     font-size: var(--city-font-size-sm);
     white-space: nowrap;
+  }
+
+  .overseer-operation-list > [data-city-item-list-entry]:first-child > .overseer-operation-item {
+    padding-top: 0;
+  }
+
+  .overseer-operation-list > [data-city-item-list-entry]:last-child > .overseer-operation-item {
+    border-bottom: 0;
   }
 
   .overseer-operation-meta {
@@ -2717,11 +2744,6 @@
       grid-template-columns: 1fr;
     }
 
-    .overseer-settings-general-section [data-city-item-actions],
-    .overseer-settings-general-section [data-city-item-actions] > .city-button {
-      width: 100%;
-    }
-
     .overseer-tool-updates-header {
       align-items: stretch;
       flex-direction: column;
@@ -2735,6 +2757,7 @@
 
     .overseer-tool-update-row {
       grid-template-columns: 1fr;
+      gap: var(--city-space-3);
     }
 
     .overseer-tool-update-controls {
@@ -2755,6 +2778,13 @@
 
     .overseer-repeatable-row-single {
       grid-template-columns: 1fr auto;
+    }
+  }
+
+  @container settings-item (max-width: 36rem) {
+    .overseer-settings-general-section [data-city-item-actions],
+    .overseer-settings-general-section [data-city-item-actions] > .city-button {
+      width: 100%;
     }
   }
 

@@ -134,15 +134,19 @@ export function OperationsDrawer({
                   </EmptyState.Description>
                 </EmptyState.Root>
               ) : (
-                <Item.Group className="gap-0" aria-label="확인할 작업 목록" render={<ol />}>
-                  {visible.map((operation, index) => {
+                <Item.Group
+                  className="overseer-operation-list gap-0"
+                  aria-label="확인할 작업 목록"
+                  render={<ol />}
+                >
+                  {visible.map((operation) => {
                     const presentation = operationStatusPresentation[operation.status];
                     const activeOperation =
                       operation.status === "queued" || operation.status === "running";
                     return (
                       <Item.Root
                         appearance="plain"
-                        className={`grid gap-3 rounded-none border-0 border-b border-city-border px-0 py-4 ${index === 0 ? "pt-0" : ""} ${index === visible.length - 1 ? "border-b-0" : ""}`}
+                        className="overseer-operation-item grid gap-3 rounded-none border-0 border-b border-city-border px-0 py-4"
                         key={operation.id}
                       >
                         <Item.Header className="items-start gap-3">

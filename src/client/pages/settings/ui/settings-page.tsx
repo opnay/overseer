@@ -64,13 +64,13 @@ export function SettingsPage({
             <Item.Root
               appearance="outline"
               aria-labelledby="overseer-settings-startup"
-              className="overseer-settings-general-section gap-5 bg-city-surface-raised p-5"
+              className="overseer-settings-general-section bg-city-surface-raised p-5"
               render={<section />}
             >
               <Item.Media
                 aria-hidden="true"
                 variant="icon"
-                className="size-(--city-control-lg) self-center rounded-city-sm bg-city-muted text-city-muted-foreground"
+                className="size-(--city-control-lg) rounded-city-sm bg-city-muted text-city-muted-foreground"
               >
                 <PackageCheck size={18} strokeWidth={1.8} />
               </Item.Media>

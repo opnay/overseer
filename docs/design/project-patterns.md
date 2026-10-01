@@ -209,3 +209,5 @@ ResourceCollection의 Table 구성, ResourceDetail의 summary·section 내용, S
 - 기술: FSD 경계 테스트, 타입 검사, 전체 테스트와 production build 통과
 
 City DS를 갱신할 때 제거된 API를 맞추는 것과 별도로 필터·설명 header의 실제 padding, 표와의 정렬선, 필터 조건 wrapper의 너비, Dialog·Drawer의 본문 padding을 브라우저에서 확인합니다. 타입·빌드 통과만으로 여백 호환성을 판단하지 않습니다.
+
+이 앱은 Tailwind utility를 직접 생성하지 않습니다. 패키지 CSS에 없는 utility를 새로 쓰지 않으며 프로젝트 레이아웃 보정은 `--city-*` 토큰으로 작성합니다. Item 전환에서는 Media와 Content의 실제 거리, 제목의 계산된 typography, Header·행의 정렬, 첫 행·마지막 행의 여백과 divider를 확인합니다. 클래스 이름이나 외곽 padding만으로 검증을 끝내지 않습니다.
