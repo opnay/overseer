@@ -95,7 +95,7 @@ export const APP_ROUTES = [
     path: "/image-repositories",
   },
   {
-    description: "Docker CLI에서 사용하는 공식 도구의 설치 상태와 버전을 관리합니다.",
+    description: "Docker CLI·Compose·Buildx의 실행 경로, 설치 방식과 업데이트를 관리합니다.",
     eyebrow: "CLI",
     group: "cli",
     label: "도구",

@@ -63,6 +63,8 @@ open -a /Applications/Overseer.app
 
 리소스는 독립 URL에서 관리합니다.
 
+**CLI > 도구**에서는 Docker CLI·Compose·Buildx의 실행 파일 경로, 현재 버전, 설치 방식과 Homebrew의 최신 배포 버전을 확인합니다. 목록 조회는 로컬 상태만 읽습니다. **업데이트 확인**을 누르면 Homebrew 저장소를 갱신하며, 실제 실행 파일이 현재 Homebrew 관리 경로에 있는 도구만 개별 업데이트할 수 있습니다. 외부 설치와 출처 확인 실패는 이유를 표시하고 자동 업데이트를 막습니다. Buildx는 이 페이지에서 설치하고, Docker CLI·Compose의 설치는 시작 준비에서 진행합니다. 설치·업데이트·확인 작업은 전체 작업 기록에 남습니다.
+
 - `/startup`: 설치 완료 후에도 Homebrew·Docker CLI·Compose·Lima·Docker Engine 시작 준비 흐름 확인
 - `/compose`, `/compose/:name`: 폼 또는 raw HTTPS URL 프로젝트 등록, 개요·서비스·구성·로그 상세, URL 업데이트와 폼 설정, 실행·중지·재시작·내리기
 - `/containers`, `/containers/:id`: 확장 설정으로 실행·수정, 개요·실행 설정·연결·환경 변수·Label 상세, 시작·중지·재시작·로그·삭제
@@ -142,6 +144,10 @@ pnpm check
 - `GET /api/startup/updates`: Docker CLI·Compose·Lima의 현재·최신 버전과 관리 방식
 - `POST /api/startup/updates/check`: Homebrew 저장소 갱신 및 업데이트 확인 작업 접수
 - `POST /api/startup/prerequisites/:id/update`: 확인된 Homebrew formula 개별 업데이트 작업 접수
+- `GET /api/docker-cli/plugins`: Docker CLI·Compose·Buildx 실행 경로·현재 버전·관리 출처와 마지막 업데이트 확인 결과
+- `POST /api/docker-cli/plugins/updates/check`: CLI 도구의 Homebrew 저장소 갱신·배포 버전 확인 작업 접수
+- `POST /api/docker-cli/plugins/:id/update`: 관리 출처가 확인된 Docker CLI·Compose·Buildx 개별 업데이트 작업 접수
+- `POST /api/docker-cli/plugins/buildx/install`: Buildx 설치·플러그인 연결·실행 검증 작업 접수
 
 ## URL Compose
 

@@ -18,8 +18,9 @@ export class CommandError extends Error {
   readonly command: string;
   readonly exitCode?: number;
   readonly stderr: string;
+  readonly stdout: string;
 
-  constructor(command: string, cause: unknown, stderr: string) {
+  constructor(command: string, cause: unknown, stderr: string, stdout = "") {
     const source = cause as NodeJS.ErrnoException & { code?: number };
     const detail = stderr.trim() || source.message;
     super(`${command}: ${detail}`, { cause });
@@ -27,6 +28,7 @@ export class CommandError extends Error {
     this.command = command;
     this.exitCode = typeof source.code === "number" ? source.code : undefined;
     this.stderr = stderr;
+    this.stdout = stdout;
   }
 }
 
@@ -78,15 +80,17 @@ export function runCommand(
     child.stdin.on("error", (error: NodeJS.ErrnoException) => {
       if (error.code !== "EPIPE" && !terminalError) terminalError = error;
     });
-    child.on("error", (error) => finish(() => reject(new CommandError(command, error, stderr))));
+    child.on("error", (error) =>
+      finish(() => reject(new CommandError(command, error, stderr, stdout))),
+    );
     child.on("close", (code) => {
       if (terminalError) {
-        finish(() => reject(new CommandError(command, terminalError, stderr)));
+        finish(() => reject(new CommandError(command, terminalError, stderr, stdout)));
         return;
       }
       if (code !== 0) {
         const error = Object.assign(new Error(`command exited with code ${code}`), { code });
-        finish(() => reject(new CommandError(command, error, stderr)));
+        finish(() => reject(new CommandError(command, error, stderr, stdout)));
         return;
       }
       finish(() => resolve({ stderr, stdout }));

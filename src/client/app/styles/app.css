@@ -617,6 +617,96 @@
     overflow-wrap: anywhere;
   }
 
+  .overseer-cli-tools {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-4);
+  }
+
+  .overseer-cli-tools-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--city-space-4);
+  }
+
+  .overseer-cli-tools-header > div {
+    display: grid;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-cli-tools-header p,
+  .overseer-cli-tool-reason {
+    margin: 0;
+  }
+
+  .overseer-cli-tools-header span {
+    color: var(--city-color-muted-foreground);
+  }
+
+  .overseer-cli-tools-header > .city-button {
+    flex: none;
+  }
+
+  .overseer-cli-tools-list {
+    overflow: hidden;
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-md);
+    background: var(--city-color-surface-raised);
+  }
+
+  .overseer-cli-tool {
+    padding: var(--city-space-5);
+    border: 0;
+    border-bottom: 1px solid var(--city-color-border);
+    border-radius: 0;
+    gap: var(--city-space-4);
+  }
+
+  .overseer-cli-tools-list > [data-city-item-list-entry]:last-child > .overseer-cli-tool {
+    border-bottom: 0;
+  }
+
+  .overseer-cli-tool-icon {
+    width: var(--city-control-lg);
+    height: var(--city-control-lg);
+    align-self: center;
+    border-radius: var(--city-radius-sm);
+    background: var(--city-color-muted);
+    color: var(--city-color-muted-foreground);
+  }
+
+  .overseer-cli-tool [data-city-item-title] {
+    font-size: var(--city-font-size-md);
+    line-height: var(--city-line-height-md);
+    font-weight: var(--city-font-weight-semibold);
+  }
+
+  .overseer-cli-tool-facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--city-space-4);
+  }
+
+  .overseer-cli-tool-facts > [data-city-data-list-item] {
+    padding: 0;
+  }
+
+  .overseer-cli-tool-facts [data-city-data-list-label] {
+    font-size: var(--city-font-size-xs);
+  }
+
+  .overseer-cli-tool-version,
+  .overseer-cli-tool-path code {
+    font-family: var(--city-font-family-mono);
+    font-size: var(--city-font-size-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .overseer-cli-tool-path {
+    grid-column: 1 / -1;
+  }
+
   .overseer-daemon-settings,
   .overseer-daemon-loading {
     display: grid;
@@ -2784,6 +2874,17 @@
   @container settings-item (max-width: 36rem) {
     .overseer-settings-general-section [data-city-item-actions],
     .overseer-settings-general-section [data-city-item-actions] > .city-button {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 42rem) {
+    .overseer-cli-tools-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .overseer-cli-tools-header > .city-button {
       width: 100%;
     }
   }

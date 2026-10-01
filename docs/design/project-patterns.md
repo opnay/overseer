@@ -83,7 +83,7 @@
 | ----------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------- |
 | `/compose`, `/containers`, `/images`, `/volumes`, `/networks`, `/instances`                                 | ResourceCollection | 기본 리소스 목록                  |
 | `/image-repositories`                                                                                       | ResourceCollection | 외부 저장소 목록                  |
-| `/docker-plugins`                                                                                           | ResourceCollection | Docker CLI 도구 목록              |
+| `/docker-plugins`                                                                                           | ResourceCollection | Item 기반 CLI 도구 관리 목록      |
 | `/operations`, `/operations/lima`, `/operations/docker-cli`                                                 | ResourceCollection | 작업 상세 Dialog와 LogViewer 포함 |
 | `/compose/:name`, `/containers/:id`, `/images/:id`, `/volumes/:name`, `/networks/:name`, `/instances/:name` | ResourceDetail     | Sectioned Workspace 상세          |
 | `/image-repositories/:id`                                                                                   | ResourceDetail     | 단일 콘텐츠 상세                  |
@@ -104,6 +104,8 @@
 
 - 데이터 영역은 outline 또는 raised surface 하나만 사용합니다.
 - CLI 도구 안내처럼 표 위에 유지하는 설명은 컨테이너 header에 배치하고 필터 header와 같은 gutter를 사용합니다.
+- CLI 도구는 Docker CLI·Compose·Buildx 세 항목을 `Item.Group`과 `Item.Root plain`으로 묶습니다. 현재·최신 버전, 설치 방식과 실행 경로는 `DataList`로 표시합니다. 행 내부 padding은 `space-5`, Header·정보 사이 간격은 `space-4`, Media·Content 간격은 Item의 `space-3`을 유지하며 행 사이 divider만 사용합니다.
+- CLI 목록 조회는 도구 감지만 수행하고, 최신 버전은 사용자가 업데이트 확인을 실행했을 때 Homebrew 배포 정보를 기준으로 표시합니다. 출처가 확인된 Homebrew 도구만 업데이트 버튼을 제공합니다. 행의 설치·업데이트는 의미가 명확한 아이콘 버튼과 Tooltip으로 노출하고, 미설치·외부 설치·출처 확인 실패 사유는 해당 행에 둡니다. CLI에 엔진 연결·context 관리 메뉴를 추가하지 않습니다.
 - 필터·표·페이지네이션을 같은 테두리 컨테이너에 넣으면 컨테이너의 header·footer가 inline `space-4` gutter를 소유합니다. `FilterBar` 자체에는 바깥 padding을 추가하지 않습니다. 필터 header는 block `space-3`을 사용합니다.
 - Table은 `sm` 크기와 compact 정보 밀도를 사용합니다.
 - 넓은 주요 열은 하나만 두고 나머지는 콘텐츠 기반 최소 폭을 사용합니다.

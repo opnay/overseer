@@ -951,7 +951,10 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     ? `${latestFinishedImageRepositoryOperation.id}:${latestFinishedImageRepositoryOperation.status}`
     : "";
   const dockerPluginOperationRefreshToken = operations
-    .filter(({ target }) => target.resource === "dockerPlugin")
+    .filter(
+      ({ target, status }) =>
+        target.resource === "dockerPlugin" && status !== "queued" && status !== "running",
+    )
     .map(({ id, status }) => `${id}:${status}`)
     .join("|");
 
@@ -1128,6 +1131,20 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
         apiRequest<OperationAccepted>(`/docker-cli/plugins/${id}/install`, {
           method: "POST",
         }),
+    });
+
+  const checkDockerPluginUpdates = () =>
+    mutate({
+      key: "docker-plugin-update-check",
+      request: () =>
+        apiRequest<OperationAccepted>("/docker-cli/plugins/updates/check", { method: "POST" }),
+    });
+
+  const updateDockerPlugin = (id: DockerCliPluginId) =>
+    mutate({
+      key: `docker-plugin-update-${id}`,
+      request: () =>
+        apiRequest<OperationAccepted>(`/docker-cli/plugins/${id}/update`, { method: "POST" }),
     });
 
   const startDockerEngineForStartup = (configuration?: DockerEngineConfiguration) =>
@@ -1940,8 +1957,16 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
           {resourcePath === "/docker-plugins" ? (
             <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
               <DockerCliPluginsPage
-                isBusy={(plugin) => targetBusy("dockerPlugin", plugin.id)}
+                busy={
+                  Boolean(submitting) ||
+                  activeOperations.some(
+                    ({ kind }) => kind.startsWith("docker.plugin.") || kind.startsWith("startup."),
+                  )
+                }
+                onCheck={checkDockerPluginUpdates}
                 onInstall={installDockerPlugin}
+                onUpdate={updateDockerPlugin}
+                operation={operations.find(({ target }) => target.resource === "dockerPlugin")}
                 refreshToken={`${settingsRefreshRevision}:${dockerPluginOperationRefreshToken}`}
               />
             </Suspense>

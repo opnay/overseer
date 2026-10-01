@@ -649,6 +649,8 @@ export type OperationKind =
   | "container.stop"
   | "container.update"
   | "docker.plugin.install"
+  | "docker.plugin.update"
+  | "docker.plugin.update.check"
   | "image.pull"
   | "image.remove"
   | "image.tag.remove"
@@ -684,21 +686,28 @@ export type OperationResource =
   | "startup"
   | "volume";
 
-export type DockerCliPluginId = "buildx" | "compose";
+export type DockerCliPluginId = "docker" | "buildx" | "compose";
 
 export interface DockerCliPluginSummary {
+  automaticUpdate?: boolean;
   description: string;
+  executablePath?: string;
   id: DockerCliPluginId;
   installAvailable: boolean;
   installUnavailableReason?: string;
   installed: boolean;
   label: string;
   management: "extensions" | "startup";
-  source: "homebrew";
+  source: "homebrew" | "external" | "unknown";
+  latestVersion?: string;
+  updateAvailable?: boolean;
+  updateUnavailableReason?: string;
   version?: string;
 }
 
 export interface DockerCliPluginSnapshot {
+  checkedAt?: string;
+  inspectionWarning?: string;
   plugins: DockerCliPluginSummary[];
 }
 

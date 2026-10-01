@@ -21,6 +21,8 @@ export const operationCategoryByKind: Record<OperationKind, OperationCategory | 
   "container.stop": "docker-cli",
   "container.update": "docker-cli",
   "docker.plugin.install": undefined,
+  "docker.plugin.update": undefined,
+  "docker.plugin.update.check": undefined,
   "image.pull": "docker-cli",
   "image.remove": "docker-cli",
   "image.tag.remove": "docker-cli",

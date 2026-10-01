@@ -13,4 +13,17 @@ describe("runCommand", () => {
 
     expect(result.stdout).toBe("daemon configuration\n");
   });
+
+  it("preserves client metadata printed before a command exits unsuccessfully", async () => {
+    await expect(
+      runCommand(process.execPath, [
+        "-e",
+        "process.stdout.write('client metadata'); process.stderr.write('daemon unavailable'); process.exitCode = 1;",
+      ]),
+    ).rejects.toMatchObject({
+      stdout: "client metadata",
+      stderr: "daemon unavailable",
+      exitCode: 1,
+    });
+  });
 });

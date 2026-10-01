@@ -2888,8 +2888,8 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "도구", level: 1 })).toBeInTheDocument();
-    expect(await screen.findByRole("table", { name: "Docker CLI 도구 목록" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "설치" }));
+    expect(await screen.findByRole("list", { name: "Docker CLI 도구 목록" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Docker Buildx 설치" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
@@ -4813,5 +4813,132 @@ describe("App", () => {
     });
     expect(screen.getByRole("button", { name: "다시 시도" })).toBeEnabled();
     expect(screen.queryByText("Lima 런타임이 준비되지 않았습니다.")).not.toBeInTheDocument();
+  });
+  it("checks CLI tool updates once, retains failures, and refreshes the active version after retry", async () => {
+    const user = userEvent.setup();
+    let checked = false;
+    let upgraded = false;
+    let attempts = 0;
+    let finishCheck: (() => void) | undefined;
+    let latest: OperationSnapshot | undefined;
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      volumes: [],
+      runtime: { phase: "running", instance: "overseer", message: "정상", dockerVersion: "29.7.2" },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/operations"))
+        return jsonResponse({ operations: latest ? [latest] : [] });
+      if (url.endsWith("/api/docker-cli/plugins/updates/check") && init?.method === "POST") {
+        await new Promise<void>((resolve) => {
+          finishCheck = resolve;
+        });
+        checked = true;
+        latest = operation("succeeded", {
+          id: "cli-check",
+          kind: "docker.plugin.update.check",
+          target: { resource: "dockerPlugin", name: "CLI 도구" },
+          title: "CLI 도구 업데이트 확인",
+        });
+        return jsonResponse({ operation: latest }, 202);
+      }
+      if (url.endsWith("/api/docker-cli/plugins/buildx/update") && init?.method === "POST") {
+        attempts += 1;
+        upgraded = attempts > 1;
+        latest = operation(upgraded ? "succeeded" : "failed", {
+          id: `cli-update-${attempts}`,
+          kind: "docker.plugin.update",
+          target: { resource: "dockerPlugin", id: "buildx", name: "Docker Buildx" },
+          title: "Docker Buildx 업데이트",
+          ...(upgraded
+            ? {}
+            : { error: { code: "verification_failed", message: "활성 버전 확인 실패" } }),
+        });
+        return jsonResponse({ operation: latest }, 202);
+      }
+      if (url.endsWith("/api/docker-cli/plugins"))
+        return jsonResponse({
+          ...(checked ? { checkedAt: "2026-10-02T00:00:00Z" } : {}),
+          plugins: [
+            {
+              id: "buildx",
+              label: "Docker Buildx",
+              description: "빌드 도구",
+              installed: true,
+              management: "extensions",
+              installAvailable: false,
+              source: "homebrew",
+              executablePath: "/opt/homebrew/lib/docker/cli-plugins/docker-buildx",
+              automaticUpdate: true,
+              version: upgraded ? "0.30.0" : "0.29.1",
+              ...(checked ? { latestVersion: "0.30.0", updateAvailable: !upgraded } : {}),
+            },
+            {
+              id: "compose",
+              label: "Docker Compose",
+              description: "Compose 도구",
+              installed: true,
+              management: "startup",
+              installAvailable: false,
+              source: "external",
+              executablePath: "/custom/docker-compose",
+              version: "2.40.0",
+              automaticUpdate: false,
+              updateUnavailableReason: "외부 설치 도구는 수동 업데이트가 필요합니다.",
+            },
+          ],
+        });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/docker-plugins");
+    render(<App />);
+    const list = await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
+    expect(list).toHaveTextContent("/opt/homebrew/lib/docker/cli-plugins/docker-buildx");
+    expect(list).toHaveTextContent("외부 설치 도구는 수동 업데이트가 필요합니다.");
+    expect(
+      screen.queryByRole("button", { name: "Docker Compose 업데이트" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Docker Buildx 업데이트" }),
+    ).not.toBeInTheDocument();
+    const check = screen.getByRole("button", { name: "업데이트 확인" });
+    await user.click(check);
+    expect(check).toBeDisabled();
+    await user.click(check);
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).endsWith("/api/docker-cli/plugins/updates/check"),
+      ),
+    ).toHaveLength(1);
+    finishCheck!();
+    const update = await screen.findByRole("button", { name: "Docker Buildx 업데이트" });
+    await waitFor(() => expect(update).toBeEnabled());
+    await user.click(update);
+    expect(
+      await screen.findByRole("heading", { name: "Docker Buildx 업데이트에 실패했습니다." }),
+    ).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: "Docker Buildx 업데이트" });
+    await waitFor(() => expect(retry).toBeEnabled());
+    await user.click(retry);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "Docker Buildx 업데이트에 실패했습니다." }),
+      ).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Docker Buildx 업데이트" }),
+      ).not.toBeInTheDocument(),
+    );
+    const buildx = screen.getByRole("region", { name: "Docker Buildx" });
+    expect(buildx).toHaveTextContent("현재 버전0.30.0");
+    expect(buildx).toHaveTextContent("최신");
+    expect(attempts).toBe(2);
   });
 });

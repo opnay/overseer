@@ -384,6 +384,8 @@ describe("API boundary", () => {
 
   it("reports Docker CLI plugins and enqueues Buildx installation", async () => {
     const plugins: DockerCliPluginController = {
+      checkUpdates: vi.fn(async () => undefined),
+      update: vi.fn(async () => undefined),
       getSnapshot: vi.fn(async (): Promise<DockerCliPluginSnapshot> => ({
         plugins: [
           {
@@ -419,6 +421,31 @@ describe("API boundary", () => {
       method: "POST",
     });
     expect(unsupported.status).toBe(400);
+
+    const check = await app.request("/docker-cli/plugins/updates/check", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(check.status).toBe(202);
+    expect((await check.json()).operation).toMatchObject({
+      kind: "docker.plugin.update.check",
+      target: { resource: "dockerPlugin" },
+    });
+    await vi.waitFor(() => expect(plugins.checkUpdates).toHaveBeenCalledWith(expect.any(Object)));
+
+    const update = await app.request("/docker-cli/plugins/compose/update", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(update.status).toBe(202);
+    await vi.waitFor(() =>
+      expect(plugins.update).toHaveBeenCalledWith("compose", expect.any(Object)),
+    );
+    const invalidUpdate = await app.request("/docker-cli/plugins/lima/update", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(invalidUpdate.status).toBe(400);
   });
 
   it("does not enqueue automatic Homebrew installation", async () => {
