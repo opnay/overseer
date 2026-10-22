@@ -1,7 +1,7 @@
 use super::{
-    model::{compose_actions, tray_runtime_action, TraySnapshot},
+    model::{compose_actions, tray_runtime_actions, TraySnapshot},
     TRAY_COMPOSE_ACTION_PREFIX, TRAY_OPEN_ID, TRAY_QUIT_ID, TRAY_ROUTE_PREFIX,
-    TRAY_RUNTIME_RESTART_ID, TRAY_RUNTIME_START_ID,
+    TRAY_RUNTIME_RESTART_ID, TRAY_RUNTIME_START_ID, TRAY_RUNTIME_STOP_ID,
 };
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
@@ -9,6 +9,7 @@ pub(super) fn tray_runtime_operation(menu_id: &str) -> Option<(&'static str, &'s
     match menu_id {
         TRAY_RUNTIME_RESTART_ID => Some(("/runtime/restart", "VM 재시작")),
         TRAY_RUNTIME_START_ID => Some(("/runtime/start", "VM 시작")),
+        TRAY_RUNTIME_STOP_ID => Some(("/runtime/stop", "VM 중지")),
         _ => None,
     }
 }
@@ -53,18 +54,18 @@ pub(super) fn build_tray_menu(
     snapshot: Option<&TraySnapshot>,
 ) -> tauri::Result<Menu<tauri::Wry>> {
     let open = MenuItem::with_id(app, TRAY_OPEN_ID, "Overseer 열기", true, None::<&str>)?;
-    let runtime_action = tray_runtime_action(snapshot.map(|snapshot| snapshot.runtime_state));
-    let runtime = MenuItem::with_id(
-        app,
-        runtime_action.id,
-        runtime_action.label,
-        runtime_action.enabled,
-        None::<&str>,
-    )?;
     let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Overseer 종료", true, None::<&str>)?;
     let menu = Menu::new(app)?;
     menu.append(&open)?;
-    menu.append(&runtime)?;
+    for action in tray_runtime_actions(snapshot.map(|snapshot| snapshot.runtime_state)) {
+        menu.append(&MenuItem::with_id(
+            app,
+            action.id,
+            action.label,
+            action.enabled,
+            None::<&str>,
+        )?)?;
+    }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
 
     if let Some(snapshot) = snapshot.filter(|snapshot| !snapshot.projects.is_empty()) {
@@ -154,6 +155,10 @@ mod tests {
         assert_eq!(
             tray_runtime_operation(TRAY_RUNTIME_RESTART_ID),
             Some(("/runtime/restart", "VM 재시작"))
+        );
+        assert_eq!(
+            tray_runtime_operation(TRAY_RUNTIME_STOP_ID),
+            Some(("/runtime/stop", "VM 중지"))
         );
         assert_eq!(tray_runtime_operation(TRAY_RUNTIME_STATUS_ID), None);
     }

@@ -20,6 +20,7 @@ pub(super) const TRAY_QUIT_ID: &str = "tray-quit";
 pub(super) const TRAY_ROUTE_PREFIX: &str = "tray-route:";
 pub(super) const TRAY_RUNTIME_RESTART_ID: &str = "tray-runtime-restart";
 pub(super) const TRAY_RUNTIME_START_ID: &str = "tray-runtime-start";
+pub(super) const TRAY_RUNTIME_STOP_ID: &str = "tray-runtime-stop";
 pub(super) const TRAY_RUNTIME_STATUS_ID: &str = "tray-runtime-status";
 
 fn request_operation(

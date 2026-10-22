@@ -1,4 +1,6 @@
-use super::{TRAY_RUNTIME_RESTART_ID, TRAY_RUNTIME_START_ID, TRAY_RUNTIME_STATUS_ID};
+use super::{
+    TRAY_RUNTIME_RESTART_ID, TRAY_RUNTIME_START_ID, TRAY_RUNTIME_STATUS_ID, TRAY_RUNTIME_STOP_ID,
+};
 use serde::Deserialize;
 use std::fmt;
 
@@ -160,43 +162,52 @@ pub(super) fn auto_start_runtime_path(state: TrayRuntimeState) -> Option<&'stati
     matches!(state, TrayRuntimeState::Stopped).then_some("/runtime/start")
 }
 
-pub(super) fn tray_runtime_action(state: Option<TrayRuntimeState>) -> TrayRuntimeAction {
+pub(super) fn tray_runtime_actions(
+    state: Option<TrayRuntimeState>,
+) -> &'static [TrayRuntimeAction] {
     match state {
-        Some(TrayRuntimeState::Running) => TrayRuntimeAction {
-            enabled: true,
-            id: TRAY_RUNTIME_RESTART_ID,
-            label: "VM 재시작",
-        },
-        Some(TrayRuntimeState::Stopped) => TrayRuntimeAction {
+        Some(TrayRuntimeState::Running) => &[
+            TrayRuntimeAction {
+                enabled: true,
+                id: TRAY_RUNTIME_STOP_ID,
+                label: "VM 중지",
+            },
+            TrayRuntimeAction {
+                enabled: true,
+                id: TRAY_RUNTIME_RESTART_ID,
+                label: "VM 재시작",
+            },
+        ],
+        Some(TrayRuntimeState::Stopped) => &[TrayRuntimeAction {
             enabled: true,
             id: TRAY_RUNTIME_START_ID,
             label: "VM 시작",
-        },
-        Some(TrayRuntimeState::Starting) => TrayRuntimeAction {
+        }],
+        Some(TrayRuntimeState::Starting) => &[TrayRuntimeAction {
             enabled: false,
             id: TRAY_RUNTIME_STATUS_ID,
             label: "VM 시작 중",
-        },
-        Some(TrayRuntimeState::Stopping) => TrayRuntimeAction {
+        }],
+        Some(TrayRuntimeState::Stopping) => &[TrayRuntimeAction {
             enabled: false,
             id: TRAY_RUNTIME_STATUS_ID,
             label: "VM 중지 중",
-        },
-        Some(TrayRuntimeState::Missing) => TrayRuntimeAction {
+        }],
+        Some(TrayRuntimeState::Missing) => &[TrayRuntimeAction {
             enabled: false,
             id: TRAY_RUNTIME_STATUS_ID,
             label: "VM 없음",
-        },
-        Some(TrayRuntimeState::Error) => TrayRuntimeAction {
+        }],
+        Some(TrayRuntimeState::Error) => &[TrayRuntimeAction {
             enabled: false,
             id: TRAY_RUNTIME_STATUS_ID,
             label: "VM 상태 확인 필요",
-        },
-        None => TrayRuntimeAction {
+        }],
+        None => &[TrayRuntimeAction {
             enabled: false,
             id: TRAY_RUNTIME_STATUS_ID,
             label: "VM 상태 확인 중",
-        },
+        }],
     }
 }
 
@@ -321,38 +332,44 @@ mod tests {
     #[test]
     fn maps_runtime_states_to_menu_actions() {
         assert_eq!(
-            tray_runtime_action(Some(TrayRuntimeState::Stopped)),
-            TrayRuntimeAction {
+            tray_runtime_actions(Some(TrayRuntimeState::Stopped)),
+            &[TrayRuntimeAction {
                 enabled: true,
                 id: TRAY_RUNTIME_START_ID,
                 label: "VM 시작",
-            }
+            }]
         );
         assert_eq!(
-            tray_runtime_action(Some(TrayRuntimeState::Running)),
-            TrayRuntimeAction {
-                enabled: true,
-                id: TRAY_RUNTIME_RESTART_ID,
-                label: "VM 재시작",
-            }
+            tray_runtime_actions(Some(TrayRuntimeState::Running)),
+            &[
+                TrayRuntimeAction {
+                    enabled: true,
+                    id: TRAY_RUNTIME_STOP_ID,
+                    label: "VM 중지",
+                },
+                TrayRuntimeAction {
+                    enabled: true,
+                    id: TRAY_RUNTIME_RESTART_ID,
+                    label: "VM 재시작",
+                },
+            ]
         );
-        assert_eq!(
-            tray_runtime_action(Some(TrayRuntimeState::Starting)).label,
-            "VM 시작 중"
-        );
-        assert_eq!(
-            tray_runtime_action(Some(TrayRuntimeState::Stopping)).label,
-            "VM 중지 중"
-        );
-        assert_eq!(
-            tray_runtime_action(Some(TrayRuntimeState::Missing)).label,
-            "VM 없음"
-        );
-        assert_eq!(
-            tray_runtime_action(Some(TrayRuntimeState::Error)).label,
-            "VM 상태 확인 필요"
-        );
-        assert_eq!(tray_runtime_action(None).label, "VM 상태 확인 중");
+        for (state, label) in [
+            (Some(TrayRuntimeState::Starting), "VM 시작 중"),
+            (Some(TrayRuntimeState::Stopping), "VM 중지 중"),
+            (Some(TrayRuntimeState::Missing), "VM 없음"),
+            (Some(TrayRuntimeState::Error), "VM 상태 확인 필요"),
+            (None, "VM 상태 확인 중"),
+        ] {
+            assert_eq!(
+                tray_runtime_actions(state),
+                &[TrayRuntimeAction {
+                    enabled: false,
+                    id: TRAY_RUNTIME_STATUS_ID,
+                    label,
+                }]
+            );
+        }
     }
 
     #[test]
