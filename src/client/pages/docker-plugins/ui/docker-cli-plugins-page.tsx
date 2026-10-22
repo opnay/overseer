@@ -293,7 +293,10 @@ export function DockerCliPluginsPage({
                   ? "외부 설치"
                   : "출처 확인 불가";
             const currentVersion = tool.version ?? "—";
-            const latestVersion = snapshot.checkedAt ? tool.latestVersion : undefined;
+            const latestVersion =
+              snapshot.checkedAt && tool.latestVersion !== tool.version
+                ? tool.latestVersion
+                : undefined;
             const versionAccessibleName = latestVersion
               ? `현재 버전 ${currentVersion}, 최신 버전 ${latestVersion}`
               : `현재 버전 ${currentVersion}`;

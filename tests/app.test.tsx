@@ -5016,7 +5016,7 @@ describe("App", () => {
         within(buildxBeforeCheck).getByRole("group", {
           name: "현재 버전 0.29.1, 최신 버전 0.30.0",
         }),
-      ).toBeInTheDocument(),
+      ).toHaveTextContent("0.29.1(0.30.0)"),
     );
     await user.click(update);
     expect(
@@ -5038,9 +5038,9 @@ describe("App", () => {
     const buildx = screen.getByRole("region", { name: "Docker Buildx" });
     expect(
       within(buildx).getByRole("group", {
-        name: "현재 버전 0.30.0, 최신 버전 0.30.0",
+        name: "현재 버전 0.30.0",
       }),
-    ).toHaveTextContent("0.30.0(0.30.0)");
+    ).toHaveTextContent(/^0\.30\.0$/);
     expect(buildx).toHaveTextContent("최신");
     expect(attempts).toBe(2);
   });
