@@ -128,7 +128,7 @@ CLI 도구를 한곳에서 확인하고 업데이트합니다. `/docker-plugins`
 `Page Header > Update Actions > Feedback > Item.Group` 순서를 사용합니다.
 
 - Docker CLI, Compose, Buildx, Lima 네 항목을 `Item.Group`과 `Item.Root plain density="compact"`으로 표시합니다. 행 padding과 내부 밀도는 Item DS가 소유하고 프로젝트 CSS는 콘텐츠 정렬과 divider만 담당합니다.
-- 첫 줄은 도구 제목과 설치 출처 Badge(Homebrew·외부 설치·출처 확인 불가), 둘째 줄은 버전·상태 Badge·행 액션입니다. 반복 설명과 실행 파일 경로는 표시하지 않습니다.
+- 도구 제목과 버전은 같은 행의 왼쪽에, 설치 출처 Badge(Homebrew·외부 설치·출처 확인 불가)·상태 Badge·행 액션은 오른쪽에 정렬합니다. 공간이 부족할 때만 자연스럽게 줄바꿈하며 버전을 별도 하단 행으로 분리하지 않습니다. 반복 설명과 실행 파일 경로는 표시하지 않습니다.
 - 업데이트 확인 전에는 현재 버전과 `확인 전` 상태만 표시합니다. 확인 뒤 최신 버전이 있으면 `현재(최신)`을 한 줄에 표시하고 접근성 이름에는 현재·최신 버전의 의미를 제공합니다.
 - 외부 설치, 미설치, 출처 확인 불가, 수동 관리, 진행 중과 오류 상태는 행이나 페이지 피드백에 남깁니다. 사유가 있으면 해당 행에 표시합니다.
 - 행의 단일 설치·업데이트·시작 준비 명령은 `Button iconOnly`와 `aria-label`, `Tooltip`으로 제공합니다. 미설치 Startup 도구의 이동은 `/startup`으로 연결합니다.

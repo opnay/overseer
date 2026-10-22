@@ -672,7 +672,10 @@
   }
 
   .overseer-cli-tool-header {
+    width: 100%;
     min-width: 0;
+    align-items: center;
+    flex-wrap: wrap;
   }
 
   .overseer-cli-tool-icon {
@@ -702,29 +705,17 @@
     font-weight: var(--city-font-weight-semibold);
   }
 
-  .overseer-cli-tool-details {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--city-space-2) var(--city-space-3);
-  }
-
   .overseer-cli-tool-version {
     min-width: 0;
-    flex: 1 1 auto;
     font-family: var(--city-font-family-mono);
     font-size: var(--city-font-size-xs);
     overflow-wrap: anywhere;
   }
 
-  .overseer-cli-tool-details > [data-city-badge],
   .overseer-cli-tool-actions {
     flex: none;
-  }
-
-  .overseer-cli-tool-actions {
     margin-left: auto;
+    justify-content: flex-end;
   }
 
   .overseer-cli-tool-reason {

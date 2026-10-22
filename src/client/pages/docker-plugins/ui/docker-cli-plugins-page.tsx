@@ -318,26 +318,24 @@ export function DockerCliPluginsPage({
                       <Item.Title render={<h2 />} id={`cli-tool-${tool.id}`}>
                         {tool.label}
                       </Item.Title>
-                      <Badge appearance="subtle" size="sm" tone="neutral">
-                        {sourceLabel}
-                      </Badge>
+                      <span
+                        aria-label={versionAccessibleName}
+                        className="overseer-cli-tool-version"
+                        role="group"
+                      >
+                        {currentVersion}
+                        {latestVersion ? `(${latestVersion})` : ""}
+                      </span>
                     </div>
                   </Item.Content>
-                </Item.Header>
-                <div className="overseer-cli-tool-details">
-                  <span
-                    aria-label={versionAccessibleName}
-                    className="overseer-cli-tool-version"
-                    role="group"
-                  >
-                    {currentVersion}
-                    {latestVersion ? `(${latestVersion})` : ""}
-                  </span>
-                  <Badge appearance="subtle" size="sm" tone={presentation.tone}>
-                    {presentation.label}
-                  </Badge>
-                  {canInstall || canUpdate || canOpenStartup ? (
-                    <Item.Actions className="overseer-cli-tool-actions">
+                  <Item.Actions className="overseer-cli-tool-actions">
+                    <Badge appearance="subtle" size="sm" tone="neutral">
+                      {sourceLabel}
+                    </Badge>
+                    <Badge appearance="subtle" size="sm" tone={presentation.tone}>
+                      {presentation.label}
+                    </Badge>
+                    {canInstall || canUpdate || canOpenStartup ? (
                       <Tooltip.Root>
                         <Tooltip.Trigger
                           render={
@@ -372,9 +370,9 @@ export function DockerCliPluginsPage({
                           </Tooltip.Positioner>
                         </Tooltip.Portal>
                       </Tooltip.Root>
-                    </Item.Actions>
-                  ) : null}
-                </div>
+                    ) : null}
+                  </Item.Actions>
+                </Item.Header>
                 {availabilityReason ? (
                   <p className="overseer-cli-tool-reason city-text-supporting">
                     {availabilityReason}
