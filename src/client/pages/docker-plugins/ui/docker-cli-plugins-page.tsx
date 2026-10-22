@@ -31,18 +31,33 @@ function status(tool: DockerCliPluginSummary) {
 
 const icons = { docker: Terminal, compose: Layers, buildx: Blocks };
 
+interface BulkUpdateResult {
+  completed: number;
+  status: "cancelled" | "failed" | "succeeded";
+}
+
 export function DockerCliPluginsPage({
   busy,
+  bulkOperation,
+  bulkProgress,
+  bulkResult,
   onCheck,
+  onClearBulkResult,
   onInstall,
   onUpdate,
+  onUpdateAll,
   operation,
   refreshToken,
 }: {
   busy: boolean;
+  bulkOperation?: OperationSnapshot;
+  bulkProgress?: { currentId: DockerCliPluginId; index: number; total: number };
+  bulkResult?: BulkUpdateResult;
   onCheck(): Promise<void>;
+  onClearBulkResult(): void;
   onInstall(id: DockerCliPluginId): Promise<void>;
-  onUpdate(id: DockerCliPluginId): Promise<void>;
+  onUpdate(id: DockerCliPluginId): Promise<OperationSnapshot>;
+  onUpdateAll(ids: DockerCliPluginId[]): Promise<void>;
   operation?: OperationSnapshot;
   refreshToken: string;
 }) {
@@ -52,8 +67,20 @@ export function DockerCliPluginsPage({
   const [pending, setPending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<DockerCliPluginSnapshot>();
-  const active = operation?.status === "queued" || operation?.status === "running";
-  const disabled = busy || pending || loading;
+  const currentOperation = bulkOperation ?? operation;
+  const active = currentOperation?.status === "queued" || currentOperation?.status === "running";
+  const updateableTools =
+    snapshot?.plugins.filter(
+      (tool) => tool.installed && tool.automaticUpdate && tool.updateAvailable === true,
+    ) ?? [];
+  const awaitingUpdateCheck =
+    snapshot?.plugins.some(
+      (tool) => tool.installed && tool.automaticUpdate && tool.updateAvailable === undefined,
+    ) ?? false;
+  const disabled = busy || pending || loading || bulkProgress !== undefined;
+  const currentBulkTool = bulkProgress
+    ? snapshot?.plugins.find(({ id }) => id === bulkProgress.currentId)
+    : undefined;
 
   useEffect(() => {
     let active = true;
@@ -68,9 +95,10 @@ export function DockerCliPluginsPage({
     };
   }, [refreshToken, requestRevision]);
 
-  const start = async (action: () => Promise<void>) => {
+  const start = async (action: () => Promise<unknown>) => {
     if (disabled) return;
     setRequestError(undefined);
+    onClearBulkResult();
     setPending(true);
     try {
       await action();
@@ -81,10 +109,12 @@ export function DockerCliPluginsPage({
     }
   };
 
+  const startBulkUpdate = () => onUpdateAll(updateableTools.map(({ id }) => id));
+
   return (
     <section
       aria-label="CLI 도구 관리"
-      aria-busy={loading || active || pending}
+      aria-busy={loading || active || pending || bulkProgress !== undefined}
       className="overseer-cli-tools"
     >
       <header className="overseer-cli-tools-header">
@@ -93,19 +123,58 @@ export function DockerCliPluginsPage({
             최신 버전은 Homebrew 배포 버전을 기준으로 표시합니다.
           </p>
           <span aria-live="polite" className="city-text-caption">
-            {active
-              ? operation.step
-              : snapshot?.checkedAt
-                ? `마지막 확인 ${formatDateTime(snapshot.checkedAt)}`
-                : "아직 업데이트를 확인하지 않았습니다."}
+            {bulkProgress
+              ? `${currentBulkTool?.label ?? "도구"} 업데이트 중 (${bulkProgress.index + 1}/${bulkProgress.total})${bulkOperation?.step ? ` · ${bulkOperation.step}` : ""}`
+              : active && currentOperation
+                ? currentOperation.step
+                : snapshot?.checkedAt
+                  ? `마지막 확인 ${formatDateTime(snapshot.checkedAt)}`
+                  : "아직 업데이트를 확인하지 않았습니다."}
           </span>
+          {snapshot && updateableTools.length === 0 ? (
+            <span aria-live="polite" className="city-text-caption">
+              {awaitingUpdateCheck
+                ? "업데이트 확인을 먼저 실행하십시오."
+                : "업데이트할 도구가 없습니다."}
+            </span>
+          ) : null}
         </div>
-        <Button disabled={disabled} onClick={() => void start(onCheck)} size="sm" variant="outline">
-          <RefreshCw aria-hidden="true" size={14} />
-          {active && operation.kind === "docker.plugin.update.check"
-            ? "업데이트 확인 중…"
-            : "업데이트 확인"}
-        </Button>
+        <div className="overseer-cli-tools-header-actions">
+          <Button
+            disabled={disabled}
+            onClick={() => void start(onCheck)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={
+                active && currentOperation?.kind === "docker.plugin.update.check"
+                  ? "animate-spin"
+                  : undefined
+              }
+              size={14}
+            />
+            {active && currentOperation?.kind === "docker.plugin.update.check"
+              ? "업데이트 확인 중…"
+              : "업데이트 확인"}
+          </Button>
+          <Button
+            disabled={disabled || updateableTools.length === 0}
+            onClick={() => void start(startBulkUpdate)}
+            size="sm"
+            type="button"
+            variant="primary"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={bulkProgress ? "animate-spin" : undefined}
+              size={14}
+            />
+            {bulkProgress ? "전체 업데이트 중…" : "전체 업데이트"}
+          </Button>
+        </div>
       </header>
 
       {error ? (
@@ -129,11 +198,11 @@ export function DockerCliPluginsPage({
           <Alert.Description>{requestError}</Alert.Description>
         </Alert.Root>
       ) : null}
-      {operation?.status === "failed" ? (
+      {currentOperation?.status === "failed" ? (
         <Alert.Root tone="destructive" appearance="subtle">
-          <Alert.Title level={2}>{operation.title}에 실패했습니다.</Alert.Title>
+          <Alert.Title level={2}>{currentOperation.title}에 실패했습니다.</Alert.Title>
           <Alert.Description>
-            {operation.error?.message ?? "작업 기록에서 출력을 확인하십시오."}
+            {currentOperation.error?.message ?? "작업 기록에서 출력을 확인하십시오."}
           </Alert.Description>
           <Alert.Action>
             <Button
@@ -147,6 +216,33 @@ export function DockerCliPluginsPage({
           </Alert.Action>
         </Alert.Root>
       ) : null}
+      {bulkResult ? (
+        <Alert.Root
+          appearance="subtle"
+          tone={
+            bulkResult.status === "succeeded"
+              ? "success"
+              : bulkResult.status === "cancelled"
+                ? "warning"
+                : "destructive"
+          }
+        >
+          <Alert.Title level={2}>
+            {bulkResult.status === "succeeded"
+              ? "전체 업데이트를 완료했습니다."
+              : bulkResult.status === "cancelled"
+                ? "전체 업데이트가 취소되었습니다."
+                : "전체 업데이트가 중단되었습니다."}
+          </Alert.Title>
+          <Alert.Description>
+            {bulkResult.status === "succeeded"
+              ? `${bulkResult.completed}개 도구를 업데이트했습니다.`
+              : bulkResult.status === "cancelled"
+                ? `${bulkResult.completed}개 도구 업데이트를 마쳤습니다. 남은 작업은 취소했습니다.`
+                : `${bulkResult.completed}개 도구 업데이트를 마친 뒤 중단했습니다. 남은 업데이트는 시작하지 않았습니다.`}
+          </Alert.Description>
+        </Alert.Root>
+      ) : null}
       {snapshot?.inspectionWarning ? (
         <Alert.Root tone="warning" appearance="subtle">
           <Alert.Title level={2}>일부 도구의 관리 출처를 확인하지 못했습니다.</Alert.Title>
@@ -158,10 +254,11 @@ export function DockerCliPluginsPage({
         <Item.Group className="overseer-cli-tools-list gap-0" aria-label="Docker CLI 도구 목록">
           {snapshot.plugins.map((tool) => {
             const Icon = icons[tool.id];
-            const updating = active && operation.target.id === tool.id;
+            const updating = active && currentOperation?.target.id === tool.id;
             const presentation = updating
               ? {
-                  label: operation.kind === "docker.plugin.install" ? "설치 중" : "업데이트 중",
+                  label:
+                    currentOperation?.kind === "docker.plugin.install" ? "설치 중" : "업데이트 중",
                   tone: "warning" as const,
                 }
               : status(tool);

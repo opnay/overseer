@@ -616,6 +616,17 @@ interface MutationOptions {
   request: () => Promise<OperationAccepted>;
 }
 
+interface DockerPluginBulkUpdate {
+  ids: DockerCliPluginId[];
+  index: number;
+  operationId: string;
+}
+
+interface DockerPluginBulkUpdateResult {
+  completed: number;
+  status: "cancelled" | "failed" | "succeeded";
+}
+
 function resourcePathFromLocation(): AppLocationPath {
   return getAppLocation(window.location.pathname);
 }
@@ -704,6 +715,9 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   const [operationError, setOperationError] = useState<string>();
   const [submitting, setSubmitting] = useState<string>();
   const [operations, setOperations] = useState<OperationSnapshot[]>([]);
+  const [dockerPluginBulkUpdate, setDockerPluginBulkUpdate] = useState<DockerPluginBulkUpdate>();
+  const [dockerPluginBulkResult, setDockerPluginBulkResult] =
+    useState<DockerPluginBulkUpdateResult>();
   const [operationsRefreshRevision, setOperationsRefreshRevision] = useState(0);
   const [editContainer, setEditContainer] = useState<ContainerSummary>();
   const [runContainerImage, setRunContainerImage] = useState<string>();
@@ -725,6 +739,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     selectionLocked: boolean;
   }>();
   const notifiedOperations = useRef(new Set<string>());
+  const handledDockerPluginBulkOperations = useRef(new Set<string>());
   const operationsInitialized = useRef(false);
   const startupLoaded = useRef(false);
   const startupRefreshQueued = useRef(false);
@@ -957,6 +972,9 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     )
     .map(({ id, status }) => `${id}:${status}`)
     .join("|");
+  const dockerPluginBulkOperation = dockerPluginBulkUpdate
+    ? operations.find(({ id }) => id === dockerPluginBulkUpdate.operationId)
+    : undefined;
 
   useEffect(() => {
     if (!hasActiveOperations) return;
@@ -1140,12 +1158,72 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
         apiRequest<OperationAccepted>("/docker-cli/plugins/updates/check", { method: "POST" }),
     });
 
-  const updateDockerPlugin = (id: DockerCliPluginId) =>
-    mutate({
+  const updateDockerPlugin = async (id: DockerCliPluginId): Promise<OperationSnapshot> => {
+    let acceptedOperation: OperationSnapshot | undefined;
+    await mutate({
       key: `docker-plugin-update-${id}`,
+      onAccepted: (operation) => {
+        acceptedOperation = operation;
+      },
       request: () =>
         apiRequest<OperationAccepted>(`/docker-cli/plugins/${id}/update`, { method: "POST" }),
     });
+    if (!acceptedOperation) throw new Error("작업 응답을 확인하지 못했습니다.");
+    return acceptedOperation;
+  };
+
+  const updateAllDockerPlugins = async (ids: DockerCliPluginId[]) => {
+    if (ids.length === 0) return;
+
+    setDockerPluginBulkResult(undefined);
+    handledDockerPluginBulkOperations.current.clear();
+    const firstOperation = await updateDockerPlugin(ids[0]!);
+    setDockerPluginBulkUpdate({ ids, index: 0, operationId: firstOperation.id });
+  };
+
+  const resetDockerPluginBulkResult = () => setDockerPluginBulkResult(undefined);
+
+  useEffect(() => {
+    const bulkUpdate = dockerPluginBulkUpdate;
+    const operation = dockerPluginBulkOperation;
+    if (!bulkUpdate || !operation) return;
+    if (operation.status === "queued" || operation.status === "running") return;
+    if (handledDockerPluginBulkOperations.current.has(operation.id)) return;
+    handledDockerPluginBulkOperations.current.add(operation.id);
+
+    if (operation.status !== "succeeded") {
+      setDockerPluginBulkResult({
+        completed: bulkUpdate.index,
+        status: operation.status === "cancelled" ? "cancelled" : "failed",
+      });
+      setDockerPluginBulkUpdate(undefined);
+      return;
+    }
+
+    const nextIndex = bulkUpdate.index + 1;
+    if (nextIndex === bulkUpdate.ids.length) {
+      setDockerPluginBulkResult({ completed: bulkUpdate.ids.length, status: "succeeded" });
+      setDockerPluginBulkUpdate(undefined);
+      return;
+    }
+
+    const currentOperationId = bulkUpdate.operationId;
+    const nextId = bulkUpdate.ids[nextIndex]!;
+    void updateDockerPlugin(nextId)
+      .then((nextOperation) => {
+        setDockerPluginBulkUpdate((current) =>
+          current?.operationId === currentOperationId
+            ? { ...current, index: nextIndex, operationId: nextOperation.id }
+            : current,
+        );
+      })
+      .catch(() => {
+        setDockerPluginBulkResult({ completed: nextIndex, status: "failed" });
+        setDockerPluginBulkUpdate((current) =>
+          current?.operationId === currentOperationId ? undefined : current,
+        );
+      });
+  }, [dockerPluginBulkOperation, dockerPluginBulkUpdate, updateDockerPlugin]);
 
   const startDockerEngineForStartup = (configuration?: DockerEngineConfiguration) =>
     mutate({
@@ -1964,9 +2042,22 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
                   )
                 }
                 onCheck={checkDockerPluginUpdates}
+                onClearBulkResult={resetDockerPluginBulkResult}
                 onInstall={installDockerPlugin}
                 onUpdate={updateDockerPlugin}
+                onUpdateAll={updateAllDockerPlugins}
                 operation={operations.find(({ target }) => target.resource === "dockerPlugin")}
+                bulkOperation={dockerPluginBulkOperation}
+                bulkProgress={
+                  dockerPluginBulkUpdate
+                    ? {
+                        currentId: dockerPluginBulkUpdate.ids[dockerPluginBulkUpdate.index]!,
+                        index: dockerPluginBulkUpdate.index,
+                        total: dockerPluginBulkUpdate.ids.length,
+                      }
+                    : undefined
+                }
+                bulkResult={dockerPluginBulkResult}
                 refreshToken={`${settingsRefreshRevision}:${dockerPluginOperationRefreshToken}`}
               />
             </Suspense>

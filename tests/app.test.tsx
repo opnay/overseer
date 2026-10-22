@@ -258,6 +258,103 @@ function mockViewport(width: number) {
   );
 }
 
+function renderDockerPluginBulkUpdateApp() {
+  const user = userEvent.setup();
+  let checked = false;
+  let operationHistory: OperationSnapshot[] = [];
+  const completedOperationIds = new Set<string>();
+  const updateRequests: string[] = [];
+  const dashboard: DashboardSnapshot = {
+    composeProjects: [],
+    containers: [],
+    images: [],
+    networks: [],
+    volumes: [],
+    runtime: { phase: "running", instance: "overseer", message: "정상", dockerVersion: "29.7.2" },
+  };
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+    if (url.endsWith("/api/operations")) {
+      operationHistory = operationHistory.map((current) =>
+        completedOperationIds.has(current.id) &&
+        (current.status === "queued" || current.status === "running")
+          ? { ...current, status: "succeeded", step: "완료됨" }
+          : current,
+      );
+      return jsonResponse({ operations: operationHistory });
+    }
+    if (url.endsWith("/api/docker-cli/plugins/updates/check") && init?.method === "POST") {
+      checked = true;
+      const accepted = operation("succeeded", {
+        id: "bulk-check",
+        kind: "docker.plugin.update.check",
+        target: { resource: "dockerPlugin", name: "CLI 도구" },
+        title: "CLI 도구 업데이트 확인",
+      });
+      operationHistory = [accepted, ...operationHistory];
+      return jsonResponse({ operation: accepted }, 202);
+    }
+    if (url.endsWith("/api/docker-cli/plugins")) {
+      const plugin = (id: "docker" | "compose", label: string) => ({
+        automaticUpdate: true,
+        description: `${label} 관리`,
+        id,
+        installAvailable: false,
+        installed: true,
+        label,
+        management: "startup" as const,
+        source: "homebrew" as const,
+        version: "1.0.0",
+        latestVersion: "2.0.0",
+        ...(checked ? { updateAvailable: true } : {}),
+      });
+      return jsonResponse({
+        ...(checked ? { checkedAt: "2026-10-22T00:00:00Z" } : {}),
+        plugins: [plugin("docker", "Docker CLI"), plugin("compose", "Docker Compose")],
+      });
+    }
+    const updateMatch = url.match(/\/api\/docker-cli\/plugins\/(docker|compose)\/update$/);
+    if (updateMatch && init?.method === "POST") {
+      const id = updateMatch[1]!;
+      const label = id === "docker" ? "Docker CLI" : "Docker Compose";
+      updateRequests.push(id);
+      const accepted = operation("running", {
+        id: `bulk-${id}`,
+        kind: "docker.plugin.update",
+        target: { id, name: label, resource: "dockerPlugin" },
+        title: `${label} 업데이트`,
+      });
+      operationHistory = [accepted, ...operationHistory];
+      return jsonResponse({ operation: accepted }, 202);
+    }
+    return jsonResponse(dashboard);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/docker-plugins");
+  render(<App />);
+
+  return {
+    addUnrelatedNewestOperation() {
+      operationHistory = [
+        operation("succeeded", {
+          id: "external-newer-plugin-update",
+          kind: "docker.plugin.update",
+          target: { id: "buildx", name: "Docker Buildx", resource: "dockerPlugin" },
+          title: "Docker Buildx 업데이트",
+        }),
+        ...operationHistory,
+      ];
+    },
+    completeOperation(id: string) {
+      completedOperationIds.add(id);
+    },
+    fetchMock,
+    updateRequests,
+    user,
+  };
+}
+
 describe("App", () => {
   it("matches the loading skeleton to the resource collection pattern", () => {
     window.history.replaceState(null, "", "/containers");
@@ -4940,5 +5037,297 @@ describe("App", () => {
     expect(buildx).toHaveTextContent("현재 버전0.30.0");
     expect(buildx).toHaveTextContent("최신");
     expect(attempts).toBe(2);
+  });
+
+  it("updates eligible CLI tools sequentially and stops after an update fails", async () => {
+    const user = userEvent.setup();
+    let checked = false;
+    let latestOperation: OperationSnapshot | undefined;
+    const completedOperations = new Set<string>();
+    const updatedTools = new Set<string>();
+    const updateRequests: string[] = [];
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      volumes: [],
+      runtime: { phase: "running", instance: "overseer", message: "정상", dockerVersion: "29.7.2" },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/operations")) {
+        if (latestOperation?.status === "running" && completedOperations.has(latestOperation.id)) {
+          const current = latestOperation;
+          const failed = current.target.id === "compose";
+          latestOperation = {
+            ...current,
+            status: failed ? "failed" : "succeeded",
+            step: failed ? "실패" : "완료됨",
+            ...(failed
+              ? { error: { code: "update_failed", message: "활성 버전을 확인하지 못했습니다." } }
+              : {}),
+          };
+          if (!failed && current.target.id) updatedTools.add(current.target.id);
+        }
+        return jsonResponse({ operations: latestOperation ? [latestOperation] : [] });
+      }
+      if (url.endsWith("/api/docker-cli/plugins/updates/check") && init?.method === "POST") {
+        checked = true;
+        latestOperation = operation("succeeded", {
+          id: "bulk-check",
+          kind: "docker.plugin.update.check",
+          target: { resource: "dockerPlugin", name: "CLI 도구" },
+          title: "CLI 도구 업데이트 확인",
+        });
+        return jsonResponse({ operation: latestOperation }, 202);
+      }
+      if (url.endsWith("/api/docker-cli/plugins")) {
+        const plugin = (
+          id: "buildx" | "compose" | "docker",
+          label: string,
+          management: "extensions" | "startup",
+        ) => ({
+          automaticUpdate: true,
+          description: `${label} 관리`,
+          id,
+          installAvailable: false,
+          installed: true,
+          label,
+          management,
+          source: "homebrew",
+          version: "1.0.0",
+          latestVersion: "2.0.0",
+          ...(checked ? { updateAvailable: !updatedTools.has(id) } : {}),
+        });
+        return jsonResponse({
+          ...(checked ? { checkedAt: "2026-10-22T00:00:00Z" } : {}),
+          plugins: [
+            plugin("docker", "Docker CLI", "startup"),
+            plugin("compose", "Docker Compose", "startup"),
+            plugin("buildx", "Docker Buildx", "extensions"),
+          ],
+        });
+      }
+      const updateMatch = url.match(/\/api\/docker-cli\/plugins\/(docker|compose|buildx)\/update$/);
+      if (updateMatch && init?.method === "POST") {
+        const id = updateMatch[1]!;
+        const label =
+          id === "docker" ? "Docker CLI" : id === "compose" ? "Docker Compose" : "Docker Buildx";
+        updateRequests.push(id);
+        latestOperation = operation("running", {
+          id: `bulk-${id}`,
+          kind: "docker.plugin.update",
+          target: { id, name: label, resource: "dockerPlugin" },
+          title: `${label} 업데이트`,
+        });
+        return jsonResponse({ operation: latestOperation }, 202);
+      }
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/docker-plugins");
+    render(<App />);
+
+    const bulkButton = await screen.findByRole("button", { name: "전체 업데이트" });
+    expect(bulkButton.parentElement).toContainElement(
+      screen.getByRole("button", { name: "업데이트 확인" }),
+    );
+    expect(bulkButton).toBeDisabled();
+    expect(await screen.findByText("업데이트 확인을 먼저 실행하십시오.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
+    await waitFor(() => expect(bulkButton).toBeEnabled());
+
+    await user.click(bulkButton);
+    await waitFor(() => expect(updateRequests).toEqual(["docker"]));
+    expect(bulkButton).toBeDisabled();
+
+    completedOperations.add("bulk-docker");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose"]), { timeout: 4000 });
+    completedOperations.add("bulk-compose");
+
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("heading", { name: "전체 업데이트가 중단되었습니다." }),
+        ).toBeInTheDocument(),
+      { timeout: 4000 },
+    );
+    expect(
+      screen.getByRole("heading", { name: "Docker Compose 업데이트에 실패했습니다." }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "1개 도구 업데이트를 마친 뒤 중단했습니다. 남은 업데이트는 시작하지 않았습니다.",
+      ),
+    ).toBeInTheDocument();
+    expect(updateRequests).toEqual(["docker", "compose"]);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/docker-cli/plugins/buildx/update"),
+      ),
+    ).toBe(false);
+  });
+
+  it("bulk-updates only installed, managed tools with a confirmed update", async () => {
+    const user = userEvent.setup();
+    let checked = false;
+    let buildxUpdated = false;
+    let latestOperation: OperationSnapshot | undefined;
+    const updateRequests: string[] = [];
+    const installRequests: string[] = [];
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      volumes: [],
+      runtime: { phase: "running", instance: "overseer", message: "정상", dockerVersion: "29.7.2" },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+      if (url.endsWith("/api/operations"))
+        return jsonResponse({ operations: latestOperation ? [latestOperation] : [] });
+      if (url.endsWith("/api/docker-cli/plugins/updates/check") && init?.method === "POST") {
+        checked = true;
+        latestOperation = operation("succeeded", {
+          id: "filtered-check",
+          kind: "docker.plugin.update.check",
+          target: { resource: "dockerPlugin", name: "CLI 도구" },
+          title: "CLI 도구 업데이트 확인",
+        });
+        return jsonResponse({ operation: latestOperation }, 202);
+      }
+      if (url.endsWith("/api/docker-cli/plugins")) {
+        return jsonResponse({
+          ...(checked ? { checkedAt: "2026-10-22T00:00:00Z" } : {}),
+          plugins: [
+            {
+              id: "docker",
+              label: "Docker CLI",
+              description: "Docker CLI 관리",
+              installed: false,
+              installAvailable: true,
+              management: "startup",
+              source: "unknown",
+              automaticUpdate: true,
+              ...(checked ? { latestVersion: "2.0.0", updateAvailable: true } : {}),
+            },
+            {
+              id: "compose",
+              label: "Docker Compose",
+              description: "Compose 관리",
+              installed: true,
+              installAvailable: false,
+              management: "startup",
+              source: "external",
+              automaticUpdate: false,
+              ...(checked ? { latestVersion: "2.0.0", updateAvailable: true } : {}),
+            },
+            {
+              id: "buildx",
+              label: "Docker Buildx",
+              description: "Buildx 관리",
+              installed: true,
+              installAvailable: false,
+              management: "extensions",
+              source: "homebrew",
+              automaticUpdate: true,
+              ...(checked ? { latestVersion: "2.0.0", updateAvailable: !buildxUpdated } : {}),
+            },
+          ],
+        });
+      }
+      const updateMatch = url.match(/\/api\/docker-cli\/plugins\/(docker|compose|buildx)\/update$/);
+      if (updateMatch && init?.method === "POST") {
+        updateRequests.push(updateMatch[1]!);
+        buildxUpdated = true;
+        latestOperation = operation("succeeded", {
+          id: "filtered-buildx-update",
+          kind: "docker.plugin.update",
+          target: { id: "buildx", name: "Docker Buildx", resource: "dockerPlugin" },
+          title: "Docker Buildx 업데이트",
+        });
+        return jsonResponse({ operation: latestOperation }, 202);
+      }
+      const installMatch = url.match(
+        /\/api\/docker-cli\/plugins\/(docker|compose|buildx)\/install$/,
+      );
+      if (installMatch && init?.method === "POST") installRequests.push(installMatch[1]!);
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/docker-plugins");
+    render(<App />);
+
+    await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
+    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
+    const bulkButton = screen.getByRole("button", { name: "전체 업데이트" });
+    await waitFor(() => expect(bulkButton).toBeEnabled());
+    await user.click(bulkButton);
+
+    expect(
+      await screen.findByRole("heading", { name: "전체 업데이트를 완료했습니다." }),
+    ).toBeInTheDocument();
+    expect(updateRequests).toEqual(["buildx"]);
+    expect(installRequests).toEqual([]);
+    await waitFor(() => expect(bulkButton).toBeDisabled());
+    expect(screen.getByText("업데이트할 도구가 없습니다.")).toBeInTheDocument();
+  });
+
+  it("continues a CLI bulk update after navigating away from the page", async () => {
+    const { completeOperation, updateRequests, user } = renderDockerPluginBulkUpdateApp();
+    await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
+    const bulkButton = screen.getByRole("button", { name: "전체 업데이트" });
+    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
+    await waitFor(() => expect(bulkButton).toBeEnabled());
+    await user.click(bulkButton);
+    await waitFor(() => expect(updateRequests).toEqual(["docker"]));
+
+    await user.click(screen.getByRole("button", { name: "도커" }));
+    expect(await screen.findByRole("heading", { name: "Compose", level: 1 })).toBeInTheDocument();
+    completeOperation("bulk-docker");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose"]), { timeout: 3500 });
+
+    await user.click(screen.getByRole("button", { name: "CLI" }));
+    expect(await screen.findByRole("heading", { name: "도구", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByText(/Docker Compose 업데이트 중 \(2\/2\)/)).toBeInTheDocument();
+    completeOperation("bulk-compose");
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "전체 업데이트를 완료했습니다." },
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
+    expect(updateRequests).toEqual(["docker", "compose"]);
+  });
+
+  it("tracks the bulk update operation when a newer Docker plugin operation appears", async () => {
+    const { addUnrelatedNewestOperation, completeOperation, updateRequests, user } =
+      renderDockerPluginBulkUpdateApp();
+    await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
+    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
+    const bulkButton = screen.getByRole("button", { name: "전체 업데이트" });
+    await waitFor(() => expect(bulkButton).toBeEnabled());
+    await user.click(bulkButton);
+    await waitFor(() => expect(updateRequests).toEqual(["docker"]));
+
+    addUnrelatedNewestOperation();
+    completeOperation("bulk-docker");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose"]), { timeout: 3500 });
+    expect(await screen.findByText(/Docker Compose 업데이트 중 \(2\/2\)/)).toBeInTheDocument();
+
+    completeOperation("bulk-compose");
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "전체 업데이트를 완료했습니다." },
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
+    expect(updateRequests).toEqual(["docker", "compose"]);
   });
 });
