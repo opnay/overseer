@@ -15,15 +15,15 @@ export function registerDockerPluginRoutes(
       kind: "docker.plugin.update.check",
       locks: ["homebrew"],
       run: (progress) => plugins.checkUpdates(progress),
-      successMessage: "Docker CLI·Compose·Buildx 업데이트를 확인했습니다.",
-      target: { name: "Docker CLI·Compose·Buildx", resource: "dockerPlugin" },
+      successMessage: "Docker CLI·Compose·Buildx·Lima 업데이트를 확인했습니다.",
+      target: { name: "Docker CLI·Compose·Buildx·Lima", resource: "dockerPlugin" },
       title: "CLI 도구 업데이트 확인",
     });
     return context.json({ operation }, 202);
   });
   app.post("/docker-cli/plugins/:id/update", (context) => {
     const source = context.req.param("id");
-    if (source !== "docker" && source !== "compose" && source !== "buildx") {
+    if (source !== "docker" && source !== "compose" && source !== "buildx" && source !== "lima") {
       throw new ExpectedError("invalid_docker_plugin", "지원하지 않는 CLI 도구입니다.", 400);
     }
     const label =
@@ -31,7 +31,9 @@ export function registerDockerPluginRoutes(
         ? "Docker CLI"
         : source === "compose"
           ? "Docker Compose"
-          : "Docker Buildx";
+          : source === "buildx"
+            ? "Docker Buildx"
+            : "Lima";
     const operation = enqueue(
       context,
       {

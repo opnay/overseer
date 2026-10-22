@@ -46,6 +46,13 @@ const tools = [
     description: "BuildKit 기반의 확장 빌드와 다중 플랫폼 빌드를 제공합니다.",
     management: "extensions",
   },
+  {
+    id: "lima",
+    formula: "lima",
+    label: "Lima",
+    description: "macOS에서 단일 overseer VM과 Docker Engine을 실행합니다.",
+    management: "startup",
+  },
 ] as const;
 
 interface FormulaUpdate {
@@ -108,8 +115,13 @@ function parseUpdates(output: string): Map<DockerCliPluginId, FormulaUpdate> {
   }
 }
 
-function executableCandidates(name: "brew" | "docker"): string[] {
-  const override = name === "brew" ? process.env.HOMEBREW_BREW_FILE : process.env.DOCKER_CLI;
+function executableCandidates(name: "brew" | "docker" | "limactl"): string[] {
+  const override =
+    name === "brew"
+      ? process.env.HOMEBREW_BREW_FILE
+      : name === "docker"
+        ? process.env.DOCKER_CLI
+        : process.env.LIMACTL;
   return [
     ...(override ? [override] : []),
     `/opt/homebrew/bin/${name}`,
@@ -141,6 +153,10 @@ function composeVersion(output: string): string | undefined {
   return output.match(/Docker Compose version\s+v?([^\s]+)/)?.[1];
 }
 
+function limaVersion(output: string): string | undefined {
+  return output.match(/limactl version\s+v?([^\s]+)/)?.[1];
+}
+
 export class DockerCliPluginService implements DockerCliPluginController {
   private readonly command: CommandRunner;
   private readonly homeDirectory: string;
@@ -153,9 +169,10 @@ export class DockerCliPluginService implements DockerCliPluginController {
   }
 
   async getSnapshot(): Promise<DockerCliPluginSnapshot> {
-    const [homebrew, docker] = await Promise.all([
+    const [homebrew, docker, lima] = await Promise.all([
       this.probe(executableCandidates("brew"), ["--version"]),
       this.probe(executableCandidates("docker"), ["--version"]),
+      this.probe(executableCandidates("limactl"), ["--version"]),
     ]);
     const [buildx, compose, paths, installations] = await Promise.all([
       docker ? this.probe([docker.executable], ["buildx", "version"]) : undefined,
@@ -172,17 +189,22 @@ export class DockerCliPluginService implements DockerCliPluginController {
         }),
       ),
     ]);
-    const dockerPath = docker ? await executablePath(docker.executable) : undefined;
+    const [dockerPath, limaPath] = await Promise.all([
+      docker ? executablePath(docker.executable) : undefined,
+      lima ? executablePath(lima.executable) : undefined,
+    ]);
     const versions = {
       docker: docker ? docker.output.match(/Docker version\s+([^,\s]+)/)?.[1] : undefined,
       compose: compose ? composeVersion(compose.output) : undefined,
       buildx: buildx ? buildxVersion(buildx.output) : undefined,
+      lima: lima ? limaVersion(lima.output) : undefined,
     };
-    const commands = { docker, compose, buildx };
+    const commands = { docker, compose, buildx, lima };
     const plugins = await Promise.all(
       tools.map(async (tool, index): Promise<DockerCliPluginSummary> => {
         const installed = Boolean(commands[tool.id]);
-        const path = tool.id === "docker" ? dockerPath : paths.get(tool.id);
+        const path =
+          tool.id === "docker" ? dockerPath : tool.id === "lima" ? limaPath : paths.get(tool.id);
         const canonical = await canonicalPath(path);
         const installation = installations[index];
         const managed = Boolean(canonical && within(canonical, installation?.current));

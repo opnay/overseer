@@ -1,11 +1,10 @@
 import { Alert } from "@opnay/city-ds-react/alert";
 import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
-import { DataList } from "@opnay/city-ds-react/data-list";
 import { Item } from "@opnay/city-ds-react/item";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Tooltip } from "@opnay/city-ds-react/tooltip";
-import { ArrowRight, Blocks, Download, Layers, RefreshCw, Terminal } from "lucide-react";
+import { ArrowRight, Blocks, Download, Layers, RefreshCw, Server, Terminal } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   DockerCliPluginId,
@@ -22,18 +21,21 @@ function errorMessage(error: unknown): string {
 
 function status(tool: DockerCliPluginSummary) {
   if (!tool.installed) return { label: "설치 필요", tone: "neutral" } as const;
-  if (!tool.automaticUpdate) return { label: "수동 관리", tone: "neutral" } as const;
+  if (tool.source !== "homebrew" || !tool.automaticUpdate) {
+    return { label: "수동 관리", tone: "neutral" } as const;
+  }
   if (tool.updateAvailable === undefined) return { label: "확인 전", tone: "neutral" } as const;
   return tool.updateAvailable
     ? ({ label: "업데이트 있음", tone: "warning" } as const)
     : ({ label: "최신", tone: "success" } as const);
 }
 
-const icons = { docker: Terminal, compose: Layers, buildx: Blocks };
+const icons = { buildx: Blocks, compose: Layers, docker: Terminal, lima: Server };
 
 interface BulkUpdateResult {
   completed: number;
   status: "cancelled" | "failed" | "succeeded";
+  trackingLost?: boolean;
 }
 
 export function DockerCliPluginsPage({
@@ -71,11 +73,19 @@ export function DockerCliPluginsPage({
   const active = currentOperation?.status === "queued" || currentOperation?.status === "running";
   const updateableTools =
     snapshot?.plugins.filter(
-      (tool) => tool.installed && tool.automaticUpdate && tool.updateAvailable === true,
+      (tool) =>
+        tool.installed &&
+        tool.source === "homebrew" &&
+        tool.automaticUpdate &&
+        tool.updateAvailable === true,
     ) ?? [];
   const awaitingUpdateCheck =
     snapshot?.plugins.some(
-      (tool) => tool.installed && tool.automaticUpdate && tool.updateAvailable === undefined,
+      (tool) =>
+        tool.installed &&
+        tool.source === "homebrew" &&
+        tool.automaticUpdate &&
+        tool.updateAvailable === undefined,
     ) ?? false;
   const disabled = busy || pending || loading || bulkProgress !== undefined;
   const currentBulkTool = bulkProgress
@@ -239,7 +249,9 @@ export function DockerCliPluginsPage({
               ? `${bulkResult.completed}개 도구를 업데이트했습니다.`
               : bulkResult.status === "cancelled"
                 ? `${bulkResult.completed}개 도구 업데이트를 마쳤습니다. 남은 작업은 취소했습니다.`
-                : `${bulkResult.completed}개 도구 업데이트를 마친 뒤 중단했습니다. 남은 업데이트는 시작하지 않았습니다.`}
+                : bulkResult.trackingLost
+                  ? `${bulkResult.completed}개 도구 업데이트를 마친 뒤 현재 업데이트 ID를 찾지 못해 중단했습니다. 남은 업데이트는 시작하지 않았습니다.`
+                  : `${bulkResult.completed}개 도구 업데이트를 마친 뒤 중단했습니다. 남은 업데이트는 시작하지 않았습니다.`}
           </Alert.Description>
         </Alert.Root>
       ) : null}
@@ -262,37 +274,70 @@ export function DockerCliPluginsPage({
                   tone: "warning" as const,
                 }
               : status(tool);
-            const label = !tool.installed
-              ? tool.management === "extensions"
-                ? `${tool.label} 설치`
-                : `${tool.label} 시작 준비 열기`
-              : `${tool.label} 업데이트`;
             const canInstall = !tool.installed && tool.installAvailable;
-            const canUpdate = tool.installed && tool.automaticUpdate && tool.updateAvailable;
+            const canUpdate =
+              tool.installed &&
+              tool.source === "homebrew" &&
+              tool.automaticUpdate &&
+              tool.updateAvailable === true;
             const canOpenStartup = !tool.installed && tool.management === "startup";
+            const label = canOpenStartup
+              ? `${tool.label} 시작 준비 열기`
+              : canInstall
+                ? `${tool.label} 설치`
+                : `${tool.label} 업데이트`;
+            const sourceLabel =
+              tool.source === "homebrew"
+                ? "Homebrew"
+                : tool.source === "external"
+                  ? "외부 설치"
+                  : "출처 확인 불가";
+            const currentVersion = tool.version ?? "—";
+            const latestVersion = snapshot.checkedAt ? tool.latestVersion : undefined;
+            const versionAccessibleName = latestVersion
+              ? `현재 버전 ${currentVersion}, 최신 버전 ${latestVersion}`
+              : `현재 버전 ${currentVersion}`;
+            const availabilityReason = !tool.installed
+              ? tool.installUnavailableReason
+              : tool.updateUnavailableReason;
             return (
               <Item.Root
                 appearance="plain"
-                className="overseer-cli-tool grid"
+                className="overseer-cli-tool"
+                density="compact"
                 render={<section />}
                 aria-labelledby={`cli-tool-${tool.id}`}
                 key={tool.id}
               >
-                <Item.Header className="gap-3">
+                <Item.Header className="overseer-cli-tool-header">
                   <Item.Media variant="icon" className="overseer-cli-tool-icon" aria-hidden="true">
                     <Icon />
                   </Item.Media>
-                  <Item.Content>
-                    <Item.Title render={<h2 />} id={`cli-tool-${tool.id}`}>
-                      {tool.label}
-                    </Item.Title>
-                    <Item.Description>{tool.description}</Item.Description>
+                  <Item.Content className="overseer-cli-tool-content">
+                    <div className="overseer-cli-tool-title-line">
+                      <Item.Title render={<h2 />} id={`cli-tool-${tool.id}`}>
+                        {tool.label}
+                      </Item.Title>
+                      <Badge appearance="subtle" size="sm" tone="neutral">
+                        {sourceLabel}
+                      </Badge>
+                    </div>
                   </Item.Content>
-                  <Item.Actions>
-                    <Badge appearance="subtle" size="sm" tone={presentation.tone}>
-                      {presentation.label}
-                    </Badge>
-                    {canInstall || canUpdate || canOpenStartup ? (
+                </Item.Header>
+                <div className="overseer-cli-tool-details">
+                  <span
+                    aria-label={versionAccessibleName}
+                    className="overseer-cli-tool-version"
+                    role="group"
+                  >
+                    {currentVersion}
+                    {latestVersion ? `(${latestVersion})` : ""}
+                  </span>
+                  <Badge appearance="subtle" size="sm" tone={presentation.tone}>
+                    {presentation.label}
+                  </Badge>
+                  {canInstall || canUpdate || canOpenStartup ? (
+                    <Item.Actions className="overseer-cli-tool-actions">
                       <Tooltip.Root>
                         <Tooltip.Trigger
                           render={
@@ -327,53 +372,12 @@ export function DockerCliPluginsPage({
                           </Tooltip.Positioner>
                         </Tooltip.Portal>
                       </Tooltip.Root>
-                    ) : null}
-                  </Item.Actions>
-                </Item.Header>
-                <DataList.Root
-                  orientation="vertical"
-                  density="compact"
-                  className="overseer-cli-tool-facts"
-                >
-                  <DataList.Item>
-                    <DataList.Label>현재 버전</DataList.Label>
-                    <DataList.Value className="overseer-cli-tool-version">
-                      {tool.version ?? "—"}
-                    </DataList.Value>
-                  </DataList.Item>
-                  <DataList.Item>
-                    <DataList.Label>최신 버전</DataList.Label>
-                    <DataList.Value className="overseer-cli-tool-version">
-                      {tool.latestVersion ?? "확인 전"}
-                    </DataList.Value>
-                  </DataList.Item>
-                  <DataList.Item>
-                    <DataList.Label>설치 방식</DataList.Label>
-                    <DataList.Value>
-                      {!tool.installed
-                        ? "미설치"
-                        : tool.source === "homebrew"
-                          ? "Homebrew"
-                          : tool.source === "external"
-                            ? "외부 설치"
-                            : "확인 불가"}
-                    </DataList.Value>
-                  </DataList.Item>
-                  <DataList.Item className="overseer-cli-tool-path">
-                    <DataList.Label>실행 파일</DataList.Label>
-                    <DataList.Value>
-                      <code>
-                        {tool.executablePath ??
-                          (tool.installed ? "확인하지 못했습니다." : "설치되지 않음")}
-                      </code>
-                    </DataList.Value>
-                  </DataList.Item>
-                </DataList.Root>
-                {(
-                  !tool.installed ? tool.installUnavailableReason : tool.updateUnavailableReason
-                ) ? (
+                    </Item.Actions>
+                  ) : null}
+                </div>
+                {availabilityReason ? (
                   <p className="overseer-cli-tool-reason city-text-supporting">
-                    {!tool.installed ? tool.installUnavailableReason : tool.updateUnavailableReason}
+                    {availabilityReason}
                   </p>
                 ) : null}
               </Item.Root>

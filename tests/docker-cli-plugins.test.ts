@@ -1,4 +1,4 @@
-import { lstat, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,12 @@ describe("DockerCliPluginService", () => {
       expect.objectContaining({ id: "docker", installed: true, version: "29.0.0" }),
       expect.objectContaining({ id: "compose", installed: true, version: "2.40.0" }),
       expect.objectContaining({ id: "buildx", installed: true, version: "0.29.1" }),
+      expect.objectContaining({
+        id: "lima",
+        installed: false,
+        management: "startup",
+        source: "unknown",
+      }),
     ]);
   });
 
@@ -98,6 +104,13 @@ async function toolFixture() {
       version: "0.29.1",
       latest: "0.30.0",
     },
+    {
+      id: "lima",
+      formula: "lima",
+      binary: "bin/limactl",
+      version: "1.0.0",
+      latest: "1.1.0",
+    },
   ];
   const paths = new Map<string, string>();
   for (const tool of definitions) {
@@ -107,26 +120,46 @@ async function toolFixture() {
     paths.set(tool.id, path);
   }
   const external = join(root, "external-buildx");
+  const externalLima = join(root, "limactl-shim");
   await writeFile(external, "external", { mode: 0o755 });
+  await writeFile(join(root, "external-limactl"), "limactl", { mode: 0o755 });
+  await symlink(join(root, "external-limactl"), externalLima);
   vi.stubEnv("DOCKER_CLI", paths.get("docker")!);
+  vi.stubEnv("LIMACTL", paths.get("lima")!);
   const state = {
     external: false,
     offline: false,
     invalid: false,
     brokenUpgrade: false,
     missingMetadata: false,
+    dockerInstalled: true,
+    limaInstalled: true,
     upgraded: new Set<string>(),
   };
   const command = vi.fn<CommandRunner>(async (executable, args) => {
     const text = args.join(" ");
-    if (text === "--version")
-      return {
-        stderr: "",
-        stdout:
-          executable.endsWith("/brew") || executable == "brew"
-            ? "Homebrew 5.0.0"
-            : `Docker version ${state.upgraded.has("docker") ? "30.0.0" : "29.0.0"}, build test`,
-      };
+    if (text === "--version") {
+      if (executable.endsWith("/brew") || executable === "brew")
+        return { stderr: "", stdout: "Homebrew 5.0.0" };
+      if (
+        executable === paths.get("lima") ||
+        executable === externalLima ||
+        executable.endsWith("/limactl")
+      ) {
+        if (!state.limaInstalled) throw new Error("not found");
+        return {
+          stderr: "",
+          stdout: `limactl version ${state.upgraded.has("lima") ? "1.1.0" : "1.0.0"}`,
+        };
+      }
+      if (executable.includes("docker")) {
+        if (!state.dockerInstalled) throw new Error("not found");
+        return {
+          stderr: "",
+          stdout: `Docker version ${state.upgraded.has("docker") ? "30.0.0" : "29.0.0"}, build test`,
+        };
+      }
+    }
     if (text === "compose version") return { stderr: "", stdout: "Docker Compose version v2.40.0" };
     if (text === "buildx version")
       return {
@@ -179,6 +212,7 @@ async function toolFixture() {
     command,
     state,
     paths,
+    externalLima,
     service: new DockerCliPluginService(command, join(root, "home")),
   };
 }
@@ -209,11 +243,93 @@ describe("CLI tool provenance and updates", () => {
         source: "homebrew",
         automaticUpdate: true,
       }),
+      expect.objectContaining({
+        id: "lima",
+        executablePath: paths.get("lima"),
+        source: "homebrew",
+        automaticUpdate: true,
+        management: "startup",
+        version: "1.0.0",
+      }),
     ]);
     expect(
       command.mock.calls.some(([, args]) => ["update", "upgrade", "install"].includes(args[0]!)),
     ).toBe(false);
     expect(snapshot.checkedAt).toBeUndefined();
+  });
+
+  it("detects and updates Homebrew-managed Lima independently of Docker", async () => {
+    const { service, state, command, paths } = await toolFixture();
+    state.dockerInstalled = false;
+
+    const before = await service.getSnapshot();
+    expect(before.plugins.find((tool) => tool.id === "lima")).toMatchObject({
+      automaticUpdate: true,
+      executablePath: paths.get("lima"),
+      installed: true,
+      management: "startup",
+      source: "homebrew",
+      version: "1.0.0",
+    });
+    expect(
+      command.mock.calls.some(([, args]) => args[0] === "info" && args[1] === "--format"),
+    ).toBe(false);
+
+    await service.checkUpdates();
+    expect(
+      command.mock.calls.find(([, args]) => args[0] === "info" && args[1] === "--json=v2")?.[1],
+    ).toContain("lima");
+    await service.update("lima");
+
+    expect(command).toHaveBeenCalledWith(
+      expect.stringContaining("brew"),
+      ["upgrade", "lima"],
+      expect.objectContaining({ timeoutMs: 20 * 60_000 }),
+    );
+    expect((await service.getSnapshot()).plugins.find((tool) => tool.id === "lima")).toMatchObject({
+      version: "1.1.0",
+      latestVersion: "1.1.0",
+      updateAvailable: false,
+    });
+  });
+
+  it("does not automatically update a Lima executable supplied by an external shim", async () => {
+    const { service, command, externalLima } = await toolFixture();
+    vi.stubEnv("LIMACTL", externalLima);
+    await service.checkUpdates();
+
+    expect((await service.getSnapshot()).plugins.find((tool) => tool.id === "lima")).toMatchObject({
+      automaticUpdate: false,
+      installed: true,
+      source: "external",
+      version: "1.0.0",
+    });
+    await expect(service.update("lima")).rejects.toMatchObject({
+      code: "docker_plugin_update_unavailable",
+      status: 409,
+    });
+    expect(command.mock.calls.some(([, args]) => args[0] === "upgrade" && args[1] === "lima")).toBe(
+      false,
+    );
+  });
+
+  it("reports missing Lima without requiring Docker", async () => {
+    const { service, state, command } = await toolFixture();
+    state.dockerInstalled = false;
+    state.limaInstalled = false;
+
+    const lima = (await service.getSnapshot()).plugins.find((tool) => tool.id === "lima");
+
+    expect(lima).toMatchObject({
+      automaticUpdate: false,
+      installed: false,
+      management: "startup",
+      source: "unknown",
+    });
+    expect(lima?.installUnavailableReason).toContain("시작 준비");
+    expect(
+      command.mock.calls.some(([, args]) => args[0] === "info" && args[1] === "--format"),
+    ).toBe(false);
   });
 
   it("refuses to upgrade a same-version external plugin even when its Homebrew formula is installed", async () => {

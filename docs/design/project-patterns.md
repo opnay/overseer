@@ -83,7 +83,7 @@
 | ----------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------- |
 | `/compose`, `/containers`, `/images`, `/volumes`, `/networks`, `/instances`                                 | ResourceCollection | 기본 리소스 목록                  |
 | `/image-repositories`                                                                                       | ResourceCollection | 외부 저장소 목록                  |
-| `/docker-plugins`                                                                                           | ResourceCollection | Item 기반 CLI 도구 관리 목록      |
+| `/docker-plugins`                                                                                           | CliToolManagement  | CLI 도구 상태·업데이트 관리       |
 | `/operations`, `/operations/lima`, `/operations/docker-cli`                                                 | ResourceCollection | 작업 상세 Dialog와 LogViewer 포함 |
 | `/compose/:name`, `/containers/:id`, `/images/:id`, `/volumes/:name`, `/networks/:name`, `/instances/:name` | ResourceDetail     | Sectioned Workspace 상세          |
 | `/image-repositories/:id`                                                                                   | ResourceDetail     | 단일 콘텐츠 상세                  |
@@ -96,16 +96,13 @@
 
 ### 사용자 목표와 적용 조건
 
-여러 리소스를 비교하고 하나를 선택해 상세나 작업으로 이동하는 반복 업무에 사용합니다. Compose, 컨테이너, 이미지, 인스턴스, 볼륨, 네트워크, 이미지 저장소, Docker CLI 도구와 작업 목록에 적용합니다. 순서가 있는 준비 과정이나 하나의 리소스를 깊게 읽는 화면에는 사용하지 않습니다.
+여러 리소스를 비교하고 하나를 선택해 상세나 작업으로 이동하는 반복 업무에 사용합니다. Compose, 컨테이너, 이미지, 인스턴스, 볼륨, 네트워크, 이미지 저장소와 작업 목록에 적용합니다. 순서가 있는 준비 과정이나 하나의 리소스를 깊게 읽는 화면에는 사용하지 않습니다.
 
 ### 구성과 레이아웃
 
 `Page Header > Feedback > DataTableRegion > Table` 순서를 사용합니다. 큰 결과 집합은 같은 데이터 영역 안에서 `FilterBar > Table > Pagination` 순서로 구성하고 서버 조회도 같은 필터·페이지 계약을 사용합니다.
 
 - 데이터 영역은 outline 또는 raised surface 하나만 사용합니다.
-- CLI 도구 안내처럼 표 위에 유지하는 설명은 컨테이너 header에 배치하고 필터 header와 같은 gutter를 사용합니다.
-- CLI 도구는 Docker CLI·Compose·Buildx 세 항목을 `Item.Group`과 `Item.Root plain`으로 묶습니다. 현재·최신 버전, 설치 방식과 실행 경로는 `DataList`로 표시합니다. 행 내부 padding은 `space-5`, Header·정보 사이 간격은 `space-4`, Media·Content 간격은 Item의 `space-3`을 유지하며 행 사이 divider만 사용합니다.
-- CLI 목록 조회는 도구 감지만 수행하고, 최신 버전은 사용자가 업데이트 확인을 실행했을 때 Homebrew 배포 정보를 기준으로 표시합니다. 출처가 확인된 Homebrew 도구만 업데이트합니다. 행의 설치·업데이트는 의미가 명확한 아이콘 버튼과 Tooltip으로 노출하고, 미설치·외부 설치·출처 확인 실패 사유는 해당 행에 둡니다. 전체 업데이트는 확인된 업데이트가 있는 설치·자동 관리 도구만 기존 독점 작업 큐에 하나씩 등록하고, 앞선 작업이 성공한 뒤 다음 작업을 시작합니다. 확인 전에는 전체 업데이트를 비활성화하며, 실패·취소 시 남은 작업을 시작하지 않습니다. CLI에 엔진 연결·context 관리 메뉴를 추가하지 않습니다.
 - 필터·표·페이지네이션을 같은 테두리 컨테이너에 넣으면 컨테이너의 header·footer가 inline `space-4` gutter를 소유합니다. `FilterBar` 자체에는 바깥 padding을 추가하지 않습니다. 필터 header는 block `space-3`을 사용합니다.
 - Table은 `sm` 크기와 compact 정보 밀도를 사용합니다.
 - 넓은 주요 열은 하나만 두고 나머지는 콘텐츠 기반 최소 폭을 사용합니다.
@@ -119,6 +116,30 @@
 - 키보드로 주요 셀 링크와 모든 행 액션에 접근할 수 있어야 합니다.
 - 작은 화면에서도 페이지 본문은 넘치지 않고 Table 영역만 가로 스크롤해야 합니다.
 - `Operations`는 이 패턴의 변형이며 상세 Dialog와 공통 `LogViewer`를 추가합니다.
+
+## CliToolManagement
+
+### 사용자 목표와 적용 조건
+
+CLI 도구를 한곳에서 확인하고 업데이트합니다. `/docker-plugins`의 `CLI > 도구`에 적용합니다. 일반 설정은 시작 준비 링크만 유지하고 도구 업데이트 UI를 중복하지 않습니다. 필수 도구와 Docker Engine을 순서대로 준비하는 작업은 `/startup`의 GuidedSetup이 소유합니다.
+
+### 구성과 레이아웃
+
+`Page Header > Update Actions > Feedback > Item.Group` 순서를 사용합니다.
+
+- Docker CLI, Compose, Buildx, Lima 네 항목을 `Item.Group`과 `Item.Root plain density="compact"`으로 표시합니다. 행 padding과 내부 밀도는 Item DS가 소유하고 프로젝트 CSS는 콘텐츠 정렬과 divider만 담당합니다.
+- 첫 줄은 도구 제목과 설치 출처 Badge(Homebrew·외부 설치·출처 확인 불가), 둘째 줄은 버전·상태 Badge·행 액션입니다. 반복 설명과 실행 파일 경로는 표시하지 않습니다.
+- 업데이트 확인 전에는 현재 버전과 `확인 전` 상태만 표시합니다. 확인 뒤 최신 버전이 있으면 `현재(최신)`을 한 줄에 표시하고 접근성 이름에는 현재·최신 버전의 의미를 제공합니다.
+- 외부 설치, 미설치, 출처 확인 불가, 수동 관리, 진행 중과 오류 상태는 행이나 페이지 피드백에 남깁니다. 사유가 있으면 해당 행에 표시합니다.
+- 행의 단일 설치·업데이트·시작 준비 명령은 `Button iconOnly`와 `aria-label`, `Tooltip`으로 제공합니다. 미설치 Startup 도구의 이동은 `/startup`으로 연결합니다.
+- 전체 업데이트는 확인된 업데이트가 있는 설치·자동 관리 도구만 대상으로 하며 Lima도 포함합니다. App Shell이 작업 ID를 추적해 순차 실행하므로 페이지 이동 뒤에도 계속하고, ID를 찾지 못하거나 작업이 실패·취소되면 남은 작업을 시작하지 않습니다.
+- 좁은 화면에서는 긴 버전이나 행 정보가 읽기 순서를 유지하며 줄바꿈할 수 있습니다. 행을 과도하게 축소하거나 페이지 폭을 늘리지 않습니다.
+
+### 필수 상태와 완료 기준
+
+- 초기 로딩, 조회 오류와 재시도, 확인 전, 최신, 업데이트 가능, 수동 관리, 미설치, 외부·unknown 출처, 행 작업 중·실패, 전체 업데이트 진행·부분 중단·완료를 구분합니다.
+- 키보드와 스크린 리더에서 버전 의미, 상태, 각 아이콘 명령을 식별하고 실행할 수 있어야 합니다.
+- 전체 업데이트는 사용자가 확인하지 않은 버전을 자동 실행하지 않으며, 실패·취소·작업 ID 추적 실패 뒤 후속 도구를 실행하지 않습니다.
 
 ## ResourceDetail
 
@@ -160,7 +181,7 @@ App Shell의 페이지 헤더·전역 탐색 다음에 설정 본문을 직접 �
 - 각 독립 설정 섹션이 초기화·저장·오류 상태를 소유합니다.
 - 한 섹션에는 primary 저장 액션을 하나만 둡니다.
 - 일반 설정의 독립 이동 항목만 outline surface를 사용할 수 있습니다.
-- 시작 준비 이동은 `Item.Root outline`의 Media·Content·Title·Description·Actions로 구성합니다. 도구 업데이트 행과 작업 Drawer 항목은 `Item.Group` 안의 `Item.Root plain`을 사용합니다. 목록의 `li`는 Item이 소유하며 직접 중첩하지 않습니다.
+- 시작 준비 이동은 `Item.Root outline`의 Media·Content·Title·Description·Actions로 구성합니다. 목록의 `li`는 Item이 소유하며 직접 중첩하지 않습니다.
 - Item이 행 내부 구조·밀도·간격을 소유합니다. 도구 업데이트의 비교 열과 좁은 화면의 액션 재배치만 프로젝트 레이아웃이 소유합니다. 현재·최신 버전의 이름·값 관계, 상태·로그·작업 명령을 유지합니다.
 - 설정 섹션을 같은 모양의 카드로 반복하지 않고 제목, 간격과 divider로 구분합니다.
 

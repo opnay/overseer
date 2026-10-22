@@ -51,7 +51,6 @@ import type {
   StartupPrerequisiteId,
   StartupSnapshot,
   StartupStepId,
-  ToolUpdateId,
   UpdateRuntimeInstanceInput,
   UpdateDockerDaemonConfigurationSectionInput,
   VolumeSummary,
@@ -625,6 +624,7 @@ interface DockerPluginBulkUpdate {
 interface DockerPluginBulkUpdateResult {
   completed: number;
   status: "cancelled" | "failed" | "succeeded";
+  trackingLost?: boolean;
 }
 
 function resourcePathFromLocation(): AppLocationPath {
@@ -740,6 +740,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   }>();
   const notifiedOperations = useRef(new Set<string>());
   const handledDockerPluginBulkOperations = useRef(new Set<string>());
+  const checkingDockerPluginBulkOperationId = useRef<string | undefined>(undefined);
   const operationsInitialized = useRef(false);
   const startupLoaded = useRef(false);
   const startupRefreshQueued = useRef(false);
@@ -943,8 +944,10 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
         operationsInitialized.current = true;
       }
       setOperations(nextOperations);
+      return nextOperations;
     } catch (error) {
       setOperationError(actionError(error));
+      return undefined;
     }
   }, []);
 
@@ -955,6 +958,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   const hasActiveOperations = operations.some(
     ({ status }) => status === "queued" || status === "running",
   );
+  const shouldPollOperations = hasActiveOperations || Boolean(dockerPluginBulkUpdate);
   const operationsRefreshToken = operations
     .map(({ id, status, step }) => `${id}:${status}:${step}`)
     .join("|");
@@ -977,10 +981,10 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     : undefined;
 
   useEffect(() => {
-    if (!hasActiveOperations) return;
+    if (!shouldPollOperations) return;
     const interval = window.setInterval(() => void loadOperations(), 1_000);
     return () => window.clearInterval(interval);
-  }, [hasActiveOperations, loadOperations]);
+  }, [shouldPollOperations, loadOperations]);
 
   useEffect(() => {
     for (const operation of operations) {
@@ -1124,24 +1128,6 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     });
   };
 
-  const checkToolUpdates = () =>
-    mutate({
-      key: "startup-update-check",
-      request: () =>
-        apiRequest<OperationAccepted>("/startup/updates/check", {
-          method: "POST",
-        }),
-    });
-
-  const updateTool = (target: ToolUpdateId) =>
-    mutate({
-      key: `startup-update-${target}`,
-      request: () =>
-        apiRequest<OperationAccepted>(`/startup/prerequisites/${target}/update`, {
-          method: "POST",
-        }),
-    });
-
   const installDockerPlugin = (id: DockerCliPluginId) =>
     mutate({
       key: `docker-plugin-install-${id}`,
@@ -1185,8 +1171,39 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
 
   useEffect(() => {
     const bulkUpdate = dockerPluginBulkUpdate;
+    if (!bulkUpdate) {
+      checkingDockerPluginBulkOperationId.current = undefined;
+      return;
+    }
+
     const operation = dockerPluginBulkOperation;
-    if (!bulkUpdate || !operation) return;
+    if (!operation) {
+      if (checkingDockerPluginBulkOperationId.current === bulkUpdate.operationId) return;
+      checkingDockerPluginBulkOperationId.current = bulkUpdate.operationId;
+      void loadOperations().then((latestOperations) => {
+        if (checkingDockerPluginBulkOperationId.current !== bulkUpdate.operationId) return;
+        if (!latestOperations) {
+          checkingDockerPluginBulkOperationId.current = undefined;
+          return;
+        }
+        if (latestOperations.some(({ id }) => id === bulkUpdate.operationId)) {
+          checkingDockerPluginBulkOperationId.current = undefined;
+          return;
+        }
+        checkingDockerPluginBulkOperationId.current = undefined;
+        setDockerPluginBulkResult({
+          completed: bulkUpdate.index,
+          status: "failed",
+          trackingLost: true,
+        });
+        setDockerPluginBulkUpdate((current) =>
+          current?.operationId === bulkUpdate.operationId ? undefined : current,
+        );
+      });
+      return;
+    }
+
+    checkingDockerPluginBulkOperationId.current = undefined;
     if (operation.status === "queued" || operation.status === "running") return;
     if (handledDockerPluginBulkOperations.current.has(operation.id)) return;
     handledDockerPluginBulkOperations.current.add(operation.id);
@@ -1223,7 +1240,13 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
           current?.operationId === currentOperationId ? undefined : current,
         );
       });
-  }, [dockerPluginBulkOperation, dockerPluginBulkUpdate, updateDockerPlugin]);
+  }, [
+    dockerPluginBulkOperation,
+    dockerPluginBulkUpdate,
+    loadOperations,
+    operations,
+    updateDockerPlugin,
+  ]);
 
   const startDockerEngineForStartup = (configuration?: DockerEngineConfiguration) =>
     mutate({
@@ -1391,16 +1414,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     ({ status, target }) =>
       target.resource === "runtime" && status !== "queued" && status !== "running",
   );
-  const latestToolUpdateOperation = operations.find(
-    ({ kind }) => kind === "startup.update" || kind === "startup.update.check",
-  );
-  const latestFinishedToolUpdateOperation = operations.find(
-    ({ kind, status }) =>
-      (kind === "startup.update" || kind === "startup.update.check") &&
-      status !== "queued" &&
-      status !== "running",
-  );
-  const settingsRefreshToken = `${settingsRefreshRevision}:${latestFinishedRuntimeOperation?.id ?? ""}:${latestFinishedRuntimeOperation?.status ?? ""}:${latestFinishedToolUpdateOperation?.id ?? ""}:${latestFinishedToolUpdateOperation?.status ?? ""}`;
+  const settingsRefreshToken = `${settingsRefreshRevision}:${latestFinishedRuntimeOperation?.id ?? ""}:${latestFinishedRuntimeOperation?.status ?? ""}`;
   const currentDetail = getAppDetailLocation(resourcePath);
   const currentRoute = getAppRoute(resourcePath);
   const currentContainer =
@@ -2009,11 +2023,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
                 busy={runtimeBusy || Boolean(submitting)}
                 dashboard={dashboard}
                 onApplyDaemonConfiguration={applyDockerDaemonConfiguration}
-                onCheckToolUpdates={checkToolUpdates}
-                onUpdateTool={updateTool}
                 refreshToken={settingsRefreshToken}
-                toolOperation={latestToolUpdateOperation}
-                toolRequestPending={Boolean(submitting?.startsWith("startup-update"))}
               />
             </Suspense>
           ) : null}

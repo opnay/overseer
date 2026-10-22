@@ -4,25 +4,18 @@ import { Item } from "@opnay/city-ds-react/item";
 import { ArrowRight, PackageCheck } from "lucide-react";
 import type {
   DashboardSnapshot,
-  OperationSnapshot,
   RuntimePhase,
-  ToolUpdateId,
   UpdateDockerDaemonConfigurationSectionInput,
 } from "@contracts/contracts.ts";
 import { useUrlSection } from "@/shared/lib/url-section";
 import { APP_SETTINGS_SECTIONS } from "@/shared/routes";
 import { DockerDaemonSettings } from "./docker-daemon-settings.tsx";
-import { ToolUpdatesSection } from "./tool-updates-section.tsx";
 
 interface SettingsPageProps {
   busy: boolean;
   dashboard: DashboardSnapshot;
   onApplyDaemonConfiguration(input: UpdateDockerDaemonConfigurationSectionInput): Promise<void>;
-  onCheckToolUpdates(): Promise<void>;
-  onUpdateTool(id: ToolUpdateId): Promise<void>;
   refreshToken: string;
-  toolOperation?: OperationSnapshot;
-  toolRequestPending: boolean;
 }
 
 const settingsSections = APP_SETTINGS_SECTIONS.map(({ value }) => value);
@@ -43,11 +36,7 @@ export function SettingsPage({
   busy,
   dashboard,
   onApplyDaemonConfiguration,
-  onCheckToolUpdates,
-  onUpdateTool,
   refreshToken,
-  toolOperation,
-  toolRequestPending,
 }: SettingsPageProps) {
   const [section] = useUrlSection({
     defaultValue: dashboard.runtime.phase === "running" ? "general" : "engine",
@@ -92,13 +81,6 @@ export function SettingsPage({
                 </Button>
               </Item.Actions>
             </Item.Root>
-            <ToolUpdatesSection
-              onCheck={onCheckToolUpdates}
-              onUpdate={onUpdateTool}
-              operation={toolOperation}
-              refreshToken={refreshToken}
-              requestPending={toolRequestPending}
-            />
           </>
         ) : null}
 

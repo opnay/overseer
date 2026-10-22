@@ -686,7 +686,7 @@ export type OperationResource =
   | "startup"
   | "volume";
 
-export type DockerCliPluginId = "docker" | "buildx" | "compose";
+export type DockerCliPluginId = "docker" | "buildx" | "compose" | "lima";
 
 export interface DockerCliPluginSummary {
   automaticUpdate?: boolean;

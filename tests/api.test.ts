@@ -397,6 +397,16 @@ describe("API boundary", () => {
             management: "extensions",
             source: "homebrew",
           },
+          {
+            description: "macOS에서 단일 overseer VM과 Docker Engine을 실행합니다.",
+            id: "lima",
+            installAvailable: false,
+            installed: true,
+            label: "Lima",
+            management: "startup",
+            source: "homebrew",
+            version: "1.0.0",
+          },
         ],
       })),
       install: vi.fn(async () => undefined),
@@ -405,7 +415,9 @@ describe("API boundary", () => {
 
     const snapshot = await app.request("/docker-cli/plugins", { headers: localHeaders });
     expect(snapshot.status).toBe(200);
-    await expect(snapshot.json()).resolves.toMatchObject({ plugins: [{ id: "buildx" }] });
+    await expect(snapshot.json()).resolves.toMatchObject({
+      plugins: [{ id: "buildx" }, { id: "lima", management: "startup", version: "1.0.0" }],
+    });
 
     const install = await app.request("/docker-cli/plugins/buildx/install", {
       headers: localHeaders,
@@ -441,7 +453,18 @@ describe("API boundary", () => {
     await vi.waitFor(() =>
       expect(plugins.update).toHaveBeenCalledWith("compose", expect.any(Object)),
     );
-    const invalidUpdate = await app.request("/docker-cli/plugins/lima/update", {
+    const limaUpdate = await app.request("/docker-cli/plugins/lima/update", {
+      headers: localHeaders,
+      method: "POST",
+    });
+    expect(limaUpdate.status).toBe(202);
+    expect((await limaUpdate.json()).operation).toMatchObject({
+      kind: "docker.plugin.update",
+      target: { id: "lima", name: "Lima", resource: "dockerPlugin" },
+    });
+    await vi.waitFor(() => expect(plugins.update).toHaveBeenCalledWith("lima", expect.any(Object)));
+
+    const invalidUpdate = await app.request("/docker-cli/plugins/unknown/update", {
       headers: localHeaders,
       method: "POST",
     });

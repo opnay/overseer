@@ -262,6 +262,9 @@ function renderDockerPluginBulkUpdateApp() {
   const user = userEvent.setup();
   let checked = false;
   let operationHistory: OperationSnapshot[] = [];
+  let omittedOperationOnNextRead: string | undefined;
+  let failNextOperationsRead = false;
+  let failedOperationsReadCount = 0;
   const completedOperationIds = new Set<string>();
   const updateRequests: string[] = [];
   const dashboard: DashboardSnapshot = {
@@ -276,6 +279,19 @@ function renderDockerPluginBulkUpdateApp() {
     const url = String(input);
     if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
     if (url.endsWith("/api/operations")) {
+      if (omittedOperationOnNextRead) {
+        const omittedId = omittedOperationOnNextRead;
+        omittedOperationOnNextRead = undefined;
+        failNextOperationsRead = true;
+        return jsonResponse({
+          operations: operationHistory.filter(({ id }) => id !== omittedId),
+        });
+      }
+      if (failNextOperationsRead) {
+        failNextOperationsRead = false;
+        failedOperationsReadCount += 1;
+        return jsonResponse({ error: "일시적인 작업 조회 오류" }, 503);
+      }
       operationHistory = operationHistory.map((current) =>
         completedOperationIds.has(current.id) &&
         (current.status === "queued" || current.status === "running")
@@ -296,14 +312,18 @@ function renderDockerPluginBulkUpdateApp() {
       return jsonResponse({ operation: accepted }, 202);
     }
     if (url.endsWith("/api/docker-cli/plugins")) {
-      const plugin = (id: "docker" | "compose", label: string) => ({
+      const plugin = (
+        id: "docker" | "compose" | "buildx" | "lima",
+        label: string,
+        management: "extensions" | "startup",
+      ) => ({
         automaticUpdate: true,
         description: `${label} 관리`,
         id,
         installAvailable: false,
         installed: true,
         label,
-        management: "startup" as const,
+        management,
         source: "homebrew" as const,
         version: "1.0.0",
         latestVersion: "2.0.0",
@@ -311,13 +331,27 @@ function renderDockerPluginBulkUpdateApp() {
       });
       return jsonResponse({
         ...(checked ? { checkedAt: "2026-10-22T00:00:00Z" } : {}),
-        plugins: [plugin("docker", "Docker CLI"), plugin("compose", "Docker Compose")],
+        plugins: [
+          plugin("docker", "Docker CLI", "startup"),
+          plugin("compose", "Docker Compose", "startup"),
+          plugin("buildx", "Docker Buildx", "extensions"),
+          plugin("lima", "Lima", "startup"),
+        ],
       });
     }
-    const updateMatch = url.match(/\/api\/docker-cli\/plugins\/(docker|compose)\/update$/);
+    const updateMatch = url.match(
+      /\/api\/docker-cli\/plugins\/(docker|compose|buildx|lima)\/update$/,
+    );
     if (updateMatch && init?.method === "POST") {
       const id = updateMatch[1]!;
-      const label = id === "docker" ? "Docker CLI" : "Docker Compose";
+      const label =
+        id === "docker"
+          ? "Docker CLI"
+          : id === "compose"
+            ? "Docker Compose"
+            : id === "buildx"
+              ? "Docker Buildx"
+              : "Lima";
       updateRequests.push(id);
       const accepted = operation("running", {
         id: `bulk-${id}`,
@@ -348,6 +382,15 @@ function renderDockerPluginBulkUpdateApp() {
     },
     completeOperation(id: string) {
       completedOperationIds.add(id);
+    },
+    failedOperationsReadCount() {
+      return failedOperationsReadCount;
+    },
+    hideOperationOnceThenFailOperationsRead(id: string) {
+      omittedOperationOnNextRead = id;
+    },
+    removeOperation(id: string) {
+      operationHistory = operationHistory.filter((current) => current.id !== id);
     },
     fetchMock,
     updateRequests,
@@ -2045,8 +2088,7 @@ describe("App", () => {
     expect(screen.getByRole("menuitem", { name: "삭제" })).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("checks and updates Homebrew-managed tools from general settings", async () => {
-    const user = userEvent.setup();
+  it("keeps startup preparation in general settings without duplicating CLI tool updates", async () => {
     const dashboard: DashboardSnapshot = {
       composeProjects: [],
       containers: [],
@@ -2060,40 +2102,11 @@ describe("App", () => {
       },
       volumes: [],
     };
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
-      if (url.endsWith("/api/runtime/configuration")) return jsonResponse(dockerEngineSnapshot());
+      if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
-      if (url.endsWith("/api/startup/updates/check") && init?.method === "POST") {
-        return jsonResponse(
-          {
-            operation: operation("succeeded", {
-              id: "tool-check",
-              kind: "startup.update.check",
-              successMessage: "도구 업데이트를 확인했습니다.",
-              target: { name: "Docker CLI·Compose·Lima", resource: "startup" },
-              title: "도구 업데이트 확인",
-            }),
-          },
-          202,
-        );
-      }
-      if (url.endsWith("/api/startup/prerequisites/docker/update") && init?.method === "POST") {
-        return jsonResponse(
-          {
-            operation: operation("succeeded", {
-              id: "docker-update",
-              kind: "startup.update",
-              successMessage: "Docker CLI를 업데이트했습니다.",
-              target: { id: "docker", name: "Docker CLI", resource: "startup" },
-              title: "Docker CLI 업데이트",
-            }),
-          },
-          202,
-        );
-      }
       return jsonResponse(dashboard);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -2101,43 +2114,14 @@ describe("App", () => {
     render(<App />);
 
     const startupHeading = await screen.findByRole("heading", { name: "시작 준비", level: 2 });
-    const updatesHeading = screen.getByRole("heading", { name: "도구 업데이트", level: 2 });
     expect(startupHeading).toHaveClass("city-text-subsection-title");
-    expect(updatesHeading).toHaveClass("city-text-subsection-title");
+    const startupLink = (await screen.findByText("시작 준비 열기")).closest("a");
+    expect(startupLink).toHaveAttribute("href", "/startup");
+    expect(screen.queryByRole("heading", { name: "도구 업데이트" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "업데이트 확인" })).not.toBeInTheDocument();
     expect(
-      await screen.findByText(/^마지막 확인 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
-    ).toBeInTheDocument();
-    const docker = await screen.findByRole("region", { name: "Docker CLI" });
-    expect(docker).toHaveTextContent("현재29.7.2");
-    expect(docker).toHaveTextContent("최신30.0.0");
-    expect(docker).toHaveTextContent("업데이트 있음");
-    const compose = screen.getByRole("region", { name: "Docker Compose" });
-    expect(compose).toHaveTextContent("최신");
-    expect(
-      within(compose).getByText("최신", { selector: "[data-city-badge]" }).querySelector("svg"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Lima" })).toHaveTextContent(
-      "Homebrew로 설치된 도구만 자동 업데이트할 수 있습니다.",
-    );
-
-    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
-    await user.click(screen.getByRole("button", { name: "Docker CLI 업데이트" }));
-
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(
-          ([input, init]) =>
-            String(input).endsWith("/api/startup/updates/check") && init?.method === "POST",
-        ),
-      ).toBe(true),
-    );
-    expect(
-      fetchMock.mock.calls.some(
-        ([input, init]) =>
-          String(input).endsWith("/api/startup/prerequisites/docker/update") &&
-          init?.method === "POST",
-      ),
-    ).toBe(true);
+      fetchMock.mock.calls.some(([input]) => String(input).includes("/api/startup/updates")),
+    ).toBe(false);
   });
 
   it("selects one prepared instance as the active Docker Engine", async () => {
@@ -4996,8 +4980,19 @@ describe("App", () => {
     window.history.replaceState(null, "", "/docker-plugins");
     render(<App />);
     const list = await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
-    expect(list).toHaveTextContent("/opt/homebrew/lib/docker/cli-plugins/docker-buildx");
+    expect(list).not.toHaveTextContent("/opt/homebrew/lib/docker/cli-plugins/docker-buildx");
+    expect(list).not.toHaveTextContent("/custom/docker-compose");
     expect(list).toHaveTextContent("외부 설치 도구는 수동 업데이트가 필요합니다.");
+    const buildxBeforeCheck = within(list).getByRole("region", { name: "Docker Buildx" });
+    expect(
+      within(buildxBeforeCheck).getByRole("group", { name: "현재 버전 0.29.1" }),
+    ).toHaveTextContent("0.29.1");
+    expect(
+      within(buildxBeforeCheck).getByText("Homebrew", { selector: "[data-city-badge]" }),
+    ).toBeInTheDocument();
+    const compose = within(list).getByRole("region", { name: "Docker Compose" });
+    expect(compose).toHaveTextContent("외부 설치");
+    expect(compose).toHaveTextContent("수동 관리");
     expect(
       screen.queryByRole("button", { name: "Docker Compose 업데이트" }),
     ).not.toBeInTheDocument();
@@ -5016,6 +5011,13 @@ describe("App", () => {
     finishCheck!();
     const update = await screen.findByRole("button", { name: "Docker Buildx 업데이트" });
     await waitFor(() => expect(update).toBeEnabled());
+    await waitFor(() =>
+      expect(
+        within(buildxBeforeCheck).getByRole("group", {
+          name: "현재 버전 0.29.1, 최신 버전 0.30.0",
+        }),
+      ).toBeInTheDocument(),
+    );
     await user.click(update);
     expect(
       await screen.findByRole("heading", { name: "Docker Buildx 업데이트에 실패했습니다." }),
@@ -5034,7 +5036,11 @@ describe("App", () => {
       ).not.toBeInTheDocument(),
     );
     const buildx = screen.getByRole("region", { name: "Docker Buildx" });
-    expect(buildx).toHaveTextContent("현재 버전0.30.0");
+    expect(
+      within(buildx).getByRole("group", {
+        name: "현재 버전 0.30.0, 최신 버전 0.30.0",
+      }),
+    ).toHaveTextContent("0.30.0(0.30.0)");
     expect(buildx).toHaveTextContent("최신");
     expect(attempts).toBe(2);
   });
@@ -5085,7 +5091,7 @@ describe("App", () => {
       }
       if (url.endsWith("/api/docker-cli/plugins")) {
         const plugin = (
-          id: "buildx" | "compose" | "docker",
+          id: "buildx" | "compose" | "docker" | "lima",
           label: string,
           management: "extensions" | "startup",
         ) => ({
@@ -5107,14 +5113,23 @@ describe("App", () => {
             plugin("docker", "Docker CLI", "startup"),
             plugin("compose", "Docker Compose", "startup"),
             plugin("buildx", "Docker Buildx", "extensions"),
+            plugin("lima", "Lima", "startup"),
           ],
         });
       }
-      const updateMatch = url.match(/\/api\/docker-cli\/plugins\/(docker|compose|buildx)\/update$/);
+      const updateMatch = url.match(
+        /\/api\/docker-cli\/plugins\/(docker|compose|buildx|lima)\/update$/,
+      );
       if (updateMatch && init?.method === "POST") {
         const id = updateMatch[1]!;
         const label =
-          id === "docker" ? "Docker CLI" : id === "compose" ? "Docker Compose" : "Docker Buildx";
+          id === "docker"
+            ? "Docker CLI"
+            : id === "compose"
+              ? "Docker Compose"
+              : id === "buildx"
+                ? "Docker Buildx"
+                : "Lima";
         updateRequests.push(id);
         latestOperation = operation("running", {
           id: `bulk-${id}`,
@@ -5168,12 +5183,18 @@ describe("App", () => {
         String(input).endsWith("/api/docker-cli/plugins/buildx/update"),
       ),
     ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/docker-cli/plugins/lima/update"),
+      ),
+    ).toBe(false);
   });
 
   it("bulk-updates only installed, managed tools with a confirmed update", async () => {
     const user = userEvent.setup();
     let checked = false;
     let buildxUpdated = false;
+    let limaUpdated = false;
     let latestOperation: OperationSnapshot | undefined;
     const updateRequests: string[] = [];
     const installRequests: string[] = [];
@@ -5208,8 +5229,8 @@ describe("App", () => {
               id: "docker",
               label: "Docker CLI",
               description: "Docker CLI 관리",
-              installed: false,
-              installAvailable: true,
+              installed: true,
+              installAvailable: false,
               management: "startup",
               source: "unknown",
               automaticUpdate: true,
@@ -5219,8 +5240,8 @@ describe("App", () => {
               id: "compose",
               label: "Docker Compose",
               description: "Compose 관리",
-              installed: true,
-              installAvailable: false,
+              installed: false,
+              installAvailable: true,
               management: "startup",
               source: "external",
               automaticUpdate: false,
@@ -5237,23 +5258,39 @@ describe("App", () => {
               automaticUpdate: true,
               ...(checked ? { latestVersion: "2.0.0", updateAvailable: !buildxUpdated } : {}),
             },
+            {
+              id: "lima",
+              label: "Lima",
+              description: "Lima VM 관리",
+              installed: true,
+              installAvailable: false,
+              management: "startup",
+              source: "homebrew",
+              automaticUpdate: true,
+              ...(checked ? { latestVersion: "2.2.0", updateAvailable: !limaUpdated } : {}),
+            },
           ],
         });
       }
-      const updateMatch = url.match(/\/api\/docker-cli\/plugins\/(docker|compose|buildx)\/update$/);
+      const updateMatch = url.match(
+        /\/api\/docker-cli\/plugins\/(docker|compose|buildx|lima)\/update$/,
+      );
       if (updateMatch && init?.method === "POST") {
-        updateRequests.push(updateMatch[1]!);
-        buildxUpdated = true;
+        const id = updateMatch[1]!;
+        const label = id === "buildx" ? "Docker Buildx" : "Lima";
+        updateRequests.push(id);
+        if (id === "buildx") buildxUpdated = true;
+        if (id === "lima") limaUpdated = true;
         latestOperation = operation("succeeded", {
-          id: "filtered-buildx-update",
+          id: `filtered-${id}-update`,
           kind: "docker.plugin.update",
-          target: { id: "buildx", name: "Docker Buildx", resource: "dockerPlugin" },
-          title: "Docker Buildx 업데이트",
+          target: { id, name: label, resource: "dockerPlugin" },
+          title: `${label} 업데이트`,
         });
         return jsonResponse({ operation: latestOperation }, 202);
       }
       const installMatch = url.match(
-        /\/api\/docker-cli\/plugins\/(docker|compose|buildx)\/install$/,
+        /\/api\/docker-cli\/plugins\/(docker|compose|buildx|lima)\/install$/,
       );
       if (installMatch && init?.method === "POST") installRequests.push(installMatch[1]!);
       return jsonResponse(dashboard);
@@ -5262,16 +5299,28 @@ describe("App", () => {
     window.history.replaceState(null, "", "/docker-plugins");
     render(<App />);
 
-    await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
+    const list = await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
+    const docker = within(list).getByRole("region", { name: "Docker CLI" });
+    expect(docker).toHaveTextContent("출처 확인 불가");
+    expect(docker).toHaveTextContent("수동 관리");
+    expect(screen.queryByRole("button", { name: "Docker CLI 업데이트" })).not.toBeInTheDocument();
+    const compose = within(list).getByRole("region", { name: "Docker Compose" });
+    expect(compose).toHaveTextContent("설치 필요");
+    const lima = within(list).getByRole("region", { name: "Lima" });
+    expect(
+      within(lima).getByText("Homebrew", { selector: "[data-city-badge]" }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
     const bulkButton = screen.getByRole("button", { name: "전체 업데이트" });
     await waitFor(() => expect(bulkButton).toBeEnabled());
+    expect(docker).toHaveTextContent("수동 관리");
+    expect(screen.queryByRole("button", { name: "Docker CLI 업데이트" })).not.toBeInTheDocument();
     await user.click(bulkButton);
 
     expect(
       await screen.findByRole("heading", { name: "전체 업데이트를 완료했습니다." }),
     ).toBeInTheDocument();
-    expect(updateRequests).toEqual(["buildx"]);
+    expect(updateRequests).toEqual(["buildx", "lima"]);
     expect(installRequests).toEqual([]);
     await waitFor(() => expect(bulkButton).toBeDisabled());
     expect(screen.getByText("업데이트할 도구가 없습니다.")).toBeInTheDocument();
@@ -5293,19 +5342,28 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "CLI" }));
     expect(await screen.findByRole("heading", { name: "도구", level: 1 })).toBeInTheDocument();
-    expect(await screen.findByText(/Docker Compose 업데이트 중 \(2\/2\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Docker Compose 업데이트 중 \(2\/4\)/)).toBeInTheDocument();
     completeOperation("bulk-compose");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose", "buildx"]), {
+      timeout: 3500,
+    });
+    completeOperation("bulk-buildx");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose", "buildx", "lima"]), {
+      timeout: 3500,
+    });
+    expect(await screen.findByText(/Lima 업데이트 중 \(4\/4\)/)).toBeInTheDocument();
+    completeOperation("bulk-lima");
     expect(
       await screen.findByRole(
         "heading",
         { name: "전체 업데이트를 완료했습니다." },
-        { timeout: 5000 },
+        { timeout: 10000 },
       ),
     ).toBeInTheDocument();
-    expect(updateRequests).toEqual(["docker", "compose"]);
-  });
+    expect(updateRequests).toEqual(["docker", "compose", "buildx", "lima"]);
+  }, 15000);
 
-  it("tracks the bulk update operation when a newer Docker plugin operation appears", async () => {
+  it("tracks each bulk update by operation ID when newer plugin operations appear", async () => {
     const { addUnrelatedNewestOperation, completeOperation, updateRequests, user } =
       renderDockerPluginBulkUpdateApp();
     await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
@@ -5318,16 +5376,87 @@ describe("App", () => {
     addUnrelatedNewestOperation();
     completeOperation("bulk-docker");
     await waitFor(() => expect(updateRequests).toEqual(["docker", "compose"]), { timeout: 3500 });
-    expect(await screen.findByText(/Docker Compose 업데이트 중 \(2\/2\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Docker Compose 업데이트 중 \(2\/4\)/)).toBeInTheDocument();
 
     completeOperation("bulk-compose");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose", "buildx"]), {
+      timeout: 3500,
+    });
+    completeOperation("bulk-buildx");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose", "buildx", "lima"]), {
+      timeout: 3500,
+    });
+    completeOperation("bulk-lima");
     expect(
       await screen.findByRole(
         "heading",
         { name: "전체 업데이트를 완료했습니다." },
-        { timeout: 5000 },
+        { timeout: 10000 },
       ),
     ).toBeInTheDocument();
-    expect(updateRequests).toEqual(["docker", "compose"]);
+    expect(updateRequests).toEqual(["docker", "compose", "buildx", "lima"]);
+  }, 15000);
+
+  it("continues and completes a bulk update after an operations read failure", async () => {
+    const {
+      completeOperation,
+      failedOperationsReadCount,
+      hideOperationOnceThenFailOperationsRead,
+      updateRequests,
+      user,
+    } = renderDockerPluginBulkUpdateApp();
+    await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
+    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
+    const bulkButton = screen.getByRole("button", { name: "전체 업데이트" });
+    await waitFor(() => expect(bulkButton).toBeEnabled());
+    await user.click(bulkButton);
+    await waitFor(() => expect(updateRequests).toEqual(["docker"]));
+
+    hideOperationOnceThenFailOperationsRead("bulk-docker");
+    await waitFor(() => expect(failedOperationsReadCount()).toBe(1), { timeout: 3500 });
+    expect(await screen.findByText(/Docker CLI 업데이트 중 \(1\/4\)/)).toBeInTheDocument();
+
+    completeOperation("bulk-docker");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose"]), { timeout: 3500 });
+    completeOperation("bulk-compose");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose", "buildx"]), {
+      timeout: 3500,
+    });
+    completeOperation("bulk-buildx");
+    await waitFor(() => expect(updateRequests).toEqual(["docker", "compose", "buildx", "lima"]), {
+      timeout: 3500,
+    });
+    completeOperation("bulk-lima");
+
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "전체 업데이트를 완료했습니다." },
+        { timeout: 10000 },
+      ),
+    ).toBeInTheDocument();
+    expect(updateRequests).toEqual(["docker", "compose", "buildx", "lima"]);
+  }, 15000);
+
+  it("stops the bulk update when the tracked operation ID disappears", async () => {
+    const { removeOperation, updateRequests, user } = renderDockerPluginBulkUpdateApp();
+    await screen.findByRole("list", { name: "Docker CLI 도구 목록" });
+    await user.click(screen.getByRole("button", { name: "업데이트 확인" }));
+    const bulkButton = screen.getByRole("button", { name: "전체 업데이트" });
+    await waitFor(() => expect(bulkButton).toBeEnabled());
+    await user.click(bulkButton);
+    await waitFor(() => expect(updateRequests).toEqual(["docker"]));
+
+    removeOperation("bulk-docker");
+
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "전체 업데이트가 중단되었습니다." },
+        { timeout: 4000 },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/현재 업데이트 ID를 찾지 못해/)).toBeInTheDocument();
+    expect(updateRequests).toEqual(["docker"]);
   });
 });
