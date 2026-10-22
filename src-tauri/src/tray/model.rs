@@ -158,10 +158,6 @@ fn tray_runtime_state(phase: &str) -> Result<TrayRuntimeState, TraySnapshotError
     }
 }
 
-pub(super) fn auto_start_runtime_path(state: TrayRuntimeState) -> Option<&'static str> {
-    matches!(state, TrayRuntimeState::Stopped).then_some("/runtime/start")
-}
-
 pub(super) fn tray_runtime_actions(
     state: Option<TrayRuntimeState>,
 ) -> &'static [TrayRuntimeAction] {
@@ -314,19 +310,6 @@ mod tests {
             ),
             Err(TraySnapshotError::UnknownRuntimeState("paused".into()))
         );
-    }
-
-    #[test]
-    fn auto_starts_only_an_existing_stopped_runtime() {
-        assert_eq!(
-            auto_start_runtime_path(TrayRuntimeState::Stopped),
-            Some("/runtime/start")
-        );
-        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Running), None);
-        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Starting), None);
-        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Stopping), None);
-        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Missing), None);
-        assert_eq!(auto_start_runtime_path(TrayRuntimeState::Error), None);
     }
 
     #[test]

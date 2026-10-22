@@ -5,7 +5,7 @@ mod model;
 use crate::{sidecar::DesktopApiProcess, window::show_main_window};
 use indicator::{set_tray_runtime_indicator, tray_runtime_indicator, TrayRuntimeIndicator};
 use menu::{build_tray_menu, compose_action_path, tray_runtime_operation};
-use model::{auto_start_runtime_path, tray_snapshot_from_json};
+use model::tray_snapshot_from_json;
 use std::{
     sync::{Arc, Mutex},
     thread,
@@ -80,7 +80,6 @@ pub(crate) fn setup_tray(
 
     let app_handle = app.handle().clone();
     thread::spawn(move || {
-        let mut initial_runtime_checked = false;
         let mut current_runtime_indicator = TrayRuntimeIndicator::Hidden;
         loop {
             let snapshot = api
@@ -96,12 +95,6 @@ pub(crate) fn setup_tray(
                 });
             match snapshot {
                 Ok(snapshot) => {
-                    if !initial_runtime_checked {
-                        initial_runtime_checked = true;
-                        if let Some(path) = auto_start_runtime_path(snapshot.runtime_state) {
-                            request_operation(Arc::clone(&api), path.into(), "VM 자동 시작");
-                        }
-                    }
                     let next_runtime_indicator = tray_runtime_indicator(snapshot.runtime_state);
                     if next_runtime_indicator != current_runtime_indicator {
                         if let Err(error) =
