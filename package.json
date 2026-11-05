@@ -21,7 +21,11 @@
     "tauri:build": "tauri build --bundles app",
     "tauri:dev": "tauri dev",
     "test:ci": "vitest run",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:ci && pnpm build"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:ci && pnpm build",
+    "release:version": "node scripts/release.ts version",
+    "release:build": "node scripts/release.ts build",
+    "release:verify": "node scripts/release.ts verify",
+    "release:publish": "node scripts/release.ts publish"
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",

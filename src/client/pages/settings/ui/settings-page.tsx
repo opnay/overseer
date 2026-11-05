@@ -10,6 +10,7 @@ import type {
 import { useUrlSection } from "@/shared/lib/url-section";
 import { APP_SETTINGS_SECTIONS } from "@/shared/routes";
 import { DockerDaemonSettings } from "./docker-daemon-settings.tsx";
+import { AppUpdateSettings } from "./app-update-settings.tsx";
 
 interface SettingsPageProps {
   busy: boolean;
@@ -50,6 +51,7 @@ export function SettingsPage({
       <div className="overseer-settings-panel">
         {section === "general" ? (
           <>
+            <AppUpdateSettings />
             <Item.Root
               appearance="outline"
               aria-labelledby="overseer-settings-startup"
