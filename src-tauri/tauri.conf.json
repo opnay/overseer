@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Overseer",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "identifier": "com.opnay.overseer",
   "build": {
     "beforeBuildCommand": "pnpm build:desktop",
@@ -20,6 +20,10 @@
     "active": true,
     "externalBin": ["binaries/overseer-server"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
-    "targets": ["app"]
+    "targets": ["app"],
+    "macOS": {
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.plist"
+    }
   }
 }
