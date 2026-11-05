@@ -13,7 +13,10 @@ import {
   ImageRepositoryService,
   MemoryImageRepositoryStore,
 } from "../src/server/modules/image-repositories/index.ts";
-import type { StartupPrerequisiteController } from "../src/server/modules/startup/index.ts";
+import {
+  StartupPrerequisiteService,
+  type StartupPrerequisiteController,
+} from "../src/server/modules/startup/index.ts";
 import type {
   DockerCliPluginSnapshot,
   OperationKind,
@@ -293,14 +296,53 @@ describe("API boundary", () => {
 
   it("returns the lightweight menu bar snapshot", async () => {
     const controller = createController();
-    const app = createApi(controller);
+    const startup = new StartupPrerequisiteService();
+    vi.spyOn(startup, "getSnapshot").mockResolvedValue({ prerequisites: [], ready: true });
+    const app = createApi(controller, undefined, startup);
     const response = await app.request("/menu-bar", { headers: localHeaders });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ runtime: { phase: "running" } });
+    await expect(response.json()).resolves.toMatchObject({
+      runtime: { phase: "running" },
+      setupRequired: false,
+    });
     expect(controller.getMenuBarSnapshot).toHaveBeenCalledOnce();
     expect(controller.getDashboard).not.toHaveBeenCalled();
   });
+
+  it("keeps the menu in setup mode without probing an unavailable runtime", async () => {
+    const controller = createController();
+    const startup = new StartupPrerequisiteService();
+    vi.spyOn(startup, "getSnapshot").mockResolvedValue({ prerequisites: [], ready: false });
+    const app = createApi(controller, undefined, startup);
+
+    const response = await app.request("/menu-bar", { headers: localHeaders });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ setupRequired: true });
+    expect(controller.getMenuBarSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "stopped", "starting", "running", "error"] as const)(
+    "distinguishes engine setup from the %s runtime state",
+    async (phase) => {
+      const controller = createController();
+      vi.mocked(controller.getMenuBarSnapshot).mockResolvedValue({
+        composeProjects: [],
+        containers: [],
+        runtime: { instance: "overseer", message: "상태", phase },
+      });
+      const startup = new StartupPrerequisiteService();
+      vi.spyOn(startup, "getSnapshot").mockResolvedValue({ prerequisites: [], ready: true });
+      const app = createApi(controller, undefined, startup);
+
+      const response = await app.request("/menu-bar", { headers: localHeaders });
+
+      await expect(response.json()).resolves.toMatchObject({
+        setupRequired: phase === "missing" || phase === "error",
+      });
+    },
+  );
 
   it("reports prerequisites and enqueues supported automatic installs", async () => {
     const startup: StartupPrerequisiteController = {

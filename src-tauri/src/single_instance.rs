@@ -164,6 +164,11 @@ mod tests {
     #[test]
     fn shows_the_window_only_for_foreground_relaunches() {
         assert_eq!(startup_command(true, None), "ping\n");
+        assert_eq!(startup_command(true, Some("/containers/abc123")), "ping\n");
+        assert_eq!(
+            startup_command(false, None),
+            "{\"action\":\"show\",\"path\":null}\n"
+        );
         assert_eq!(
             startup_command(false, Some("/containers/abc123")),
             "{\"action\":\"show\",\"path\":\"/containers/abc123\"}\n"
