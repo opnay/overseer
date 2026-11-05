@@ -2183,7 +2183,8 @@ describe("App", () => {
     const startupLink = (await screen.findByText("시작 준비 열기")).closest("a");
     expect(startupLink).toHaveAttribute("href", "/startup");
     expect(screen.queryByRole("heading", { name: "도구 업데이트" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "업데이트 확인" })).not.toBeInTheDocument();
+    const appUpdates = screen.getByRole("region", { name: "업데이트 관리" });
+    expect(within(appUpdates).getByRole("button", { name: "업데이트 확인" })).toBeDisabled();
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes("/api/startup/updates")),
     ).toBe(false);

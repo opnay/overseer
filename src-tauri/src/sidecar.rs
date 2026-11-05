@@ -11,6 +11,7 @@ pub(crate) struct DesktopApiProcess {
     input: ChildStdin,
     next_id: u64,
     output: BufReader<ChildStdout>,
+    updating: bool,
 }
 
 impl DesktopApiProcess {
@@ -36,6 +37,7 @@ impl DesktopApiProcess {
             input,
             next_id: 0,
             output: BufReader::new(output),
+            updating: false,
         };
 
         let mut ready = String::new();
@@ -57,6 +59,9 @@ impl DesktopApiProcess {
         method: String,
         body: Option<String>,
     ) -> Result<(u16, String), String> {
+        if self.updating && !method.eq_ignore_ascii_case("GET") {
+            return Err("앱 업데이트 중에는 새 작업을 시작할 수 없습니다.".into());
+        }
         if let Some(status) = self
             .child
             .try_wait()
@@ -104,12 +109,113 @@ impl DesktopApiProcess {
             .to_owned();
         Ok((status, body))
     }
+
+    pub(crate) fn begin_update(&mut self) -> Result<(), String> {
+        for status in ["queued", "running"] {
+            let (code, body) = self.request(
+                format!("/operations?status={status}&pageSize=1"),
+                "GET".into(),
+                None,
+            )?;
+            if code != 200 {
+                return Err("실행 중인 작업을 확인하지 못했습니다. 다시 시도하십시오.".into());
+            }
+            if operation_count(&body)? > 0 {
+                return Err(
+                    "실행 중이거나 대기 중인 작업이 있습니다. 작업이 끝난 뒤 업데이트하십시오."
+                        .into(),
+                );
+            }
+        }
+        self.updating = true;
+        Ok(())
+    }
+
+    pub(crate) fn end_update(&mut self) {
+        self.updating = false;
+    }
+
+    pub(crate) fn stop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn operation_count(body: &str) -> Result<u64, String> {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| value.get("pagination")?.get("total")?.as_u64())
+        .ok_or_else(|| "작업 상태 응답을 확인하지 못했습니다. 다시 시도하십시오.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(queued: u64, running: u64, malformed: bool) -> DesktopApiProcess {
+        let script = r#"
+import sys, json
+queued, running, malformed = map(int, sys.argv[1:])
+for line in sys.stdin:
+    request = json.loads(line)
+    total = queued if 'status=queued' in request['path'] else running
+    body = {} if malformed else {'pagination': {'total': total}, 'operations': []}
+    print(json.dumps({'id': request['id'], 'status': 200, 'body': json.dumps(body)}), flush=True)
+"#;
+        let mut child = Command::new("/usr/bin/python3")
+            .args([
+                "-u",
+                "-c",
+                script,
+                &queued.to_string(),
+                &running.to_string(),
+                if malformed { "1" } else { "0" },
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        DesktopApiProcess {
+            input: child.stdin.take().unwrap(),
+            output: BufReader::new(child.stdout.take().unwrap()),
+            child,
+            next_id: 0,
+            updating: false,
+        }
+    }
+
+    #[test]
+    fn rejects_pending_work_using_pagination_total_and_fails_closed() {
+        for (queued, running, malformed) in [(1, 0, false), (0, 100, false), (0, 0, true)] {
+            let mut api = fixture(queued, running, malformed);
+            assert!(api.begin_update().is_err());
+            assert!(api
+                .request("/runtime/start".into(), "POST".into(), None)
+                .is_ok());
+        }
+        assert!(operation_count(r#"{"pagination":{"total":-1}}"#).is_err());
+    }
+
+    #[test]
+    fn blocks_new_mutations_during_update_and_restores_them_after_failure() {
+        let mut api = fixture(0, 0, false);
+        api.begin_update().unwrap();
+        assert!(api.request("/health".into(), "GET".into(), None).is_ok());
+        for method in ["POST", "PATCH", "DELETE"] {
+            assert!(api
+                .request("/runtime/start".into(), method.into(), None)
+                .is_err());
+        }
+        api.end_update();
+        assert!(api
+            .request("/runtime/start".into(), "POST".into(), None)
+            .is_ok());
+    }
 }
 
 impl Drop for DesktopApiProcess {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.stop();
     }
 }
 

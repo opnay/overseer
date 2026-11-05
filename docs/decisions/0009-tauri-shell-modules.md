@@ -20,11 +20,13 @@ Tauri shell을 앱 기능과 수명주기 기준으로 나눕니다.
 - `window.rs`: launcher WebView, Dock과 activation policy를 소유합니다.
 - `single_instance.rs`: `app.sock`, 재실행 명령과 프로세스 리스너를 소유합니다.
 - `autostart.rs`: 로그인 자동 시작과 이전 Helper 항목 정리를 소유합니다.
+- `updates.rs`: 서명된 앱 업데이트 확인·설치, 작업 잠금과 설치 후 재실행을 소유합니다.
 - `tray/`: 메뉴바 상태 모델, 메뉴, macOS 상태점과 갱신 흐름을 소유합니다.
 
 ```text
 lib → app
-app → sidecar, window, single_instance, autostart, tray
+app → sidecar, window, single_instance, autostart, tray, updates
+updates → sidecar
 tray → sidecar, window
 single_instance → window
 ```

@@ -7,6 +7,7 @@ use crate::{
         window_route_argument,
     },
     tray::setup_tray,
+    updates::{self, AppUpdates},
     window::{
         build_app_menu, hide_main_window, show_main_window, APP_WINDOW_HIDE_ID, MAIN_WINDOW_LABEL,
     },
@@ -39,9 +40,12 @@ fn run_app(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
 
     let api = Arc::new(Mutex::new(DesktopApiProcess::start()?));
     let tray_api = Arc::clone(&api);
+    let shutdown_api = Arc::clone(&api);
     let cleanup_path = socket_path.clone();
     let app = tauri::Builder::default()
         .manage(api)
+        .manage(AppUpdates::default())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .menu(build_app_menu)
         .on_menu_event(|app, event| {
             if event.id() == APP_WINDOW_HIDE_ID {
@@ -74,11 +78,27 @@ fn run_app(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![sidecar::api_request])
+        .invoke_handler(tauri::generate_handler![
+            sidecar::api_request,
+            updates::check_app_update,
+            updates::install_app_update
+        ])
         .build(context)
         .map_err(|error| format!("Overseer 앱을 만들지 못했습니다: {error}"))?;
 
     app.run(move |app, event| match event {
+        tauri::RunEvent::ExitRequested { api, .. }
+            if app
+                .state::<AppUpdates>()
+                .installing
+                .load(std::sync::atomic::Ordering::Acquire)
+                && !app
+                    .state::<AppUpdates>()
+                    .relaunch
+                    .load(std::sync::atomic::Ordering::Acquire) =>
+        {
+            api.prevent_exit();
+        }
         tauri::RunEvent::ExitRequested { code, api, .. } if keeps_background_running(code) => {
             api.prevent_exit();
             if let Err(error) = hide_main_window(app) {
@@ -91,7 +111,13 @@ fn run_app(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
             }
         }
         tauri::RunEvent::Exit => {
+            if let Ok(mut api) = shutdown_api.lock() {
+                api.stop();
+            }
             let _ = fs::remove_file(&cleanup_path);
+            if let Err(error) = updates::relaunch_after_exit(app) {
+                eprintln!("{error}");
+            }
         }
         _ => {}
     });

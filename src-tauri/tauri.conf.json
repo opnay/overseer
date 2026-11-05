@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Overseer",
-  "version": "0.0.1",
+  "version": "../package.json",
   "identifier": "com.opnay.overseer",
   "build": {
     "beforeBuildCommand": "pnpm build:desktop",
@@ -24,6 +24,12 @@
     "macOS": {
       "hardenedRuntime": true,
       "entitlements": "entitlements.plist"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM1QkY3NkY2MkUxMjJGMTIKUldRU0x4SXU5bmEveFhoN3AzRDZGK1NNbXJxRUNJa05Fc0tRUkJxOHY5cGZpL2gzcnZsTjhJQ0QK",
+      "endpoints": ["https://github.com/opnay/overseer/releases/latest/download/latest.json"]
     }
   }
 }
