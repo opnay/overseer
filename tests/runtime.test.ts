@@ -149,6 +149,34 @@ function inspectFixture() {
   };
 }
 
+describe("LimaDockerRuntime missing Lima", () => {
+  const messages = ["spawn limactl ENOENT", 'Executable not found in $PATH: "limactl"'];
+
+  it.each(messages)("keeps the dashboard available for %s", async (message) => {
+    const command: CommandRunner = async () => {
+      throw new CommandError("limactl", Object.assign(new Error(message), { code: "ENOENT" }), "");
+    };
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getDashboard()).resolves.toMatchObject({
+      containers: [],
+      runtime: { message: "Lima 실행 파일을 찾을 수 없습니다.", phase: "error" },
+    });
+  });
+
+  it.each(messages)("reports Lima as unavailable for instance lists: %s", async (message) => {
+    const command: CommandRunner = async () => {
+      throw new CommandError("limactl", Object.assign(new Error(message), { code: "ENOENT" }), "");
+    };
+    const runtime = new LimaDockerRuntime(command);
+
+    await expect(runtime.getRuntimeInstances()).rejects.toMatchObject({
+      code: "lima_unavailable",
+      status: 503,
+    });
+  });
+});
+
 describe("LimaDockerRuntime optional Compose capability", () => {
   it("keeps the Docker dashboard available when the host Compose plugin is missing", async () => {
     const dockerCommands: string[][] = [];

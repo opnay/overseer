@@ -15,6 +15,7 @@ export interface CommandResult {
 export type CommandRunner = typeof runCommand;
 
 export class CommandError extends Error {
+  readonly code?: string;
   readonly command: string;
   readonly exitCode?: number;
   readonly stderr: string;
@@ -25,6 +26,7 @@ export class CommandError extends Error {
     const detail = stderr.trim() || source.message;
     super(`${command}: ${detail}`, { cause });
     this.name = "CommandError";
+    this.code = typeof source.code === "string" ? source.code : undefined;
     this.command = command;
     this.exitCode = typeof source.code === "number" ? source.code : undefined;
     this.stderr = stderr;
