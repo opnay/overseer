@@ -8,7 +8,7 @@
 
 - launcher, 메뉴바, Helper로 분리했던 실행 경로를 하나의 Tauri 애플리케이션 프로세스로 통합합니다.
 - Tauri 프로세스가 메뉴바, API sidecar, Docker 작업과 launcher 창의 생명주기를 함께 소유합니다.
-- 앱은 창과 Dock 아이콘이 없는 백그라운드 상태로 처음 시작합니다.
+- 앱을 직접 실행하면 launcher 창과 Dock 아이콘을 표시합니다. 로그인 자동 시작의 `--background` 실행만 창과 Dock 아이콘을 숨깁니다.
 - 앱 시작과 메뉴바 상태 조회는 VM을 자동 시작하지 않습니다. 중지된 VM은 사용자가 **VM 시작**을 선택할 때 시작하며, 로그인 시 앱 자동 실행 설정과 VM 시작은 별개입니다.
 - 메뉴바의 **Overseer 열기**, Compose·컨테이너 상세 메뉴, 실행 중인 앱의 재실행과 Dock 아이콘 재열기는 launcher 창을 표시합니다.
 - launcher 창을 닫거나 `Cmd+Q`를 누르면 창과 Dock 아이콘만 숨기고 백그라운드 프로세스는 유지합니다.
@@ -17,7 +17,11 @@
 ## 상태 전이
 
 ```text
-앱 최초 실행 또는 로그인 자동 시작
+앱 직접 실행
+→ 메뉴바 + API sidecar 실행
+→ launcher 표시 + Dock 표시
+
+로그인 자동 시작 (--background)
 → 메뉴바 + API sidecar 실행
 → launcher 숨김 + Dock 숨김
 

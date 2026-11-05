@@ -57,7 +57,7 @@ fn run_app(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
             configure_app_autostart()?;
             remove_stale_legacy_sockets();
             start_app_listener(listener, app.handle().clone());
-            if route.is_some() && !background {
+            if !background {
                 show_main_window(app.handle(), route.as_deref())?;
             }
             Ok(())
