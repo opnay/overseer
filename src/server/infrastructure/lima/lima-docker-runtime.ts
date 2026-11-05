@@ -1148,7 +1148,7 @@ export class LimaDockerRuntime implements OverseerController {
       return parseJsonLines<unknown>(result.stdout).map(parseLimaInstanceDetails);
     } catch (error) {
       if (error instanceof ExpectedError) throw error;
-      if (error instanceof CommandError && error.message.includes("ENOENT")) {
+      if (error instanceof CommandError && error.code === "ENOENT") {
         throw new ExpectedError("lima_unavailable", "Lima 실행 파일을 찾을 수 없습니다.", 503);
       }
       throw new ExpectedError(
@@ -1292,7 +1292,7 @@ export class LimaDockerRuntime implements OverseerController {
     try {
       instance = await this.getInstance(instanceName);
     } catch (error) {
-      if (error instanceof CommandError && error.message.includes("ENOENT")) {
+      if (error instanceof CommandError && error.code === "ENOENT") {
         return {
           instance: instanceName,
           message: "Lima 실행 파일을 찾을 수 없습니다.",

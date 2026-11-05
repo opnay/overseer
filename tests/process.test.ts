@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { runCommand } from "../src/server/infrastructure/process.ts";
 
 describe("runCommand", () => {
+  it("preserves the error code when an executable is missing", async () => {
+    await expect(runCommand("overseer-test-missing-executable", [])).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("forwards input through stdin without adding it to the command", async () => {
     const result = await runCommand(
       process.execPath,
