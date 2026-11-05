@@ -606,6 +606,10 @@ export interface MenuBarSnapshot {
   runtime: RuntimeSnapshot;
 }
 
+export type MenuBarResponse =
+  | { setupRequired: true }
+  | (MenuBarSnapshot & { setupRequired: false });
+
 export type RunContainerInput = ContainerSpecInput;
 
 export interface PullImageInput {

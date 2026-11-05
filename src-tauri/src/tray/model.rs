@@ -34,6 +34,7 @@ impl std::error::Error for TraySnapshotError {}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraySnapshotDto {
+    setup_required: bool,
     compose_projects: Option<Vec<TrayComposeProjectDto>>,
     containers: Option<Vec<TrayContainerDto>>,
     runtime: Option<TrayRuntimeDto>,
@@ -97,6 +98,7 @@ pub(super) struct TrayContainer {
 
 #[derive(Debug, PartialEq)]
 pub(super) struct TraySnapshot {
+    pub(super) setup_required: bool,
     pub(super) projects: Vec<TrayComposeProject>,
     pub(super) runtime_state: TrayRuntimeState,
 }
@@ -104,6 +106,13 @@ pub(super) struct TraySnapshot {
 pub(super) fn tray_snapshot_from_json(body: &str) -> Result<TraySnapshot, TraySnapshotError> {
     let dto: TraySnapshotDto = serde_json::from_str(body)
         .map_err(|error| TraySnapshotError::InvalidResponse(error.to_string()))?;
+    if dto.setup_required {
+        return Ok(TraySnapshot {
+            setup_required: true,
+            projects: vec![],
+            runtime_state: TrayRuntimeState::Missing,
+        });
+    }
     let phase = dto
         .runtime
         .and_then(|runtime| runtime.phase)
@@ -141,6 +150,7 @@ pub(super) fn tray_snapshot_from_json(body: &str) -> Result<TraySnapshot, TraySn
     }
 
     Ok(TraySnapshot {
+        setup_required: false,
         projects,
         runtime_state: tray_runtime_state(&phase)?,
     })
@@ -234,9 +244,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn setup_snapshot_needs_no_runtime_or_resource_data() {
+        let snapshot = tray_snapshot_from_json(r#"{"setupRequired":true}"#).unwrap();
+        assert!(snapshot.setup_required);
+        assert!(snapshot.projects.is_empty());
+        assert_eq!(snapshot.runtime_state, TrayRuntimeState::Missing);
+    }
+
+    #[test]
+    fn setup_mode_discards_stale_operational_data() {
+        let snapshot = tray_snapshot_from_json(
+            r#"{"setupRequired":true,"runtime":{"phase":"running"},
+                "composeProjects":[{"name":"stale","status":"running(1)"}],"containers":[]}"#,
+        )
+        .unwrap();
+        assert!(snapshot.setup_required);
+        assert!(snapshot.projects.is_empty());
+    }
+
+    #[test]
     fn maps_menu_bar_projects_to_their_containers() {
         let snapshot = tray_snapshot_from_json(
             r#"{
+                "setupRequired":false,
                 "runtime":{"phase":"running"},
                 "composeProjects":[
                     {"name":"alpha","status":"running(2)"},
@@ -256,6 +286,7 @@ mod tests {
         assert_eq!(
             snapshot,
             TraySnapshot {
+                setup_required: false,
                 projects: vec![
                     TrayComposeProject {
                         containers: vec![
@@ -285,15 +316,21 @@ mod tests {
     #[test]
     fn reports_missing_menu_bar_contract_sections() {
         assert_eq!(
-            tray_snapshot_from_json(r#"{"composeProjects":[],"containers":[]}"#),
+            tray_snapshot_from_json(
+                r#"{"setupRequired":false,"composeProjects":[],"containers":[]}"#
+            ),
             Err(TraySnapshotError::MissingRuntimeState)
         );
         assert_eq!(
-            tray_snapshot_from_json(r#"{"runtime":{"phase":"running"},"containers":[]}"#),
+            tray_snapshot_from_json(
+                r#"{"setupRequired":false,"runtime":{"phase":"running"},"containers":[]}"#
+            ),
             Err(TraySnapshotError::MissingComposeProjects)
         );
         assert_eq!(
-            tray_snapshot_from_json(r#"{"runtime":{"phase":"running"},"composeProjects":[]}"#),
+            tray_snapshot_from_json(
+                r#"{"setupRequired":false,"runtime":{"phase":"running"},"composeProjects":[]}"#
+            ),
             Err(TraySnapshotError::MissingContainers)
         );
     }
@@ -306,7 +343,7 @@ mod tests {
         ));
         assert_eq!(
             tray_snapshot_from_json(
-                r#"{"runtime":{"phase":"paused"},"composeProjects":[],"containers":[]}"#
+                r#"{"setupRequired":false,"runtime":{"phase":"paused"},"composeProjects":[],"containers":[]}"#
             ),
             Err(TraySnapshotError::UnknownRuntimeState("paused".into()))
         );

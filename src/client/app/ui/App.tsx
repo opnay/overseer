@@ -805,6 +805,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     composePrerequisite &&
     !composePrerequisite.installed &&
     !composeSkipped &&
+    (startupRoute || firstMissingRequiredPrerequisite || dashboard?.runtime.phase === "missing") &&
     dockerInstalled &&
     firstMissingRequiredPrerequisite?.id !== "homebrew" &&
     firstMissingRequiredPrerequisite?.id !== "docker",
@@ -814,7 +815,10 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     : firstMissingRequiredPrerequisite?.id;
   const detectedStartupStep: StartupStepId | undefined =
     prerequisiteStartupStep ??
-    (displayedStartup?.ready && dashboard?.runtime.phase !== "running" ? "engine" : undefined);
+    (displayedStartup?.ready &&
+    (dashboard?.runtime.phase === "missing" || dashboard?.runtime.phase === "error")
+      ? "engine"
+      : undefined);
   const requiredStartupStep =
     detectedStartupStep === "engine" && engineSetupSkipped && !startupRoute
       ? undefined
@@ -834,12 +838,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
         : requiredStartupStep;
   const currentStartupStep = startupStep ?? entryStartupStep;
   const startupVisible = Boolean(displayedStartup && currentStartupStep);
-  const startupCheckPending = Boolean(
-    dashboard &&
-    (dashboard.runtime.phase !== "running" || startupPreview || startupRoute) &&
-    !startup &&
-    !startupError,
-  );
+  const startupCheckPending = Boolean(!startup && !startupError);
 
   useEffect(() => {
     if (!startupVisible) return;
@@ -878,11 +877,8 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   }, [displayedStartup, isOperationsPage, requiredStartupStep, resourcePath, startupRoute]);
 
   useEffect(() => {
-    if (!dashboard || (dashboard.runtime.phase === "running" && !startupPreview && !startupRoute)) {
-      return;
-    }
     void refreshStartup();
-  }, [dashboard?.runtime.phase, refreshStartup, startupPreview, startupRoute]);
+  }, [refreshStartup, startupPreview, startupRoute]);
 
   const refreshResource = useCallback(
     async (resource: OperationResource) => {
@@ -1323,11 +1319,11 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     });
   };
 
-  if ((!dashboard && !loadError) || startupCheckPending) {
+  if ((!dashboard && !loadError && !currentStartupStep) || startupCheckPending) {
     return <LoadingScreen path={resourcePath} startup={startupRoute} />;
   }
 
-  if (dashboard && displayedStartup && currentStartupStep) {
+  if (displayedStartup && currentStartupStep) {
     const startupOperation = startupOperationId
       ? operations.find(({ id }) => id === startupOperationId)
       : undefined;
@@ -1363,7 +1359,7 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
         <StartupPage
           composeSkipped={composeSkipped}
           engineBusy={submitting === "runtime-start" || submitting === "runtime-force-restart"}
-          error={startupError ?? operationError}
+          error={startupError ?? operationError ?? (!dashboard ? loadError : undefined)}
           onContinue={continueStartup}
           onForceRestartEngine={forceRestartDockerEngineForStartup}
           onInstall={installStartupTarget}
@@ -1388,7 +1384,13 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
           operation={startupOperation}
           preview={Boolean(startupPreview)}
           refreshing={startupRefreshing}
-          runtime={dashboard.runtime}
+          runtime={
+            dashboard?.runtime ?? {
+              instance: "-",
+              message: loadError ?? "런타임 상태를 확인하고 있습니다.",
+              phase: "error",
+            }
+          }
           snapshot={displayedStartup}
           onStartEngine={startDockerEngineForStartup}
           step={currentStartupStep}

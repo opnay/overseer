@@ -114,7 +114,17 @@ pub(crate) fn setup_tray(
                         Err(error) => eprintln!("메뉴바 목록을 만들지 못했습니다: {error}"),
                     }
                 }
-                Err(error) => eprintln!("메뉴바 목록을 갱신하지 못했습니다: {error}"),
+                Err(error) => {
+                    eprintln!("메뉴바 목록을 갱신하지 못했습니다: {error}");
+                    if let Ok(menu) = build_tray_menu(&app_handle, None) {
+                        if tray.set_menu(Some(menu)).is_err() {
+                            break;
+                        }
+                    }
+                    if set_tray_runtime_indicator(&tray, TrayRuntimeIndicator::Hidden).is_ok() {
+                        current_runtime_indicator = TrayRuntimeIndicator::Hidden;
+                    }
+                }
             }
             thread::sleep(TRAY_MENU_REFRESH_INTERVAL);
         }

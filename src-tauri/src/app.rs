@@ -54,7 +54,9 @@ fn run_app(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             app.set_dock_visibility(false);
             setup_tray(app, tray_api)?;
-            configure_app_autostart()?;
+            if let Err(error) = configure_app_autostart() {
+                eprintln!("로그인 자동 시작을 설정하지 못했습니다: {error}");
+            }
             remove_stale_legacy_sockets();
             start_app_listener(listener, app.handle().clone());
             if !background {

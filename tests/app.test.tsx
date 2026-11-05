@@ -399,6 +399,66 @@ function renderDockerPluginBulkUpdateApp() {
 }
 
 describe("App", () => {
+  it.each([
+    {
+      installed: { homebrew: false, docker: false, lima: false, compose: false },
+      heading: "Homebrew를 설치해야 합니다.",
+    },
+    {
+      installed: { docker: false, lima: false, compose: false },
+      heading: "Docker CLI를 설치해야 합니다.",
+    },
+    { installed: { lima: false }, heading: "Lima를 설치해야 합니다." },
+  ])(
+    "opens required setup despite a dashboard failure: $heading",
+    async ({ installed, heading }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot(installed));
+          if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+          return jsonResponse(
+            { error: { code: "internal_error", message: "런타임 조회 실패" } },
+            500,
+          );
+        }),
+      );
+      window.history.replaceState(null, "", "/containers");
+
+      render(<App />);
+
+      expect(await screen.findByRole("heading", { name: heading, level: 2 })).toBeInTheDocument();
+      await waitFor(() => expect(window.location.pathname).toBe("/startup"));
+    },
+  );
+
+  it("keeps a configured stopped engine out of setup even without optional Compose", async () => {
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      volumes: [],
+      runtime: { instance: "overseer", phase: "stopped", message: "중지됨" },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot({ compose: false }));
+      if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+      return jsonResponse(dashboard);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/settings?section=general");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "시작 준비" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/settings");
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).endsWith("/api/runtime/start")),
+    ).toBe(false);
+  });
   it("matches the loading skeleton to the resource collection pattern", () => {
     window.history.replaceState(null, "", "/containers");
     vi.stubGlobal(
@@ -1044,6 +1104,7 @@ describe("App", () => {
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/startup/prerequisites/compose/install") && init?.method === "POST") {
         return jsonResponse({ operation: accepted }, 202);
@@ -1173,7 +1234,11 @@ describe("App", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
+    window.history.replaceState(null, "", "/startup");
     render(<App />);
+    for (let step = 0; step < 3; step += 1) {
+      await user.click(await screen.findByRole("button", { name: "다음" }));
+    }
 
     expect(
       await screen.findByRole("heading", {
@@ -2182,6 +2247,7 @@ describe("App", () => {
     });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/startup/updates")) return jsonResponse(toolUpdateSnapshot());
       if (url.endsWith("/api/runtime/configuration")) {
         return jsonResponse(dockerEngineSnapshot("instance", true));
@@ -2239,7 +2305,11 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse(dashboard)),
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/api/startup")
+          ? jsonResponse(startupSnapshot())
+          : jsonResponse(dashboard),
+      ),
     );
 
     render(<App />);
@@ -2295,11 +2365,12 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/api/operations")
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        return String(input).endsWith("/api/operations")
           ? jsonResponse({ operations: [] })
-          : jsonResponse(dashboard),
-      ),
+          : jsonResponse(dashboard);
+      }),
     );
     render(<App />);
     await screen.findByText("컨테이너가 없습니다.");
@@ -2351,6 +2422,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         if (url.endsWith("/api/containers/container-id")) {
           return jsonResponse({
@@ -2400,6 +2472,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+
         if (String(input).endsWith("/api/operations/operation-id") && init?.method === "DELETE") {
           return jsonResponse({
             operation: { ...operation("cancelled"), finishedAt: "2026-08-23T10:00:01.000Z" },
@@ -2463,6 +2537,7 @@ describe("App", () => {
     ];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/operations/failed-id/retry") && init?.method === "POST") {
         return jsonResponse(
           {
@@ -2659,6 +2734,7 @@ describe("App", () => {
     );
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: history });
       if (url.includes("/api/operations?")) {
         const params = new URL(url, "http://localhost").searchParams;
@@ -3000,11 +3076,12 @@ describe("App", () => {
     mockViewport(783);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/api/operations")
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        return String(input).endsWith("/api/operations")
           ? jsonResponse({ operations: [] })
-          : jsonResponse(dashboard),
-      ),
+          : jsonResponse(dashboard);
+      }),
     );
     window.history.replaceState(null, "", "/compose");
 
@@ -3042,6 +3119,7 @@ describe("App", () => {
     let favorite = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/image-repositories") && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as { repository: string };
@@ -3204,11 +3282,12 @@ describe("App", () => {
     mockViewport(390);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/api/operations")
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        return String(input).endsWith("/api/operations")
           ? jsonResponse({ operations: [] })
-          : jsonResponse(dashboard),
-      ),
+          : jsonResponse(dashboard);
+      }),
     );
     window.history.replaceState(null, "", "/containers");
 
@@ -3264,11 +3343,12 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).includes("/api/containers/container-id/logs")
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        return String(input).includes("/api/containers/container-id/logs")
           ? jsonResponse({ logs: "first line\nsecond line" })
-          : jsonResponse(dashboard),
-      ),
+          : jsonResponse(dashboard);
+      }),
     );
 
     render(<App />);
@@ -3336,7 +3416,11 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse(dashboard)),
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith("/api/startup")
+          ? jsonResponse(startupSnapshot())
+          : jsonResponse(dashboard),
+      ),
     );
 
     render(<App />);
@@ -3380,6 +3464,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         if (url.endsWith("/api/images/3e24e96c89ef/history")) {
           return jsonResponse({
@@ -3542,6 +3627,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/containers/container-id/inspect")) {
           return jsonResponse({
             inspection: {
@@ -3766,6 +3852,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/compose/projects/demo-stack/logs")) {
           return jsonResponse({ logs: "web | ready" });
         }
@@ -3932,6 +4019,7 @@ describe("App", () => {
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/compose/projects/remote-stack/remote/check")) {
         return jsonResponse(
           {
@@ -4023,6 +4111,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/compose/projects/form-stack/builder")) {
           return jsonResponse({
             project: {
@@ -4082,6 +4171,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+
         if (String(input).endsWith("/api/operations")) return jsonResponse({ operations: [] });
         if (String(input).endsWith("/api/compose/remote") && init?.method === "POST") {
           submittedBody = JSON.parse(String(init.body));
@@ -4141,6 +4232,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         if (url.endsWith("/api/compose/builder") && init?.method === "POST") {
           submittedBody = JSON.parse(String(init.body));
@@ -4232,6 +4324,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         if (url.endsWith("/api/compose/projects/form-stack/builder") && init?.method === "PATCH") {
           updateBody = JSON.parse(String(init.body));
@@ -4307,6 +4400,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         if (url.endsWith("/api/compose/projects/yaml-stack/builder")) {
           return jsonResponse({
@@ -4365,6 +4459,8 @@ describe("App", () => {
       volumes: [],
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+
       if (String(input).endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (init?.method === "POST") {
         return jsonResponse({
@@ -4482,11 +4578,12 @@ describe("App", () => {
     };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (input: RequestInfo | URL) =>
-        String(input).endsWith("/api/operations")
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        return String(input).endsWith("/api/operations")
           ? jsonResponse({ operations: [] })
-          : jsonResponse(dashboard),
-      ),
+          : jsonResponse(dashboard);
+      }),
     );
     window.history.replaceState(null, "", "/containers");
     render(<App />);
@@ -4571,6 +4668,7 @@ describe("App", () => {
     let removeTagBody: unknown;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/images/tags/remove") && init?.method === "POST") {
         removeTagBody = JSON.parse(String(init.body));
         return jsonResponse(
@@ -4668,6 +4766,7 @@ describe("App", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
         if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
         if (url.endsWith("/api/volumes/app-data")) {
           return jsonResponse({
@@ -4802,7 +4901,11 @@ describe("App", () => {
       },
       volumes: [],
     };
-    const fetchMock = vi.fn(async () => jsonResponse(dashboard));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith("/api/startup")
+        ? jsonResponse(startupSnapshot())
+        : jsonResponse(dashboard),
+    );
     vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState(null, "", "/volumes");
     render(<App />);
@@ -4821,7 +4924,6 @@ describe("App", () => {
     expect(
       screen.queryByText("영문·숫자로 시작하고 점·밑줄·하이픈만 사용하십시오."),
     ).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
     const calls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit?]>;
     expect(calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
@@ -4845,6 +4947,8 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+
         if (String(input).endsWith("/api/operations")) {
           return jsonResponse({ operations: submitted ? [operation("succeeded")] : [] });
         }

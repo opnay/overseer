@@ -57,7 +57,11 @@ pub(super) fn build_tray_menu(
     let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Overseer 종료", true, None::<&str>)?;
     let menu = Menu::new(app)?;
     menu.append(&open)?;
-    for action in tray_runtime_actions(snapshot.map(|snapshot| snapshot.runtime_state)) {
+    let Some(snapshot) = snapshot.filter(|snapshot| !snapshot.setup_required) else {
+        menu.append(&quit)?;
+        return Ok(menu);
+    };
+    for action in tray_runtime_actions(Some(snapshot.runtime_state)) {
         menu.append(&MenuItem::with_id(
             app,
             action.id,
@@ -68,7 +72,7 @@ pub(super) fn build_tray_menu(
     }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
 
-    if let Some(snapshot) = snapshot.filter(|snapshot| !snapshot.projects.is_empty()) {
+    if !snapshot.projects.is_empty() {
         for project in &snapshot.projects {
             let submenu = Submenu::new(app, &project.name, true)?;
             let path = detail_path("compose", &project.name);

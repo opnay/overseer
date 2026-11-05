@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import type { MenuBarResponse } from "../../shared/contracts.ts";
 import type { RuntimeController } from "../application/overseer-controller.ts";
 import { ExpectedError } from "../core/errors.ts";
 import { LimaDockerRuntime } from "../infrastructure/lima/lima-docker-runtime.ts";
@@ -66,7 +67,18 @@ export function createApi(
   app.use("*", requireLocalRequest);
   app.get("/health", (context) => context.json({ ok: true }));
   app.get("/dashboard", async (context) => context.json(await controller.getDashboard()));
-  app.get("/menu-bar", async (context) => context.json(await controller.getMenuBarSnapshot()));
+  app.get("/menu-bar", async (context) => {
+    const prerequisites = await startup.getSnapshot();
+    if (!prerequisites.ready) {
+      return context.json({ setupRequired: true } satisfies MenuBarResponse);
+    }
+    const snapshot = await controller.getMenuBarSnapshot();
+    const response: MenuBarResponse =
+      snapshot.runtime.phase === "missing" || snapshot.runtime.phase === "error"
+        ? { setupRequired: true }
+        : { ...snapshot, setupRequired: false };
+    return context.json(response);
+  });
 
   registerStartupRoutes(app, startup, enqueue);
   registerRuntimeRoutes(app, controller, enqueue);
