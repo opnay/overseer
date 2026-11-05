@@ -50,7 +50,7 @@ pnpm release:verify
 unset TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 ```
 
-빌드는 Developer ID로 앱과 DMG를 서명하고, 앱 ZIP과 DMG를 공증하여 `Accepted` 상태를 확인합니다. 두 대상에 티켓을 스테이플하고 Gatekeeper 검사를 통과한 뒤, **스테이플된 앱을 다시 압축하여 최종 updater 파일을 서명**합니다. 공개키로 서명을 검증한 뒤 자산을 확정합니다. Apple 공증용 ZIP은 업로드하지 않습니다.
+빌드는 Developer ID로 앱과 DMG를 서명하고, 앱 ZIP과 DMG를 공증하여 `Accepted` 상태를 확인합니다. 두 대상에 티켓을 스테이플하고 Gatekeeper 검사를 통과한 뒤, **스테이플된 앱을 macOS 메타데이터 없이 다시 압축하여 최종 updater 파일을 서명**합니다. 앱 외부 경로·AppleDouble 항목·필수 파일 누락을 검사하고, 압축을 푼 앱의 서명과 Gatekeeper도 다시 검사합니다. 공개키로 서명을 검증한 뒤 자산을 확정합니다. Apple 공증용 ZIP은 업로드하지 않습니다.
 
 자산은 `src-tauri/target/release/release-assets/v0.0.2/aarch64/`에 저장합니다.
 
@@ -70,7 +70,7 @@ git push origin v0.0.2
 pnpm release:publish
 ```
 
-게시 도구는 로컬·원격 태그와 빌드 커밋, 서명, 자산 목록·체크섬을 다시 검사합니다. GitHub draft를 만들고 자산을 업로드한 뒤 원격 SHA-256까지 일치해야 정식 latest 릴리즈로 공개합니다. 기존 릴리즈는 덮어쓰지 않습니다. 오류로 draft가 남으면 오류 원인과 자산을 확인한 뒤 해당 draft만 삭제하고 다시 게시하십시오. 이미 공개한 버전은 수정하지 말고 다음 버전으로 배포하십시오.
+게시 도구는 로컬·원격 태그와 빌드 커밋, 서명, 압축 구조, 자산 목록·체크섬을 다시 검사합니다. GitHub draft를 만들고 자산을 업로드한 뒤 draft의 릴리즈 ID로 조회합니다. draft·태그·ID와 원격 SHA-256까지 일치해야 정식 latest 릴리즈로 공개합니다. 기존 릴리즈는 덮어쓰지 않습니다. 오류로 draft가 남으면 오류 원인과 자산을 확인한 뒤 해당 draft만 삭제하고 다시 게시하십시오. 이미 공개한 버전은 수정하지 말고 다음 버전으로 배포하십시오.
 
 현재 `0.0.1` 앱에는 updater가 없으므로 최초 updater 포함 버전은 DMG로 수동 설치해야 합니다. 그 다음 버전부터 앱 내 업데이트를 사용할 수 있습니다. Homebrew cask 등록은 별도 작업입니다.
 

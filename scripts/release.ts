@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,8 +91,6 @@ export function setVersion(root: string, next: string): void {
   const cargoPath = join(root, "src-tauri/Cargo.toml");
   const lockPath = join(root, "src-tauri/Cargo.lock");
   const configPath = join(root, "src-tauri/tauri.conf.json");
-  const config = json(configPath);
-  config.version = "../package.json";
   const cargo = readFileSync(cargoPath, "utf8").replace(
     /(\[package\][\s\S]*?\nversion = ")[^"]+(")/,
     `$1${next}$2`,
@@ -102,7 +100,14 @@ export function setVersion(root: string, next: string): void {
     `$1${next}$2`,
   );
   writeFileSync(packagePath, `${JSON.stringify(manifest, null, 2)}\n`);
-  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  if (json(configPath).version !== "../package.json") {
+    // Preserve the existing formatter output when migrating a literal version.
+    const config = readFileSync(configPath, "utf8").replace(
+      /("version"\s*:\s*)"[^"]+"/,
+      '$1"../package.json"',
+    );
+    writeFileSync(configPath, config);
+  }
   writeFileSync(cargoPath, cargo);
   writeFileSync(lockPath, lock);
   console.log(`${current} → ${next}. 변경사항을 검토·커밋한 뒤 git tag v${next}를 실행하십시오.`);
@@ -187,6 +192,34 @@ function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+export function verifyUpdateArchive(root: string, path: string): void {
+  // libarchive otherwise hides AppleDouble entries while listing macOS archives.
+  const options = process.platform === "darwin" ? ["--options", "!mac-ext"] : [];
+  const entries = capture(root, "tar", [...options, "-tzf", path]).split("\n");
+  const required = [
+    "Overseer.app/Contents/Info.plist",
+    "Overseer.app/Contents/MacOS/overseer-desktop",
+  ];
+  if (
+    !required.every((name) => entries.includes(name)) ||
+    entries.some(
+      (name) =>
+        !name.startsWith("Overseer.app/") ||
+        name.split("/").some((part) => part === "." || part === ".." || part.startsWith("._")),
+    )
+  ) {
+    throw new Error(
+      "업데이트 압축 구조가 잘못됐습니다. 앱 외부 경로와 macOS 메타데이터를 제외하십시오.",
+    );
+  }
+}
+
+export function archiveApp(root: string, app: string, path: string): void {
+  const options = process.platform === "darwin" ? ["--no-mac-metadata", "--no-xattrs"] : [];
+  run(root, "tar", [...options, "-czf", path, "-C", resolve(app, ".."), "Overseer.app"]);
+  verifyUpdateArchive(root, path);
+}
+
 export function verifyAssets(root: string, directory: string, version: string, arch: string) {
   const record = json(join(directory, "release-record.json"));
   const config = json(join(root, "src-tauri/tauri.conf.json"));
@@ -194,6 +227,7 @@ export function verifyAssets(root: string, directory: string, version: string, a
   const archive = readFileSync(join(directory, archiveName));
   const signature = readFileSync(join(directory, `${archiveName}.sig`), "utf8").trim();
   verifyUpdaterSignature(config.plugins.updater.pubkey, signature, archive);
+  verifyUpdateArchive(root, join(directory, archiveName));
   const manifest = json(join(directory, "latest.json"));
   const expected = updateManifest(
     version,
@@ -311,7 +345,16 @@ export function buildRelease(root: string, notesPath: string): void {
   ]);
   const archiveName = `Overseer_${source.version}_${arch}.app.tar.gz`;
   const archivePath = join(directory, archiveName);
-  run(root, "tar", ["-czf", archivePath, "-C", resolve(app, ".."), "Overseer.app"]);
+  archiveApp(root, app, archivePath);
+  const extracted = mkdtempSync(join(directory, "verify-app-"));
+  try {
+    run(root, "tar", ["-xzf", archivePath, "-C", extracted]);
+    const extractedApp = join(extracted, "Overseer.app");
+    run(root, "codesign", ["--verify", "--deep", "--strict", extractedApp]);
+    run(root, "spctl", ["--assess", "--type", "execute", "--verbose=2", extractedApp]);
+  } finally {
+    rmSync(extracted, { recursive: true, force: true });
+  }
   run(root, "pnpm", ["tauri", "signer", "sign", archivePath], env);
   const signature = readFileSync(`${archivePath}.sig`, "utf8");
   const dmgName = basename(dmg);
@@ -377,9 +420,36 @@ export function publishRelease(root: string): void {
     "--notes-file",
     join(directory, "release-notes.md"),
   ]);
-  const published = JSON.parse(
-    capture(root, "gh", ["api", `repos/${repository}/releases/tags/${source.tag}`]),
+  // gh resolves drafts through GraphQL; REST's tag endpoint only finds published releases.
+  const draft = JSON.parse(
+    capture(root, "gh", [
+      "release",
+      "view",
+      source.tag,
+      "--repo",
+      repository,
+      "--json",
+      "databaseId,isDraft,tagName",
+    ]),
   );
+  if (
+    draft.isDraft !== true ||
+    draft.tagName !== source.tag ||
+    !Number.isSafeInteger(draft.databaseId) ||
+    draft.databaseId <= 0
+  ) {
+    throw new Error("게시할 draft 릴리즈를 확인하지 못했습니다.");
+  }
+  const published = JSON.parse(
+    capture(root, "gh", ["api", `repos/${repository}/releases/${draft.databaseId}`]),
+  );
+  if (
+    published.draft !== true ||
+    published.id !== draft.databaseId ||
+    published.tag_name !== source.tag
+  ) {
+    throw new Error("자산을 확인할 draft 릴리즈가 일치하지 않습니다.");
+  }
   for (const asset of record.assets) {
     const remote = published.assets.find(
       (candidate: { name: string }) => candidate.name === asset.name,
