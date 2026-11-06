@@ -507,12 +507,22 @@ export interface ImageRepositoryDetail extends ImageRepositorySummary {
 }
 
 export interface ImageRepositoryTagItem {
+  digest?: string;
   favorite: boolean;
   name: string;
 }
 
+export type ImageRepositoryTagSort = "tag" | "-tag";
+
+export interface ImageRepositoryTagQuery {
+  filter?: { tag?: string; digest?: string; search?: string };
+  sort?: ImageRepositoryTagSort;
+}
+
 export interface ImageRepositoryTagList {
+  digestIndex?: { completed: number; total: number };
   count: number;
+  totalCount: number;
   page: number;
   pageSize: number;
   repository: string;

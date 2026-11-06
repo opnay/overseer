@@ -1,8 +1,9 @@
-import type { ParsedImageRepository } from "../../../shared/validation.ts";
+import { isImageTag, type ParsedImageRepository } from "../../../shared/validation.ts";
 import { ExpectedError } from "../../core/errors.ts";
+import { manifestDigest, type RemoteRepositoryTag } from "./registry-tag-metadata.ts";
 
 const MAX_TAG_PAGES = 100;
-const TAG_PAGE_SIZE = 100;
+const TAG_PAGE_SIZE = 1000;
 
 interface RegistryTagPage {
   tags?: unknown;
@@ -14,6 +15,10 @@ interface TokenChallenge {
   service?: string;
 }
 
+interface RegistrySession {
+  authorization?: string;
+}
+
 function isLoopback(hostname: string): boolean {
   const normalized = hostname.replace(/^\[|\]$/g, "");
   return (
@@ -22,7 +27,7 @@ function isLoopback(hostname: string): boolean {
 }
 
 function registryOrigin(registry: string): URL {
-  const secure = new URL(`https://${registry}`);
+  const secure = new URL(`https://${registry === "docker.io" ? "registry-1.docker.io" : registry}`);
   secure.protocol = isLoopback(secure.hostname) ? "http:" : "https:";
   return secure;
 }
@@ -111,11 +116,14 @@ async function registryRequest(
   repository: ParsedImageRepository,
   fetcher: typeof fetch,
   authorization?: string,
+  init: RequestInit = {},
+  refreshed = false,
 ): Promise<{ authorization?: string; response: Response }> {
   let response: Response;
   try {
     response = await fetcher(url, {
-      ...(authorization ? { headers: { authorization } } : {}),
+      ...init,
+      headers: { ...init.headers, ...(authorization ? { authorization } : {}) },
       signal: AbortSignal.timeout(10_000),
     });
   } catch {
@@ -125,7 +133,7 @@ async function registryRequest(
       503,
     );
   }
-  if (response.status !== 401 || authorization) return { authorization, response };
+  if (response.status !== 401 || refreshed) return { authorization, response };
   const challenge = tokenChallenge(response.headers.get("www-authenticate"));
   if (!challenge) {
     throw new ExpectedError(
@@ -135,7 +143,7 @@ async function registryRequest(
     );
   }
   const token = await publicBearerToken(challenge, repository, fetcher);
-  return registryRequest(url, repository, fetcher, `Bearer ${token}`);
+  return registryRequest(url, repository, fetcher, `Bearer ${token}`, init, true);
 }
 
 function nextPage(current: URL, link: string | null, expectedPath: string): URL | undefined {
@@ -162,7 +170,7 @@ function parseTags(value: unknown): string[] {
   }
   const tags = (value as RegistryTagPage).tags;
   if (tags === null || tags === undefined) return [];
-  if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string")) {
+  if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string" || !isImageTag(tag))) {
     throw new ExpectedError(
       "invalid_image_repository_tags",
       "이미지 저장소 태그 응답을 해석하지 못했습니다.",
@@ -172,21 +180,21 @@ function parseTags(value: unknown): string[] {
   return tags as string[];
 }
 
-export async function getRegistryRepositoryTagNames(
+async function getRegistryRepositoryTagNames(
   repository: ParsedImageRepository,
   fetcher: typeof fetch = fetch,
+  session: RegistrySession = {},
 ): Promise<string[]> {
   const origin = registryOrigin(repository.registry);
   const name = repository.name.split("/").map(encodeURIComponent).join("/");
   const expectedPath = `/v2/${name}/tags/list`;
   let url = new URL(expectedPath, origin);
   url.searchParams.set("n", String(TAG_PAGE_SIZE));
-  let authorization: string | undefined;
   const tags = new Set<string>();
 
   for (let page = 0; page < MAX_TAG_PAGES; page += 1) {
-    const result = await registryRequest(url, repository, fetcher, authorization);
-    authorization = result.authorization;
+    const result = await registryRequest(url, repository, fetcher, session.authorization);
+    session.authorization = result.authorization;
     if (!result.response.ok) {
       const message =
         result.response.status === 401 || result.response.status === 403
@@ -212,4 +220,114 @@ export async function getRegistryRepositoryTagNames(
     "태그가 너무 많아 이미지 저장소 동기화를 완료하지 못했습니다.",
     503,
   );
+}
+
+export interface RegistryRepositoryTags {
+  tags: RemoteRepositoryTag[];
+  digestIndex?: { completed: number; total: number };
+  digestIndexFinishedAt?: number;
+  prepareDigestIndex(): { completed: number; total: number } | undefined;
+  cancel(): void;
+  resolveDigests(tags: RemoteRepositoryTag[]): Promise<void>;
+}
+
+export async function getRegistryRepositoryTags(
+  repository: ParsedImageRepository,
+  fetcher: typeof fetch,
+): Promise<RegistryRepositoryTags> {
+  const session: RegistrySession = {};
+  const tags: RemoteRepositoryTag[] = (
+    await getRegistryRepositoryTagNames(repository, fetcher, session)
+  ).map((name) => ({
+    name,
+  }));
+  const pending = new Map<string, Promise<void>>();
+  let cancelled = false;
+  let indexed = false;
+  let indexError: unknown;
+  const resolveDigest = (tag: RemoteRepositoryTag): Promise<void> => {
+    if (tag.digest) return Promise.resolve();
+    const cached = pending.get(tag.name);
+    if (cached) return cached;
+    const load = async () => {
+      const name = repository.name.split("/").map(encodeURIComponent).join("/");
+      const url = new URL(
+        `/v2/${name}/manifests/${encodeURIComponent(tag.name)}`,
+        registryOrigin(repository.registry),
+      );
+      const result = await registryRequest(url, repository, fetcher, session.authorization, {
+        method: "HEAD",
+        headers: {
+          accept:
+            "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json",
+        },
+      });
+      session.authorization = result.authorization;
+      if (result.response.status === 404) return;
+      if (!result.response.ok) {
+        throw new ExpectedError(
+          "image_repository_digest_unavailable",
+          "태그의 해시 정보를 불러오지 못했습니다.",
+          503,
+        );
+      }
+      tag.digest = manifestDigest(result.response.headers.get("docker-content-digest"));
+    };
+    const request = load().catch((error: unknown) => {
+      pending.delete(tag.name);
+      throw error;
+    });
+    pending.set(tag.name, request);
+    return request;
+  };
+  const remote: RegistryRepositoryTags = {
+    tags,
+    cancel() {
+      cancelled = true;
+    },
+    prepareDigestIndex() {
+      if (indexError) {
+        const error = indexError;
+        indexError = undefined;
+        throw error;
+      }
+      if (indexed || tags.every((tag) => tag.digest)) return undefined;
+      if (!remote.digestIndex) {
+        const progress = { completed: 0, total: tags.length };
+        remote.digestIndex = progress;
+        void (async () => {
+          for (let start = 0; start < tags.length; start += 8) {
+            if (cancelled) return;
+            await Promise.all(
+              tags.slice(start, start + 8).map(async (tag) => {
+                await resolveDigest(tag);
+                progress.completed += 1;
+              }),
+            );
+          }
+          indexed = true;
+        })()
+          .catch((error: unknown) => {
+            indexError = error;
+          })
+          .finally(() => {
+            remote.digestIndex = undefined;
+            remote.digestIndexFinishedAt = Date.now();
+          });
+      }
+      return { ...remote.digestIndex! };
+    },
+    async resolveDigests(selected) {
+      for (let start = 0; start < selected.length; start += 8) {
+        if (cancelled)
+          throw new ExpectedError(
+            "image_repository_query_cancelled",
+            "저장소 조회가 갱신됐습니다. 다시 시도하십시오.",
+            409,
+          );
+        await Promise.all(selected.slice(start, start + 8).map(resolveDigest));
+      }
+    },
+  };
+  return remote;
 }

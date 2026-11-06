@@ -1234,23 +1234,18 @@ describe("API boundary", () => {
     const controller = createController();
     const repositories = new ImageRepositoryService(
       new MemoryImageRepositoryStore(),
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              count: 3,
-              results: [
-                {
-                  full_size: 1_000,
-                  images: [{ architecture: "arm64", os: "linux" }],
-                  last_updated: "2026-08-27T01:00:00.000Z",
-                  name: "latest",
-                },
-              ],
-            }),
-            { status: 200 },
-          ),
-      ),
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const names = ["latest", "v1", "v2"];
+        if (init?.method === "HEAD") {
+          const name = new URL(String(input)).pathname.split("/").at(-1)!;
+          return new Response(null, {
+            headers: {
+              "docker-content-digest": `sha256:${String(names.indexOf(name) + 1).repeat(64)}`,
+            },
+          });
+        }
+        return new Response(JSON.stringify({ tags: names }));
+      }),
       () => "2026-08-27T01:00:00.000Z",
       () => "11111111-1111-4111-8111-111111111111",
     );
@@ -1291,13 +1286,74 @@ describe("API boundary", () => {
       },
     );
     expect(favorite.status).toBe(200);
+    const indexing = await app.request(
+      `/image-repositories/11111111-1111-4111-8111-111111111111/tags?filter[search]=${"3".repeat(32)}`,
+      { headers: localHeaders },
+    );
+    expect(indexing.status).toBe(202);
+    expect((await indexing.json()).tags.digestIndex.total).toBe(3);
     const tags = await app.request(
       "/image-repositories/11111111-1111-4111-8111-111111111111/tags?page=1",
       { headers: localHeaders },
     );
     await expect(tags.json()).resolves.toMatchObject({
-      tags: { count: 3, tags: [{ favorite: true, name: "latest" }] },
+      tags: {
+        count: 3,
+        tags: [
+          { favorite: true, name: "latest" },
+          { favorite: false, name: "v1" },
+          { favorite: false, name: "v2" },
+        ],
+      },
     });
+
+    const descending = await app.request(
+      "/image-repositories/11111111-1111-4111-8111-111111111111/tags?sort=-tag",
+      { headers: localHeaders },
+    );
+    expect((await descending.json()).tags.tags).toMatchObject([
+      { favorite: true, name: "latest" },
+      { favorite: false, name: "v2" },
+      { favorite: false, name: "v1" },
+    ]);
+    const filtered = await app.request(
+      "/image-repositories/11111111-1111-4111-8111-111111111111/tags?sort=-tag&filter%5Btag%5D=%20V%20",
+      { headers: localHeaders },
+    );
+    expect((await filtered.json()).tags).toMatchObject({
+      count: 2,
+      totalCount: 3,
+      tags: [
+        { favorite: false, name: "v2" },
+        { favorite: false, name: "v1" },
+      ],
+    });
+    const digestSearch = await app.request(
+      `/image-repositories/11111111-1111-4111-8111-111111111111/tags?sort=-tag&filter[search]=${"3".repeat(32)}`,
+      { headers: localHeaders },
+    );
+    expect((await digestSearch.json()).tags).toMatchObject({
+      count: 1,
+      tags: [{ name: "v2", digest: `sha256:${"3".repeat(64)}` }],
+    });
+    const digestFilter = await app.request(
+      `/image-repositories/11111111-1111-4111-8111-111111111111/tags?filter[tag]=v&filter[digest]=${"3".repeat(16)}`,
+      { headers: localHeaders },
+    );
+    expect((await digestFilter.json()).tags).toMatchObject({ count: 1, tags: [{ name: "v2" }] });
+    for (const query of [
+      "sort=name",
+      "sort=tag,-tag",
+      "filter[name]=v",
+      `filter[tag]=${"v".repeat(129)}`,
+      `filter[search]=${"a".repeat(257)}`,
+    ]) {
+      const invalidQuery = await app.request(
+        `/image-repositories/11111111-1111-4111-8111-111111111111/tags?${query}`,
+        { headers: localHeaders },
+      );
+      expect(invalidQuery.status).toBe(400);
+    }
 
     const sync = await app.request(
       "/image-repositories/11111111-1111-4111-8111-111111111111/sync",

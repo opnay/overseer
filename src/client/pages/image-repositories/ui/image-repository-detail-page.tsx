@@ -13,6 +13,7 @@ import type {
   ImageRepositoryDetail,
   ImageRepositoryTagItem,
   ImageRepositoryTagList,
+  ImageRepositoryTagSort,
 } from "@contracts/contracts.ts";
 import { apiRequest } from "@/shared/api";
 import { formatDateTime } from "@/shared/lib/date-time";
@@ -151,12 +152,16 @@ export function ImageRepositoryDetailPage({
   const [error, setError] = useState<string>();
   const [favoritePending, setFavoritePending] = useState<string>();
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<ImageRepositoryTagSort>("tag");
   const [repository, setRepository] = useState<ImageRepositoryDetail>();
   const [requestRevision, setRequestRevision] = useState(0);
   const [tagList, setTagList] = useState<ImageRepositoryTagList>();
+  const [tagRevision, setTagRevision] = useState(0);
+  const [tagsLoading, setTagsLoading] = useState(true);
 
   useEffect(() => {
     setPage(1);
+    setTagList(undefined);
     return () => onRepositoryChange(undefined);
   }, [id, onRepositoryChange]);
 
@@ -181,16 +186,18 @@ export function ImageRepositoryDetailPage({
   useEffect(() => {
     let active = true;
     setError(undefined);
-    setTagList(undefined);
+    setTagsLoading(true);
+    const parameters = new URLSearchParams({ page: String(page), sort });
     void apiRequest<{ tags: ImageRepositoryTagList }>(
-      `/image-repositories/${encodeURIComponent(id)}/tags?page=${page}`,
+      `/image-repositories/${encodeURIComponent(id)}/tags?${parameters}`,
     )
       .then(({ tags }) => active && setTagList(tags))
-      .catch((loadError: unknown) => active && setError(errorMessage(loadError)));
+      .catch((loadError: unknown) => active && setError(errorMessage(loadError)))
+      .finally(() => active && setTagsLoading(false));
     return () => {
       active = false;
     };
-  }, [id, page, refreshToken, requestRevision]);
+  }, [id, page, sort, refreshToken, requestRevision, tagRevision]);
 
   const setFavorite = async (tag: ImageRepositoryTagItem) => {
     setFavoritePending(tag.name);
@@ -205,7 +212,7 @@ export function ImageRepositoryDetailPage({
           ? {
               ...current,
               tags: current.tags.map((candidate) =>
-                candidate.name === updated.name ? updated : candidate,
+                candidate.name === updated.name ? { ...candidate, ...updated } : candidate,
               ),
             }
           : current,
@@ -218,6 +225,8 @@ export function ImageRepositoryDetailPage({
         setRepository(next);
         onRepositoryChange(next);
       }
+      setPage(1);
+      setTagRevision((value) => value + 1);
     } catch (favoriteError) {
       setActionError(errorMessage(favoriteError));
       throw favoriteError;
@@ -256,7 +265,7 @@ export function ImageRepositoryDetailPage({
       <section aria-label="이미지 저장소 개요" className="overseer-detail-summary">
         <div>
           <span>태그</span>
-          <strong>{tagList?.count ?? repository.tagCount ?? 0}개</strong>
+          <strong>{tagList?.totalCount ?? repository.tagCount ?? 0}개</strong>
         </div>
         <div>
           <span>즐겨찾기</span>
@@ -287,88 +296,108 @@ export function ImageRepositoryDetailPage({
         </Alert.Root>
       ) : null}
 
-      {!tagList ? (
-        <section aria-label="이미지 저장소 태그 불러오는 중" className="overseer-detail-loading">
-          <Skeleton className="overseer-loading-table" />
-        </section>
-      ) : (
-        <section className="overseer-panel">
-          <DataTableRegion label="이미지 저장소 태그 표">
-            <Table.Root
-              aria-label={`${repository.repository} 태그 목록`}
-              className="overseer-table"
-              size="sm"
-            >
-              <Table.Header>
-                <Table.Row>
-                  <Table.Head className="overseer-table-column-wide">태그</Table.Head>
-                  <Table.Head className="overseer-actions-column">작업</Table.Head>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {tagList.tags.length === 0 ? (
-                  <Table.StateRow colSpan={2}>
-                    <EmptyState.Root density="compact">
-                      <EmptyState.Icon>
-                        <Tags aria-hidden="true" />
-                      </EmptyState.Icon>
-                      <EmptyState.Title level={2}>표시할 태그가 없습니다.</EmptyState.Title>
-                      <EmptyState.Description>
-                        원격 저장소에 공개된 태그가 없거나 현재 페이지에 결과가 없습니다.
-                      </EmptyState.Description>
-                    </EmptyState.Root>
-                  </Table.StateRow>
-                ) : (
-                  tagList.tags.map((tag) => {
-                    const reference = `${repository.repository}:${tag.name}`;
-                    const favoriteBusy = favoritePending === tag.name;
-                    const imageBusy = isBusy(reference);
-                    return (
-                      <Table.Row key={tag.name}>
-                        <Table.Cell className="overseer-table-column-wide">
-                          <div className="overseer-primary-cell">
-                            <strong>{tag.name}</strong>
-                            <div className="overseer-primary-meta">
-                              <code>{reference}</code>
+      <section className="overseer-panel">
+        {!tagList ? (
+          <section aria-label="이미지 저장소 태그 불러오는 중" className="overseer-detail-loading">
+            <Skeleton className="overseer-loading-table" />
+          </section>
+        ) : (
+          <>
+            <DataTableRegion label="이미지 저장소 태그 표">
+              <Table.Root
+                aria-busy={tagsLoading}
+                aria-label={`${repository.repository} 태그 목록`}
+                className="overseer-table"
+                size="sm"
+              >
+                <Table.Header>
+                  <Table.Row>
+                    <Table.Head
+                      aria-sort={sort === "tag" ? "ascending" : "descending"}
+                      className="overseer-table-column-wide"
+                    >
+                      <Table.SortButton
+                        aria-label={`태그 ${sort === "tag" ? "내림차순" : "오름차순"} 정렬`}
+                        direction={sort === "tag" ? "asc" : "desc"}
+                        disabled={tagsLoading || Boolean(favoritePending)}
+                        onDirectionChange={(nextOrder) => {
+                          setSort(nextOrder === "asc" ? "tag" : "-tag");
+                          setPage(1);
+                        }}
+                      >
+                        태그
+                      </Table.SortButton>
+                    </Table.Head>
+                    <Table.Head className="overseer-actions-column">작업</Table.Head>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {tagList.tags.length === 0 ? (
+                    <Table.StateRow colSpan={2}>
+                      <EmptyState.Root density="compact">
+                        <EmptyState.Icon>
+                          <Tags aria-hidden="true" />
+                        </EmptyState.Icon>
+                        <EmptyState.Title level={2}>표시할 태그가 없습니다.</EmptyState.Title>
+                        <EmptyState.Description>
+                          원격 저장소에 공개된 태그가 없거나 현재 페이지에 결과가 없습니다.
+                        </EmptyState.Description>
+                      </EmptyState.Root>
+                    </Table.StateRow>
+                  ) : (
+                    tagList.tags.map((tag) => {
+                      const reference = `${repository.repository}:${tag.name}`;
+                      const favoriteBusy = tagsLoading || Boolean(favoritePending);
+                      const imageBusy = isBusy(reference);
+                      return (
+                        <Table.Row key={tag.name}>
+                          <Table.Cell className="overseer-table-column-wide">
+                            <div className="overseer-primary-cell">
+                              <strong>{tag.name}</strong>
+                              <div className="overseer-primary-meta">
+                                <code>{tag.digest ?? "해시 정보 없음"}</code>
+                              </div>
                             </div>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="overseer-row-actions">
-                            <TagActions
-                              favoriteBusy={favoriteBusy}
-                              imageBusy={imageBusy}
-                              onCreateContainer={() => onCreateContainer(reference)}
-                              onDownload={() => onDownload(reference)}
-                              onFavorite={() => setFavorite(tag)}
-                              runtimeAvailable={runtimeAvailable}
-                              tag={tag}
-                            />
-                          </div>
-                        </Table.Cell>
-                      </Table.Row>
-                    );
-                  })
-                )}
-              </Table.Body>
-            </Table.Root>
-          </DataTableRegion>
-          <div className="overseer-table-pagination">
-            <span>
-              전체 {tagList.count}개 · {page} / {totalPages}페이지
-            </span>
-            {totalPages > 1 ? (
-              <Pagination.Root
-                density="compact"
-                labels={paginationLabels}
-                onPageChange={setPage}
-                page={page}
-                totalPages={totalPages}
-              />
-            ) : null}
-          </div>
-        </section>
-      )}
+                          </Table.Cell>
+                          <Table.Cell>
+                            <div className="overseer-row-actions">
+                              <TagActions
+                                favoriteBusy={favoriteBusy}
+                                imageBusy={imageBusy}
+                                onCreateContainer={() => onCreateContainer(reference)}
+                                onDownload={() => onDownload(reference)}
+                                onFavorite={() => setFavorite(tag)}
+                                runtimeAvailable={runtimeAvailable}
+                                tag={tag}
+                              />
+                            </div>
+                          </Table.Cell>
+                        </Table.Row>
+                      );
+                    })
+                  )}
+                </Table.Body>
+              </Table.Root>
+            </DataTableRegion>
+            <div className="overseer-table-pagination">
+              <span>
+                전체 {tagList.count}개 · {tagList.page} / {totalPages}페이지
+              </span>
+              {totalPages > 1 ? (
+                <Pagination.Root
+                  density="compact"
+                  labels={paginationLabels}
+                  onPageChange={(nextPage) => {
+                    if (!tagsLoading && !favoritePending) setPage(nextPage);
+                  }}
+                  page={page}
+                  totalPages={totalPages}
+                />
+              ) : null}
+            </div>
+          </>
+        )}
+      </section>
     </article>
   );
 }
