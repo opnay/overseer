@@ -511,8 +511,16 @@ export interface ImageRepositoryTagItem {
   name: string;
 }
 
+export type ImageRepositoryTagSort = "tag" | "-tag";
+
+export interface ImageRepositoryTagQuery {
+  filter?: { tag?: string };
+  sort?: ImageRepositoryTagSort;
+}
+
 export interface ImageRepositoryTagList {
   count: number;
+  totalCount: number;
   page: number;
   pageSize: number;
   repository: string;

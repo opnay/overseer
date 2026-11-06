@@ -22,7 +22,7 @@ function isLoopback(hostname: string): boolean {
 }
 
 function registryOrigin(registry: string): URL {
-  const secure = new URL(`https://${registry}`);
+  const secure = new URL(`https://${registry === "docker.io" ? "registry-1.docker.io" : registry}`);
   secure.protocol = isLoopback(secure.hostname) ? "http:" : "https:";
   return secure;
 }

@@ -1238,15 +1238,7 @@ describe("API boundary", () => {
         async () =>
           new Response(
             JSON.stringify({
-              count: 3,
-              results: [
-                {
-                  full_size: 1_000,
-                  images: [{ architecture: "arm64", os: "linux" }],
-                  last_updated: "2026-08-27T01:00:00.000Z",
-                  name: "latest",
-                },
-              ],
+              tags: ["latest", "v1", "v2"],
             }),
             { status: 200 },
           ),
@@ -1296,8 +1288,49 @@ describe("API boundary", () => {
       { headers: localHeaders },
     );
     await expect(tags.json()).resolves.toMatchObject({
-      tags: { count: 3, tags: [{ favorite: true, name: "latest" }] },
+      tags: {
+        count: 3,
+        tags: [
+          { favorite: true, name: "latest" },
+          { favorite: false, name: "v1" },
+          { favorite: false, name: "v2" },
+        ],
+      },
     });
+
+    const descending = await app.request(
+      "/image-repositories/11111111-1111-4111-8111-111111111111/tags?sort=-tag",
+      { headers: localHeaders },
+    );
+    expect((await descending.json()).tags.tags).toEqual([
+      { favorite: true, name: "latest" },
+      { favorite: false, name: "v2" },
+      { favorite: false, name: "v1" },
+    ]);
+    const filtered = await app.request(
+      "/image-repositories/11111111-1111-4111-8111-111111111111/tags?sort=-tag&filter%5Btag%5D=%20V%20",
+      { headers: localHeaders },
+    );
+    expect((await filtered.json()).tags).toMatchObject({
+      count: 2,
+      totalCount: 3,
+      tags: [
+        { favorite: false, name: "v2" },
+        { favorite: false, name: "v1" },
+      ],
+    });
+    for (const query of [
+      "sort=name",
+      "sort=tag,-tag",
+      "filter[name]=v",
+      `filter[tag]=${"v".repeat(129)}`,
+    ]) {
+      const invalidQuery = await app.request(
+        `/image-repositories/11111111-1111-4111-8111-111111111111/tags?${query}`,
+        { headers: localHeaders },
+      );
+      expect(invalidQuery.status).toBe(400);
+    }
 
     const sync = await app.request(
       "/image-repositories/11111111-1111-4111-8111-111111111111/sync",
