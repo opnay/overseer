@@ -3,61 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { ImageRepositoryDetailPage } from "../src/client/pages/image-repositories/index.ts";
 
-it("shows hash-index progress and polls for the completed result without showing an empty result", async () => {
-  const user = userEvent.setup();
-  const digest = `sha256:${"f".repeat(64)}`;
-  let searches = 0;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = new URL(String(input), "http://localhost");
-      const repository = {
-        id: "repository-id",
-        repository: "docker.io/library/node",
-        createdAt: "2026-11-06T00:00:00Z",
-        favoriteCount: 0,
-      };
-      if (!url.pathname.endsWith("/tags")) return new Response(JSON.stringify({ repository }));
-      const indexing = url.searchParams.has("filter[search]") && searches++ === 0;
-      return new Response(
-        JSON.stringify({
-          tags: {
-            count: indexing ? 0 : 1,
-            totalCount: 9270,
-            page: 1,
-            pageSize: 25,
-            repository: repository.repository,
-            tags: indexing ? [] : [{ name: "trixie", digest, favorite: false }],
-            ...(indexing ? { digestIndex: { completed: 1200, total: 9270 } } : {}),
-          },
-        }),
-        { status: indexing ? 202 : 200 },
-      );
-    }),
-  );
-  render(
-    <ImageRepositoryDetailPage
-      id="repository-id"
-      isBusy={() => false}
-      onCreateContainer={vi.fn()}
-      onDownload={vi.fn()}
-      onRepositoryChange={vi.fn()}
-      refreshToken="initial"
-      runtimeAvailable
-    />,
-  );
-  await screen.findByText("trixie");
-  await user.type(screen.getByRole("searchbox", { name: "태그 검색" }), digest);
-  await user.click(screen.getByRole("button", { name: "태그 검색 실행" }));
-  expect(await screen.findByRole("status")).toHaveTextContent("1200 / 9270개 확인");
-  expect(screen.queryByText("검색 결과가 없습니다.")).not.toBeInTheDocument();
-  await waitFor(() => expect(screen.getByText("검색 결과 1개 · 1 / 1페이지")).toBeInTheDocument(), {
-    timeout: 3000,
-  });
-  expect(screen.getByText(digest)).toBeInTheDocument();
-});
-
-it("requests tag sorting and filtering, resets pages, and reloads favorites", async () => {
+it("requests tag sorting, resets pages, and reloads favorites without search controls", async () => {
   const user = userEvent.setup();
   const digest = `sha256:${"a".repeat(64)}`;
   let favorite = false;
@@ -95,30 +41,6 @@ it("requests tag sorting and filtering, resets pages, and reloads favorites", as
                   ],
         },
       };
-      if (url.searchParams.has("filter[search]")) {
-        response = {
-          tags: {
-            count: 0,
-            totalCount: 26,
-            page,
-            pageSize: 25,
-            repository: "ghcr.io/opnay/overseer",
-            tags: [],
-          },
-        };
-        if (url.searchParams.get("filter[search]") === digest.slice(-16)) {
-          response = {
-            tags: {
-              count: 1,
-              totalCount: 26,
-              page,
-              pageSize: 25,
-              repository: "ghcr.io/opnay/overseer",
-              tags: [{ favorite, digest, name: "v2" }],
-            },
-          };
-        }
-      }
     } else {
       response = {
         repository: {
@@ -169,30 +91,5 @@ it("requests tag sorting and filtering, resets pages, and reloads favorites", as
   expect(within(within(table).getAllByRole("row")[1]!).getByText("v2")).toBeInTheDocument();
   expect(screen.getByText("전체 26개 · 1 / 2페이지")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "2페이지" }));
-  await screen.findByRole("button", { name: "v3 즐겨찾기 추가" });
-  const search = screen.getByRole("searchbox", { name: "태그 검색" });
-  const previousRequests = requests.length;
-  await user.type(search, " v &+ ");
-  expect(requests).toHaveLength(previousRequests);
-  await user.keyboard("{Enter}");
-  expect(await screen.findByText("검색 결과가 없습니다.")).toBeInTheDocument();
-  let query = new URLSearchParams(requests.at(-1));
-  expect(query.get("page")).toBe("1");
-  expect(query.get("sort")).toBe("-tag");
-  expect(query.get("filter[search]")).toBe("v &+");
-  await user.click(screen.getByRole("button", { name: "태그 오름차순 정렬" }));
-  await waitFor(() => expect(new URLSearchParams(requests.at(-1)).get("sort")).toBe("tag"));
-  expect(new URLSearchParams(requests.at(-1)).get("filter[search]")).toBe("v &+");
-  await user.click(screen.getByRole("button", { name: "태그 검색어 지우기" }));
-  await screen.findByText("전체 26개 · 1 / 2페이지");
-  query = new URLSearchParams(requests.at(-1));
-  expect(query.has("filter[search]")).toBe(false);
-  expect(query.get("page")).toBe("1");
-  expect(search).toHaveValue("");
-  await user.type(search, digest.slice(-16));
-  await user.click(screen.getByRole("button", { name: "태그 검색 실행" }));
-  expect(await screen.findByText("검색 결과 1개 · 1 / 1페이지")).toBeInTheDocument();
-  expect(new URLSearchParams(requests.at(-1)).get("filter[search]")).toBe(digest.slice(-16));
-  expect(await screen.findByText(digest)).toBeInTheDocument();
+  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
 });

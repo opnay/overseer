@@ -2,14 +2,12 @@ import { Alert } from "@opnay/city-ds-react/alert";
 import { Button } from "@opnay/city-ds-react/button";
 import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
-import { FilterBar } from "@opnay/city-ds-react/filter-bar";
 import { Menu } from "@opnay/city-ds-react/menu";
 import { Pagination } from "@opnay/city-ds-react/pagination";
-import { SearchInput } from "@opnay/city-ds-react/search-input";
 import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { Table } from "@opnay/city-ds-react/table";
 import { Tooltip } from "@opnay/city-ds-react/tooltip";
-import { Download, Ellipsis, Play, Search, Star, Tags } from "lucide-react";
+import { Download, Ellipsis, Play, Star, Tags } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   ImageRepositoryDetail,
@@ -155,8 +153,6 @@ export function ImageRepositoryDetailPage({
   const [favoritePending, setFavoritePending] = useState<string>();
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<ImageRepositoryTagSort>("tag");
-  const [draftQuery, setDraftQuery] = useState("");
-  const [query, setQuery] = useState("");
   const [repository, setRepository] = useState<ImageRepositoryDetail>();
   const [requestRevision, setRequestRevision] = useState(0);
   const [tagList, setTagList] = useState<ImageRepositoryTagList>();
@@ -165,8 +161,6 @@ export function ImageRepositoryDetailPage({
 
   useEffect(() => {
     setPage(1);
-    setDraftQuery("");
-    setQuery("");
     setTagList(undefined);
     return () => onRepositoryChange(undefined);
   }, [id, onRepositoryChange]);
@@ -194,7 +188,6 @@ export function ImageRepositoryDetailPage({
     setError(undefined);
     setTagsLoading(true);
     const parameters = new URLSearchParams({ page: String(page), sort });
-    if (query) parameters.set("filter[search]", query);
     void apiRequest<{ tags: ImageRepositoryTagList }>(
       `/image-repositories/${encodeURIComponent(id)}/tags?${parameters}`,
     )
@@ -204,13 +197,7 @@ export function ImageRepositoryDetailPage({
     return () => {
       active = false;
     };
-  }, [id, page, sort, query, refreshToken, requestRevision, tagRevision]);
-
-  useEffect(() => {
-    if (!tagList?.digestIndex) return;
-    const timer = window.setTimeout(() => setTagRevision((value) => value + 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [id, page, sort, query, tagList]);
+  }, [id, page, sort, refreshToken, requestRevision, tagRevision]);
 
   const setFavorite = async (tag: ImageRepositoryTagItem) => {
     setFavoritePending(tag.name);
@@ -310,43 +297,6 @@ export function ImageRepositoryDetailPage({
       ) : null}
 
       <section className="overseer-panel">
-        <header className="px-4 py-3">
-          <FilterBar density="compact">
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                setQuery(draftQuery.trim());
-                setPage(1);
-              }}
-            >
-              <SearchInput.Root
-                loading={tagsLoading}
-                onValueChange={setDraftQuery}
-                size="sm"
-                value={draftQuery}
-              >
-                <SearchInput.Group>
-                  <SearchInput.Input
-                    aria-label="태그 검색"
-                    maxLength={256}
-                    placeholder="태그 이름 또는 해시 검색"
-                  />
-                  <SearchInput.Clear
-                    aria-label="태그 검색어 지우기"
-                    onClick={() => {
-                      setDraftQuery("");
-                      setQuery("");
-                      setPage(1);
-                    }}
-                  />
-                  <SearchInput.Submit aria-label="태그 검색 실행" iconOnly>
-                    <Search aria-hidden="true" size={14} />
-                  </SearchInput.Submit>
-                </SearchInput.Group>
-              </SearchInput.Root>
-            </form>
-          </FilterBar>
-        </header>
         {!tagList ? (
           <section aria-label="이미지 저장소 태그 불러오는 중" className="overseer-detail-loading">
             <Skeleton className="overseer-loading-table" />
@@ -355,7 +305,7 @@ export function ImageRepositoryDetailPage({
           <>
             <DataTableRegion label="이미지 저장소 태그 표">
               <Table.Root
-                aria-busy={tagsLoading || Boolean(tagList.digestIndex)}
+                aria-busy={tagsLoading}
                 aria-label={`${repository.repository} 태그 목록`}
                 className="overseer-table"
                 size="sm"
@@ -382,26 +332,15 @@ export function ImageRepositoryDetailPage({
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
-                  {tagList.digestIndex ? (
-                    <Table.StateRow colSpan={2} status="loading">
-                      <div>
-                        해시 검색 준비 중 · {tagList.digestIndex.completed} /{" "}
-                        {tagList.digestIndex.total}개 확인
-                      </div>
-                    </Table.StateRow>
-                  ) : tagList.tags.length === 0 ? (
+                  {tagList.tags.length === 0 ? (
                     <Table.StateRow colSpan={2}>
                       <EmptyState.Root density="compact">
                         <EmptyState.Icon>
                           <Tags aria-hidden="true" />
                         </EmptyState.Icon>
-                        <EmptyState.Title level={2}>
-                          {query ? "검색 결과가 없습니다." : "표시할 태그가 없습니다."}
-                        </EmptyState.Title>
+                        <EmptyState.Title level={2}>표시할 태그가 없습니다.</EmptyState.Title>
                         <EmptyState.Description>
-                          {query
-                            ? "검색어를 바꾸거나 지워 보세요."
-                            : "원격 저장소에 공개된 태그가 없거나 현재 페이지에 결과가 없습니다."}
+                          원격 저장소에 공개된 태그가 없거나 현재 페이지에 결과가 없습니다.
                         </EmptyState.Description>
                       </EmptyState.Root>
                     </Table.StateRow>
@@ -442,14 +381,7 @@ export function ImageRepositoryDetailPage({
             </DataTableRegion>
             <div className="overseer-table-pagination">
               <span>
-                {tagList.digestIndex ? (
-                  "전체 태그의 해시 정보를 확인하고 있습니다."
-                ) : (
-                  <>
-                    {query ? "검색 결과" : "전체"} {tagList.count}개 · {tagList.page} / {totalPages}
-                    페이지
-                  </>
-                )}
+                전체 {tagList.count}개 · {tagList.page} / {totalPages}페이지
               </span>
               {totalPages > 1 ? (
                 <Pagination.Root
