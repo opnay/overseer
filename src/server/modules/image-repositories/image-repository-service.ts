@@ -11,7 +11,7 @@ import { parseImageRepository } from "../../../shared/validation.ts";
 import { ExpectedError } from "../../core/errors.ts";
 import type { OperationProgress } from "../operations/index.ts";
 import { MemoryImageRepositoryStore, type ImageRepositoryStore } from "./image-repository-store.ts";
-import { getRegistryRepositoryTagNames } from "./registry-tags.ts";
+import { getRegistryRepositoryTags, type RegistryRepositoryTags } from "./registry-tags.ts";
 
 const TAG_PAGE_SIZE = 25;
 const TAG_CACHE_TTL = 60_000;
@@ -35,7 +35,10 @@ export class ImageRepositoryService implements ImageRepositoryController {
   private readonly id: () => string;
   private readonly now: () => string;
   private readonly store: ImageRepositoryStore;
-  private readonly tagCache = new Map<string, { expiresAt: number; tags: Promise<string[]> }>();
+  private readonly tagCache = new Map<
+    string,
+    { expiresAt: number; tags: Promise<RegistryRepositoryTags> }
+  >();
 
   constructor(
     store: ImageRepositoryStore = new MemoryImageRepositoryStore(),
@@ -77,25 +80,33 @@ export class ImageRepositoryService implements ImageRepositoryController {
     query: ImageRepositoryTagQuery = {},
   ): Promise<ImageRepositoryTagList> {
     const repository = this.requireRepository(id);
-    const names = await this.tagNames(repository);
-    const favorites = new Set(this.store.favoriteTags(id));
+    const remote = await this.remoteTags(repository);
     const tagFilter = query.filter?.tag?.trim().toLowerCase() ?? "";
-    const tags = names
-      .filter((name) => name.toLowerCase().includes(tagFilter))
-      .map((name) => ({ favorite: favorites.has(name), name }));
+    const digestFilter = query.filter?.digest?.trim().toLowerCase() ?? "";
+    const search = query.filter?.search?.trim().toLowerCase() ?? "";
+    let tags = remote.tags.filter(({ name }) => name.toLowerCase().includes(tagFilter));
+    if (digestFilter || search) await remote.resolveDigests(tags);
+    tags = tags.filter(
+      ({ name, digest }) =>
+        (digest?.includes(digestFilter) ?? !digestFilter) &&
+        (!search || name.toLowerCase().includes(search) || digest?.includes(search)),
+    );
+    const favorites = new Set(this.store.favoriteTags(id));
     tags.sort((left, right) => {
-      const favoriteOrder = Number(right.favorite) - Number(left.favorite);
+      const favoriteOrder = Number(favorites.has(right.name)) - Number(favorites.has(left.name));
       const nameOrder = left.name.localeCompare(right.name, "en");
       return favoriteOrder || (query.sort === "-tag" ? -nameOrder : nameOrder);
     });
     const start = (page - 1) * TAG_PAGE_SIZE;
+    const selected = tags.slice(start, start + TAG_PAGE_SIZE);
+    await remote.resolveDigests(selected);
     return {
       count: tags.length,
-      totalCount: names.length,
+      totalCount: remote.tags.length,
       page,
       pageSize: TAG_PAGE_SIZE,
       repository: repository.repository,
-      tags: tags.slice(start, start + TAG_PAGE_SIZE),
+      tags: selected.map((tag) => ({ ...tag, favorite: favorites.has(tag.name) })),
     };
   }
 
@@ -127,7 +138,7 @@ export class ImageRepositoryService implements ImageRepositoryController {
       );
     }
     progress?.step(`${parsed.registry} 태그 확인 중`);
-    const tagCount = (await this.tagNames(repository, true)).length;
+    const tagCount = (await this.remoteTags(repository, true)).tags.length;
     const syncedAt = this.now();
     this.store.updateSync(id, syncedAt, tagCount);
     progress?.output(`${repository.repository}: 태그 ${tagCount}개`);
@@ -145,11 +156,14 @@ export class ImageRepositoryService implements ImageRepositoryController {
     return repository;
   }
 
-  private tagNames(repository: ImageRepositorySummary, refresh = false): Promise<string[]> {
+  private remoteTags(
+    repository: ImageRepositorySummary,
+    refresh = false,
+  ): Promise<RegistryRepositoryTags> {
     const cached = this.tagCache.get(repository.id);
     if (!refresh && cached && cached.expiresAt > Date.now()) return cached.tags;
 
-    const entry = { expiresAt: Infinity, tags: this.remoteTagNames(repository) };
+    const entry = { expiresAt: Infinity, tags: this.loadRemoteTags(repository) };
     this.tagCache.set(repository.id, entry);
     void entry.tags.then(
       () => {
@@ -162,7 +176,9 @@ export class ImageRepositoryService implements ImageRepositoryController {
     return entry.tags;
   }
 
-  private async remoteTagNames(repository: ImageRepositorySummary): Promise<string[]> {
+  private async loadRemoteTags(
+    repository: ImageRepositorySummary,
+  ): Promise<RegistryRepositoryTags> {
     const parsed = parseImageRepository(repository.repository);
     if (!parsed) {
       throw new ExpectedError(
@@ -171,6 +187,6 @@ export class ImageRepositoryService implements ImageRepositoryController {
         409,
       );
     }
-    return getRegistryRepositoryTagNames(parsed, this.fetcher);
+    return getRegistryRepositoryTags(parsed, this.fetcher);
   }
 }

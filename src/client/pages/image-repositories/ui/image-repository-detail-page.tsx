@@ -194,7 +194,7 @@ export function ImageRepositoryDetailPage({
     setError(undefined);
     setTagsLoading(true);
     const parameters = new URLSearchParams({ page: String(page), sort });
-    if (query) parameters.set("filter[tag]", query);
+    if (query) parameters.set("filter[search]", query);
     void apiRequest<{ tags: ImageRepositoryTagList }>(
       `/image-repositories/${encodeURIComponent(id)}/tags?${parameters}`,
     )
@@ -219,7 +219,7 @@ export function ImageRepositoryDetailPage({
           ? {
               ...current,
               tags: current.tags.map((candidate) =>
-                candidate.name === updated.name ? updated : candidate,
+                candidate.name === updated.name ? { ...candidate, ...updated } : candidate,
               ),
             }
           : current,
@@ -322,8 +322,8 @@ export function ImageRepositoryDetailPage({
                 <SearchInput.Group>
                   <SearchInput.Input
                     aria-label="태그 검색"
-                    maxLength={128}
-                    placeholder="태그 이름 검색"
+                    maxLength={256}
+                    placeholder="태그 이름 또는 해시 검색"
                   />
                   <SearchInput.Clear
                     aria-label="태그 검색어 지우기"
@@ -403,7 +403,7 @@ export function ImageRepositoryDetailPage({
                             <div className="overseer-primary-cell">
                               <strong>{tag.name}</strong>
                               <div className="overseer-primary-meta">
-                                <code>{reference}</code>
+                                <code>{tag.digest ?? "해시 정보 없음"}</code>
                               </div>
                             </div>
                           </Table.Cell>

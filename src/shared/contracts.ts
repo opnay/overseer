@@ -507,6 +507,7 @@ export interface ImageRepositoryDetail extends ImageRepositorySummary {
 }
 
 export interface ImageRepositoryTagItem {
+  digest?: string;
   favorite: boolean;
   name: string;
 }
@@ -514,7 +515,7 @@ export interface ImageRepositoryTagItem {
 export type ImageRepositoryTagSort = "tag" | "-tag";
 
 export interface ImageRepositoryTagQuery {
-  filter?: { tag?: string };
+  filter?: { tag?: string; digest?: string; search?: string };
   sort?: ImageRepositoryTagSort;
 }
 

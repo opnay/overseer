@@ -34,17 +34,27 @@ export function registerImageRepositoryRoutes(
       );
     }
     const tag = context.req.query("filter[tag]")?.trim();
+    const digest = context.req.query("filter[digest]")?.trim();
+    const search = context.req.query("filter[search]")?.trim();
     const unsupportedFilter = Object.keys(context.req.query()).some(
-      (key) => key.startsWith("filter[") && key !== "filter[tag]",
+      (key) =>
+        key.startsWith("filter[") &&
+        !["filter[tag]", "filter[digest]", "filter[search]"].includes(key),
     );
-    if (unsupportedFilter || (tag?.length ?? 0) > 128) {
+    if (
+      unsupportedFilter ||
+      (tag?.length ?? 0) > 128 ||
+      [digest, search].some((value) => (value?.length ?? 0) > 256)
+    ) {
       throw new ExpectedError(
         "invalid_image_repository_tag_filter",
         "태그 검색 조건을 확인하십시오.",
         400,
       );
     }
-    return context.json({ tags: await repositories.getTags(id, page, { filter: { tag }, sort }) });
+    return context.json({
+      tags: await repositories.getTags(id, page, { filter: { tag, digest, search }, sort }),
+    });
   });
   app.patch("/image-repositories/:id/tags/:tag/favorite", async (context) => {
     const id = requireImageRepositoryIdentifier(context.req.param("id"));

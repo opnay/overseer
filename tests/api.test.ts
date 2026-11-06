@@ -1238,7 +1238,11 @@ describe("API boundary", () => {
         async () =>
           new Response(
             JSON.stringify({
-              tags: ["latest", "v1", "v2"],
+              count: 3,
+              results: ["latest", "v1", "v2"].map((name, index) => ({
+                name,
+                digest: `sha256:${String(index + 1).repeat(64)}`,
+              })),
             }),
             { status: 200 },
           ),
@@ -1302,7 +1306,7 @@ describe("API boundary", () => {
       "/image-repositories/11111111-1111-4111-8111-111111111111/tags?sort=-tag",
       { headers: localHeaders },
     );
-    expect((await descending.json()).tags.tags).toEqual([
+    expect((await descending.json()).tags.tags).toMatchObject([
       { favorite: true, name: "latest" },
       { favorite: false, name: "v2" },
       { favorite: false, name: "v1" },
@@ -1319,11 +1323,25 @@ describe("API boundary", () => {
         { favorite: false, name: "v1" },
       ],
     });
+    const digestSearch = await app.request(
+      `/image-repositories/11111111-1111-4111-8111-111111111111/tags?sort=-tag&filter[search]=${"3".repeat(32)}`,
+      { headers: localHeaders },
+    );
+    expect((await digestSearch.json()).tags).toMatchObject({
+      count: 1,
+      tags: [{ name: "v2", digest: `sha256:${"3".repeat(64)}` }],
+    });
+    const digestFilter = await app.request(
+      `/image-repositories/11111111-1111-4111-8111-111111111111/tags?filter[tag]=v&filter[digest]=${"3".repeat(16)}`,
+      { headers: localHeaders },
+    );
+    expect((await digestFilter.json()).tags).toMatchObject({ count: 1, tags: [{ name: "v2" }] });
     for (const query of [
       "sort=name",
       "sort=tag,-tag",
       "filter[name]=v",
       `filter[tag]=${"v".repeat(129)}`,
+      `filter[search]=${"a".repeat(257)}`,
     ]) {
       const invalidQuery = await app.request(
         `/image-repositories/11111111-1111-4111-8111-111111111111/tags?${query}`,
