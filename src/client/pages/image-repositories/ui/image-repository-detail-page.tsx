@@ -206,6 +206,12 @@ export function ImageRepositoryDetailPage({
     };
   }, [id, page, sort, query, refreshToken, requestRevision, tagRevision]);
 
+  useEffect(() => {
+    if (!tagList?.digestIndex) return;
+    const timer = window.setTimeout(() => setTagRevision((value) => value + 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [id, page, sort, query, tagList]);
+
   const setFavorite = async (tag: ImageRepositoryTagItem) => {
     setFavoritePending(tag.name);
     setActionError(undefined);
@@ -349,7 +355,7 @@ export function ImageRepositoryDetailPage({
           <>
             <DataTableRegion label="이미지 저장소 태그 표">
               <Table.Root
-                aria-busy={tagsLoading}
+                aria-busy={tagsLoading || Boolean(tagList.digestIndex)}
                 aria-label={`${repository.repository} 태그 목록`}
                 className="overseer-table"
                 size="sm"
@@ -376,7 +382,14 @@ export function ImageRepositoryDetailPage({
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
-                  {tagList.tags.length === 0 ? (
+                  {tagList.digestIndex ? (
+                    <Table.StateRow colSpan={2} status="loading">
+                      <div>
+                        해시 검색 준비 중 · {tagList.digestIndex.completed} /{" "}
+                        {tagList.digestIndex.total}개 확인
+                      </div>
+                    </Table.StateRow>
+                  ) : tagList.tags.length === 0 ? (
                     <Table.StateRow colSpan={2}>
                       <EmptyState.Root density="compact">
                         <EmptyState.Icon>
@@ -429,8 +442,14 @@ export function ImageRepositoryDetailPage({
             </DataTableRegion>
             <div className="overseer-table-pagination">
               <span>
-                {query ? "검색 결과" : "전체"} {tagList.count}개 · {tagList.page} / {totalPages}
-                페이지
+                {tagList.digestIndex ? (
+                  "전체 태그의 해시 정보를 확인하고 있습니다."
+                ) : (
+                  <>
+                    {query ? "검색 결과" : "전체"} {tagList.count}개 · {tagList.page} / {totalPages}
+                    페이지
+                  </>
+                )}
               </span>
               {totalPages > 1 ? (
                 <Pagination.Root

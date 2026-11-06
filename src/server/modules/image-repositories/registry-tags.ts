@@ -1,9 +1,9 @@
 import { isImageTag, type ParsedImageRepository } from "../../../shared/validation.ts";
 import { ExpectedError } from "../../core/errors.ts";
-import { getDockerHubTags, manifestDigest, type RemoteRepositoryTag } from "./docker-hub-tags.ts";
+import { manifestDigest, type RemoteRepositoryTag } from "./registry-tag-metadata.ts";
 
 const MAX_TAG_PAGES = 100;
-const TAG_PAGE_SIZE = 100;
+const TAG_PAGE_SIZE = 1000;
 
 interface RegistryTagPage {
   tags?: unknown;
@@ -117,6 +117,7 @@ async function registryRequest(
   fetcher: typeof fetch,
   authorization?: string,
   init: RequestInit = {},
+  refreshed = false,
 ): Promise<{ authorization?: string; response: Response }> {
   let response: Response;
   try {
@@ -132,7 +133,7 @@ async function registryRequest(
       503,
     );
   }
-  if (response.status !== 401 || authorization) return { authorization, response };
+  if (response.status !== 401 || refreshed) return { authorization, response };
   const challenge = tokenChallenge(response.headers.get("www-authenticate"));
   if (!challenge) {
     throw new ExpectedError(
@@ -142,7 +143,7 @@ async function registryRequest(
     );
   }
   const token = await publicBearerToken(challenge, repository, fetcher);
-  return registryRequest(url, repository, fetcher, `Bearer ${token}`, init);
+  return registryRequest(url, repository, fetcher, `Bearer ${token}`, init, true);
 }
 
 function nextPage(current: URL, link: string | null, expectedPath: string): URL | undefined {
@@ -223,6 +224,10 @@ async function getRegistryRepositoryTagNames(
 
 export interface RegistryRepositoryTags {
   tags: RemoteRepositoryTag[];
+  digestIndex?: { completed: number; total: number };
+  digestIndexFinishedAt?: number;
+  prepareDigestIndex(): { completed: number; total: number } | undefined;
+  cancel(): void;
   resolveDigests(tags: RemoteRepositoryTag[]): Promise<void>;
 }
 
@@ -231,13 +236,15 @@ export async function getRegistryRepositoryTags(
   fetcher: typeof fetch,
 ): Promise<RegistryRepositoryTags> {
   const session: RegistrySession = {};
-  const tags =
-    repository.registry === "docker.io"
-      ? await getDockerHubTags(repository.name, fetcher)
-      : (await getRegistryRepositoryTagNames(repository, fetcher, session)).map((name) => ({
-          name,
-        }));
+  const tags: RemoteRepositoryTag[] = (
+    await getRegistryRepositoryTagNames(repository, fetcher, session)
+  ).map((name) => ({
+    name,
+  }));
   const pending = new Map<string, Promise<void>>();
+  let cancelled = false;
+  let indexed = false;
+  let indexError: unknown;
   const resolveDigest = (tag: RemoteRepositoryTag): Promise<void> => {
     if (tag.digest) return Promise.resolve();
     const cached = pending.get(tag.name);
@@ -273,12 +280,54 @@ export async function getRegistryRepositoryTags(
     pending.set(tag.name, request);
     return request;
   };
-  return {
+  const remote: RegistryRepositoryTags = {
     tags,
+    cancel() {
+      cancelled = true;
+    },
+    prepareDigestIndex() {
+      if (indexError) {
+        const error = indexError;
+        indexError = undefined;
+        throw error;
+      }
+      if (indexed || tags.every((tag) => tag.digest)) return undefined;
+      if (!remote.digestIndex) {
+        const progress = { completed: 0, total: tags.length };
+        remote.digestIndex = progress;
+        void (async () => {
+          for (let start = 0; start < tags.length; start += 8) {
+            if (cancelled) return;
+            await Promise.all(
+              tags.slice(start, start + 8).map(async (tag) => {
+                await resolveDigest(tag);
+                progress.completed += 1;
+              }),
+            );
+          }
+          indexed = true;
+        })()
+          .catch((error: unknown) => {
+            indexError = error;
+          })
+          .finally(() => {
+            remote.digestIndex = undefined;
+            remote.digestIndexFinishedAt = Date.now();
+          });
+      }
+      return { ...remote.digestIndex! };
+    },
     async resolveDigests(selected) {
       for (let start = 0; start < selected.length; start += 8) {
+        if (cancelled)
+          throw new ExpectedError(
+            "image_repository_query_cancelled",
+            "저장소 조회가 갱신됐습니다. 다시 시도하십시오.",
+            409,
+          );
         await Promise.all(selected.slice(start, start + 8).map(resolveDigest));
       }
     },
   };
+  return remote;
 }

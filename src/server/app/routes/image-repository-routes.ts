@@ -52,9 +52,8 @@ export function registerImageRepositoryRoutes(
         400,
       );
     }
-    return context.json({
-      tags: await repositories.getTags(id, page, { filter: { tag, digest, search }, sort }),
-    });
+    const tags = await repositories.getTags(id, page, { filter: { tag, digest, search }, sort });
+    return context.json({ tags }, tags.digestIndex ? 202 : 200);
   });
   app.patch("/image-repositories/:id/tags/:tag/favorite", async (context) => {
     const id = requireImageRepositoryIdentifier(context.req.param("id"));

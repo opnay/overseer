@@ -12,9 +12,16 @@ import { ExpectedError } from "../../core/errors.ts";
 import type { OperationProgress } from "../operations/index.ts";
 import { MemoryImageRepositoryStore, type ImageRepositoryStore } from "./image-repository-store.ts";
 import { getRegistryRepositoryTags, type RegistryRepositoryTags } from "./registry-tags.ts";
+import { mayMatchManifestDigest } from "./registry-tag-metadata.ts";
 
 const TAG_PAGE_SIZE = 25;
 const TAG_CACHE_TTL = 60_000;
+
+interface CachedRegistryTags {
+  expiresAt: number;
+  tags: Promise<RegistryRepositoryTags>;
+  value?: RegistryRepositoryTags;
+}
 
 export interface ImageRepositoryController {
   add(input: AddImageRepositoryInput): ImageRepositorySummary;
@@ -35,10 +42,7 @@ export class ImageRepositoryService implements ImageRepositoryController {
   private readonly id: () => string;
   private readonly now: () => string;
   private readonly store: ImageRepositoryStore;
-  private readonly tagCache = new Map<
-    string,
-    { expiresAt: number; tags: Promise<RegistryRepositoryTags> }
-  >();
+  private readonly tagCache = new Map<string, CachedRegistryTags>();
 
   constructor(
     store: ImageRepositoryStore = new MemoryImageRepositoryStore(),
@@ -85,7 +89,21 @@ export class ImageRepositoryService implements ImageRepositoryController {
     const digestFilter = query.filter?.digest?.trim().toLowerCase() ?? "";
     const search = query.filter?.search?.trim().toLowerCase() ?? "";
     let tags = remote.tags.filter(({ name }) => name.toLowerCase().includes(tagFilter));
-    if (digestFilter || search) await remote.resolveDigests(tags);
+    const searchDigests = Boolean(search && mayMatchManifestDigest(search));
+    if ((digestFilter && mayMatchManifestDigest(digestFilter)) || searchDigests) {
+      const digestIndex = remote.prepareDigestIndex();
+      if (digestIndex) {
+        return {
+          count: 0,
+          totalCount: remote.tags.length,
+          page,
+          pageSize: TAG_PAGE_SIZE,
+          repository: repository.repository,
+          tags: [],
+          digestIndex,
+        };
+      }
+    }
     tags = tags.filter(
       ({ name, digest }) =>
         (digest?.includes(digestFilter) ?? !digestFilter) &&
@@ -118,6 +136,7 @@ export class ImageRepositoryService implements ImageRepositoryController {
         404,
       );
     }
+    this.tagCache.get(id)?.value?.cancel();
     this.tagCache.delete(id);
   }
 
@@ -161,12 +180,27 @@ export class ImageRepositoryService implements ImageRepositoryController {
     refresh = false,
   ): Promise<RegistryRepositoryTags> {
     const cached = this.tagCache.get(repository.id);
-    if (!refresh && cached && cached.expiresAt > Date.now()) return cached.tags;
+    const indexFresh =
+      (cached?.value?.digestIndexFinishedAt ?? -Infinity) + TAG_CACHE_TTL > Date.now();
+    if (
+      !refresh &&
+      cached &&
+      (cached.expiresAt > Date.now() || cached.value?.digestIndex || indexFresh)
+    ) {
+      cached.expiresAt = cached.value ? Date.now() + TAG_CACHE_TTL : Infinity;
+      return cached.tags;
+    }
+    cached?.value?.cancel();
 
-    const entry = { expiresAt: Infinity, tags: this.loadRemoteTags(repository) };
+    const entry: CachedRegistryTags = {
+      expiresAt: Infinity,
+      tags: this.loadRemoteTags(repository),
+    };
     this.tagCache.set(repository.id, entry);
     void entry.tags.then(
-      () => {
+      (value) => {
+        entry.value = value;
+        if (this.tagCache.get(repository.id) !== entry) value.cancel();
         entry.expiresAt = Date.now() + TAG_CACHE_TTL;
       },
       () => {

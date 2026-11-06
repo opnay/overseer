@@ -520,6 +520,7 @@ export interface ImageRepositoryTagQuery {
 }
 
 export interface ImageRepositoryTagList {
+  digestIndex?: { completed: number; total: number };
   count: number;
   totalCount: number;
   page: number;

@@ -14,56 +14,220 @@ function withoutDigestHeader(fetcher: typeof fetch): typeof fetch {
     init?.method === "HEAD" ? Promise.resolve(new Response(null)) : fetcher(input, init);
 }
 
+async function completeTags(
+  service: ImageRepositoryService,
+  ...args: Parameters<ImageRepositoryService["getTags"]>
+) {
+  let result = await service.getTags(...args);
+  for (let attempt = 0; result.digestIndex && attempt < 100; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    result = await service.getTags(...args);
+  }
+  expect(result.digestIndex).toBeUndefined();
+  return result;
+}
+
 describe("ImageRepositoryService", () => {
+  it("returns hash-index progress without blocking other queries or expiring active work", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(0);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const names = Array.from({ length: 30 }, (_, index) => `tag${index}`);
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method !== "HEAD") return new Response(JSON.stringify({ tags: names }));
+      await gate;
+      const name = new URL(String(input)).pathname.split("/").at(-1);
+      return new Response(null, {
+        headers: {
+          "docker-content-digest": `sha256:${name === "tag29" ? "a".repeat(64) : "b".repeat(64)}`,
+        },
+      });
+    });
+    const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
+    const repository = service.add({ repository: "docker.io/library/node" });
+    const query = { filter: { search: `sha256:${"a".repeat(64)}` } };
+    const accepted = await service.getTags(repository.id, 1, query);
+    expect(accepted.digestIndex).toEqual({ completed: 0, total: 30 });
+    clock.mockReturnValue(61_000);
+    expect(
+      (await service.getTags(repository.id, 1, { filter: { tag: "not-present" } })).count,
+    ).toBe(0);
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method !== "HEAD")).toHaveLength(1);
+    release();
+    const result = await completeTags(service, repository.id, 1, query);
+    expect(result.tags.map(({ name }) => name)).toEqual(["tag29"]);
+    expect(fetcher).toHaveBeenCalledTimes(31);
+  });
+
+  it("avoids building the digest index for name-only searches and cancels it on removal", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let block = false;
+    const names = Array.from({ length: 60 }, (_, index) => `trixie-${index}`);
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method !== "HEAD") return new Response(JSON.stringify({ tags: names }));
+      if (block) await gate;
+      return new Response(null, {
+        headers: { "docker-content-digest": `sha256:${"c".repeat(64)}` },
+      });
+    });
+    const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
+    const repository = service.add({ repository: "docker.io/library/node" });
+    const named = await service.getTags(repository.id, 1, { filter: { search: "TrIxIe" } });
+    expect(named.digestIndex).toBeUndefined();
+    expect(named.count).toBe(60);
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method === "HEAD")).toHaveLength(25);
+    block = true;
+    expect(
+      (await service.getTags(repository.id, 1, { filter: { search: "sha256:cc" } })).digestIndex,
+    ).toBeDefined();
+    service.remove(repository.id);
+    const beforeRelease = fetcher.mock.calls.length;
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetcher).toHaveBeenCalledTimes(beforeRelease);
+  });
+
+  it("refreshes an expired anonymous registry token once when resolving manifests", async () => {
+    let tokens = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/token")
+        return new Response(JSON.stringify({ token: `token-${++tokens}` }));
+      const authorization = new Headers(init?.headers).get("authorization");
+      if (!authorization || (init?.method === "HEAD" && authorization === "Bearer token-1")) {
+        return new Response(null, {
+          status: 401,
+          headers: {
+            "www-authenticate":
+              'Bearer realm="https://auth.docker.io/token",service="registry.docker.io"',
+          },
+        });
+      }
+      return init?.method === "HEAD"
+        ? new Response(null, { headers: { "docker-content-digest": `sha256:${"a".repeat(64)}` } })
+        : new Response(JSON.stringify({ tags: ["latest"] }));
+    });
+    const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
+    const repository = service.add({ repository: "docker.io/library/node" });
+    expect((await service.getTags(repository.id, 1)).tags[0]?.digest).toBe(
+      `sha256:${"a".repeat(64)}`,
+    );
+    expect(tokens).toBe(2);
+  });
+
+  it("loads and searches Docker Hub repositories beyond the anonymous Hub pagination limit", async () => {
+    const names = Array.from(
+      { length: 1200 },
+      (_, index) => `tag${String(index).padStart(4, "0")}`,
+    );
+    const digest = (index: number) => `sha256:${index.toString(16).padStart(64, "0")}`;
+    const manifestRequests: string[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.hostname === "hub.docker.com") {
+        const page = Number(url.searchParams.get("page"));
+        if (page > 10)
+          return new Response(
+            JSON.stringify({
+              message:
+                "pagination offset too large for anonymous requests; sign in to page further",
+            }),
+            { status: 403 },
+          );
+        return new Response(
+          JSON.stringify({
+            count: names.length,
+            results: names.slice((page - 1) * 100, page * 100).map((name) => ({ name })),
+          }),
+        );
+      }
+      if (init?.method === "HEAD") {
+        const name = url.pathname.split("/").at(-1)!;
+        manifestRequests.push(name);
+        return new Response(null, {
+          headers: { "docker-content-digest": digest(names.indexOf(name)) },
+        });
+      }
+      const last = url.searchParams.get("last");
+      const start = last ? names.indexOf(last) + 1 : 0;
+      const page = names.slice(start, start + Number(url.searchParams.get("n")));
+      return new Response(JSON.stringify({ tags: page }), {
+        headers:
+          start + page.length < names.length
+            ? { link: `</v2/library/node/tags/list?n=1000&last=${page.at(-1)}>; rel="next"` }
+            : {},
+      });
+    });
+    const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
+    const repository = service.add({ repository: "docker.io/library/node" });
+    service.setFavorite(repository.id, "tag1199", true);
+    const page = await completeTags(service, repository.id, 1);
+    expect(page).toMatchObject({ count: 1200 });
+    expect(page.tags[0]).toEqual({ name: "tag1199", digest: digest(1199), favorite: true });
+    expect(page.tags).toHaveLength(25);
+    expect(manifestRequests).toHaveLength(25);
+    const found = await completeTags(service, repository.id, 1, {
+      filter: { search: digest(1100) },
+    });
+    expect(found).toMatchObject({
+      count: 1,
+      totalCount: 1200,
+      tags: [{ name: "tag1100", digest: digest(1100) }],
+    });
+    expect(manifestRequests).toHaveLength(1200);
+  });
+
   it.each(["docker.io/library/node", "ghcr.io/opnay/overseer"])(
     "rejects invalid remote tag names before manifest lookup for %s",
     async (address) => {
-      const fetcher = vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify(
-              address.startsWith("docker.io/")
-                ? { count: 1, results: [{ name: "../other" }] }
-                : { tags: ["../other"] },
-            ),
-          ),
-      );
+      const fetcher = vi.fn(async () => new Response(JSON.stringify({ tags: ["../other"] })));
       const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
       const repository = service.add({ repository: address });
-      await expect(service.getTags(repository.id, 1)).rejects.toThrow("응답을 해석하지 못했습니다");
+      await expect(completeTags(service, repository.id, 1)).rejects.toThrow(
+        "응답을 해석하지 못했습니다",
+      );
       expect(fetcher).toHaveBeenCalledTimes(1);
     },
   );
 
-  it("rejects oversized Docker Hub results before fetching the remaining pages", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ count: 10_001, results: [] })));
+  it("rejects registry pagination that never terminates", async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ tags: ["latest"] }), {
+          headers: { link: '</v2/library/node/tags/list?n=100&last=latest>; rel="next"' },
+        }),
+    );
     const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
     const repository = service.add({ repository: "docker.io/library/node" });
-    await expect(service.getTags(repository.id, 1)).rejects.toThrow("태그가 너무 많아");
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    await expect(completeTags(service, repository.id, 1)).rejects.toThrow("태그가 너무 많아");
+    expect(fetcher).toHaveBeenCalledTimes(100);
   });
 
-  it("reads Docker Hub manifest digests across remote pages and searches shared digests", async () => {
+  it("searches shared root manifest digests and requests multi-platform manifest types", async () => {
     const digest = `sha256:${"a".repeat(64)}`;
     const platformDigest = `sha256:${"b".repeat(64)}`;
+    const names = Array.from({ length: 105 }, (_, index) => `tag${index}`);
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === "HEAD") throw new Error("bulk metadata must supply digests");
-      const page = Number(new URL(String(input)).searchParams.get("page"));
-      return new Response(
-        JSON.stringify({
-          count: 105,
-          results: Array.from({ length: page === 1 ? 100 : 5 }, (_, offset) => ({
-            name: `tag${(page - 1) * 100 + offset}`,
-            digest: page === 1 ? `sha256:${"c".repeat(64)}` : digest,
-            images: [{ digest: platformDigest }],
-          })),
-        }),
-      );
+      if (init?.method === "HEAD") {
+        const accept = new Headers(init.headers).get("accept");
+        expect(accept).toContain("application/vnd.oci.image.index.v1+json");
+        expect(accept).toContain("application/vnd.docker.distribution.manifest.list.v2+json");
+        const index = Number(new URL(String(input)).pathname.split("/").at(-1)?.slice(3));
+        return new Response(null, {
+          headers: { "docker-content-digest": index >= 100 ? digest : `sha256:${"c".repeat(64)}` },
+        });
+      }
+      return new Response(JSON.stringify({ tags: names }));
     });
     const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
     const repository = service.add({ repository: "docker.io/library/node" });
     service.setFavorite(repository.id, "tag104", true);
-    const result = await service.getTags(repository.id, 1, {
+    const result = await completeTags(service, repository.id, 1, {
       sort: "-tag",
       filter: { search: digest.toUpperCase() },
     });
@@ -77,12 +241,12 @@ describe("ImageRepositoryService", () => {
     ]);
     expect(result.tags.every((tag) => tag.digest === digest)).toBe(true);
     expect(
-      (await service.getTags(repository.id, 1, { filter: { search: "TAG104" } })).tags,
+      (await completeTags(service, repository.id, 1, { filter: { search: "TAG104" } })).tags,
     ).toEqual([{ name: "tag104", digest, favorite: true }]);
     expect(
-      (await service.getTags(repository.id, 1, { filter: { digest: platformDigest } })).count,
+      (await completeTags(service, repository.id, 1, { filter: { digest: platformDigest } })).count,
     ).toBe(0);
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(106);
   });
 
   it("loads OCI digests for the visible page and searches hashes beyond it without fetching twice", async () => {
@@ -103,10 +267,10 @@ describe("ImageRepositoryService", () => {
     const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
     const repository = service.add({ repository: "ghcr.io/opnay/overseer" });
     service.setFavorite(repository.id, "tag59", true);
-    const page = await service.getTags(repository.id, 1);
+    const page = await completeTags(service, repository.id, 1);
     expect(page.tags[0]).toEqual({ name: "tag59", digest: digest(59), favorite: true });
     expect(manifestRequests).toHaveLength(25);
-    const found = await service.getTags(repository.id, 1, { filter: { search: digest(48) } });
+    const found = await completeTags(service, repository.id, 1, { filter: { search: digest(48) } });
     expect(found).toMatchObject({
       count: 1,
       totalCount: 60,
@@ -115,10 +279,13 @@ describe("ImageRepositoryService", () => {
     expect(new Set(manifestRequests).size).toBe(60);
     expect(manifestRequests).toHaveLength(60);
     expect(
-      (await service.getTags(repository.id, 1, { filter: { tag: "tag59", digest: digest(48) } }))
-        .count,
+      (
+        await completeTags(service, repository.id, 1, {
+          filter: { tag: "tag59", digest: digest(48) },
+        })
+      ).count,
     ).toBe(0);
-    await service.getTags(repository.id, 1, { sort: "-tag" });
+    await completeTags(service, repository.id, 1, { sort: "-tag" });
     expect(manifestRequests).toHaveLength(60);
   });
 
@@ -135,11 +302,12 @@ describe("ImageRepositoryService", () => {
     });
     const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
     const repository = service.add({ repository: "ghcr.io/opnay/overseer" });
-    await expect(service.getTags(repository.id, 1, { filter: { search: digest } })).rejects.toThrow(
-      "해시",
-    );
+    await expect(
+      completeTags(service, repository.id, 1, { filter: { search: digest } }),
+    ).rejects.toThrow("해시");
     expect(
-      (await service.getTags(repository.id, 1, { filter: { search: digest } })).tags[0]?.digest,
+      (await completeTags(service, repository.id, 1, { filter: { search: digest } })).tags[0]
+        ?.digest,
     ).toBe(digest);
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
@@ -158,10 +326,10 @@ describe("ImageRepositoryService", () => {
     );
     const repository = service.add({ repository: "ghcr.io/opnay/overseer" });
 
-    await expect(service.getTags(repository.id, 1)).rejects.toThrow();
+    await expect(completeTags(service, repository.id, 1)).rejects.toThrow();
     const pages = await Promise.all([
-      service.getTags(repository.id, 1),
-      service.getTags(repository.id, 1),
+      completeTags(service, repository.id, 1),
+      completeTags(service, repository.id, 1),
     ]);
     expect(pages.map(({ tags }) => tags)).toEqual([
       [{ favorite: false, name: "v1" }],
@@ -169,9 +337,9 @@ describe("ImageRepositoryService", () => {
     ]);
     expect(fetcher).toHaveBeenCalledTimes(2);
     clock.mockReturnValue(60_001);
-    expect((await service.getTags(repository.id, 1)).tags[0]?.name).toBe("v2");
+    expect((await completeTags(service, repository.id, 1)).tags[0]?.name).toBe("v2");
     await service.sync(repository.id);
-    expect((await service.getTags(repository.id, 1)).tags[0]?.name).toBe("v3");
+    expect((await completeTags(service, repository.id, 1)).tags[0]?.name).toBe("v3");
     expect(fetcher).toHaveBeenCalledTimes(4);
   });
 
@@ -184,11 +352,6 @@ describe("ImageRepositoryService", () => {
       );
       const fetcher = vi.fn(async (input: RequestInfo | URL) => {
         const url = new URL(String(input));
-        if (address.startsWith("docker.io/")) {
-          return new Response(
-            JSON.stringify({ count: names.length, results: names.map((name) => ({ name })) }),
-          );
-        }
         const secondPage = url.searchParams.has("last");
         return new Response(
           JSON.stringify({ tags: secondPage ? names.slice(30) : names.slice(0, 30) }),
@@ -201,13 +364,13 @@ describe("ImageRepositoryService", () => {
         new MemoryImageRepositoryStore(),
         withoutDigestHeader(fetcher),
       );
-      const expectedRequests = address.startsWith("docker.io/") ? 1 : 2;
+      const expectedRequests = 2;
       const repository = service.add({ repository: address });
       service.setFavorite(repository.id, "tag54", true);
       service.setFavorite(repository.id, "tag50", true);
       service.setFavorite(repository.id, "removed", true);
 
-      const ascending = await service.getTags(repository.id, 1);
+      const ascending = await completeTags(service, repository.id, 1);
       expect(ascending).toMatchObject({ count: 55, page: 1, pageSize: 25 });
       expect(ascending.tags.map(({ name }) => name)).toEqual([
         "tag50",
@@ -218,13 +381,13 @@ describe("ImageRepositoryService", () => {
         "tag50",
         "tag54",
       ]);
-      const second = await service.getTags(repository.id, 2);
-      const third = await service.getTags(repository.id, 3);
+      const second = await completeTags(service, repository.id, 2);
+      const third = await completeTags(service, repository.id, 3);
       const allNames = [...ascending.tags, ...second.tags, ...third.tags].map(({ name }) => name);
       expect(allNames).toHaveLength(55);
       expect(new Set(allNames)).toEqual(new Set(names));
 
-      const descending = await service.getTags(repository.id, 1, { sort: "-tag" });
+      const descending = await completeTags(service, repository.id, 1, { sort: "-tag" });
       expect(descending.tags.map(({ name }) => name)).toEqual([
         "tag54",
         "tag50",
@@ -235,17 +398,17 @@ describe("ImageRepositoryService", () => {
       ]);
       expect(fetcher).toHaveBeenCalledTimes(expectedRequests);
       expect(new URL(String(fetcher.mock.calls[0]![0])).hostname).toBe(
-        address.startsWith("docker.io/") ? "hub.docker.com" : "ghcr.io",
+        address.startsWith("docker.io/") ? "registry-1.docker.io" : "ghcr.io",
       );
 
       service.setFavorite(repository.id, "tag54", false);
-      const updated = await service.getTags(repository.id, 1);
+      const updated = await completeTags(service, repository.id, 1);
       expect(updated.tags.slice(0, 2)).toEqual([
         { favorite: true, name: "tag50" },
         { favorite: false, name: "tag00" },
       ]);
       expect(fetcher).toHaveBeenCalledTimes(expectedRequests);
-      const filtered = await service.getTags(repository.id, 1, {
+      const filtered = await completeTags(service, repository.id, 1, {
         filter: { tag: " TAG5 " },
         sort: "-tag",
       });
@@ -257,17 +420,21 @@ describe("ImageRepositoryService", () => {
         { favorite: false, name: "tag52" },
         { favorite: false, name: "tag51" },
       ]);
-      expect((await service.getTags(repository.id, 2, { filter: { tag: "tag5" } })).tags).toEqual(
-        [],
+      expect(
+        (await completeTags(service, repository.id, 2, { filter: { tag: "tag5" } })).tags,
+      ).toEqual([]);
+      expect(await completeTags(service, repository.id, 1, { filter: { tag: "." } })).toMatchObject(
+        {
+          count: 0,
+          tags: [],
+        },
       );
-      expect(await service.getTags(repository.id, 1, { filter: { tag: "." } })).toMatchObject({
-        count: 0,
-        tags: [],
-      });
-      expect((await service.getTags(repository.id, 1, { filter: { tag: "  " } })).count).toBe(55);
+      expect((await completeTags(service, repository.id, 1, { filter: { tag: "  " } })).count).toBe(
+        55,
+      );
       for (const name of names.slice(28)) service.setFavorite(repository.id, name, true);
-      const favoritePage = await service.getTags(repository.id, 1);
-      const overflowPage = await service.getTags(repository.id, 2);
+      const favoritePage = await completeTags(service, repository.id, 1);
+      const overflowPage = await completeTags(service, repository.id, 2);
       expect(favoritePage.tags).toHaveLength(25);
       expect(favoritePage.tags.every(({ favorite }) => favorite)).toBe(true);
       expect(overflowPage.tags.slice(0, 3)).toEqual([
@@ -283,8 +450,7 @@ describe("ImageRepositoryService", () => {
       async () =>
         new Response(
           JSON.stringify({
-            count: 42,
-            results: Array.from({ length: 42 }, (_, index) => ({ name: `tag${index}` })),
+            tags: Array.from({ length: 42 }, (_, index) => `tag${index}`),
           }),
           { status: 200 },
         ),
@@ -311,8 +477,8 @@ describe("ImageRepositoryService", () => {
     await service.sync(repository.id);
     expect(fetcher).toHaveBeenCalledWith(
       expect.objectContaining({
-        hostname: "hub.docker.com",
-        pathname: "/v2/namespaces/library/repositories/nginx/tags",
+        hostname: "registry-1.docker.io",
+        pathname: "/v2/library/nginx/tags/list",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -364,7 +530,7 @@ describe("ImageRepositoryService", () => {
 
     await service.sync(repository.id);
     expect(service.setFavorite(repository.id, "v2", true)).toEqual({ favorite: true, name: "v2" });
-    await expect(service.getTags(repository.id, 1)).resolves.toMatchObject({
+    await expect(completeTags(service, repository.id, 1)).resolves.toMatchObject({
       count: 3,
       repository: "ghcr.io/opnay/overseer",
       tags: [

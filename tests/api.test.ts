@@ -1234,19 +1234,18 @@ describe("API boundary", () => {
     const controller = createController();
     const repositories = new ImageRepositoryService(
       new MemoryImageRepositoryStore(),
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              count: 3,
-              results: ["latest", "v1", "v2"].map((name, index) => ({
-                name,
-                digest: `sha256:${String(index + 1).repeat(64)}`,
-              })),
-            }),
-            { status: 200 },
-          ),
-      ),
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const names = ["latest", "v1", "v2"];
+        if (init?.method === "HEAD") {
+          const name = new URL(String(input)).pathname.split("/").at(-1)!;
+          return new Response(null, {
+            headers: {
+              "docker-content-digest": `sha256:${String(names.indexOf(name) + 1).repeat(64)}`,
+            },
+          });
+        }
+        return new Response(JSON.stringify({ tags: names }));
+      }),
       () => "2026-08-27T01:00:00.000Z",
       () => "11111111-1111-4111-8111-111111111111",
     );
@@ -1287,6 +1286,12 @@ describe("API boundary", () => {
       },
     );
     expect(favorite.status).toBe(200);
+    const indexing = await app.request(
+      `/image-repositories/11111111-1111-4111-8111-111111111111/tags?filter[search]=${"3".repeat(32)}`,
+      { headers: localHeaders },
+    );
+    expect(indexing.status).toBe(202);
+    expect((await indexing.json()).tags.digestIndex.total).toBe(3);
     const tags = await app.request(
       "/image-repositories/11111111-1111-4111-8111-111111111111/tags?page=1",
       { headers: localHeaders },

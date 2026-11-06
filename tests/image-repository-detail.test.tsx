@@ -3,6 +3,60 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { ImageRepositoryDetailPage } from "../src/client/pages/image-repositories/index.ts";
 
+it("shows hash-index progress and polls for the completed result without showing an empty result", async () => {
+  const user = userEvent.setup();
+  const digest = `sha256:${"f".repeat(64)}`;
+  let searches = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      const repository = {
+        id: "repository-id",
+        repository: "docker.io/library/node",
+        createdAt: "2026-11-06T00:00:00Z",
+        favoriteCount: 0,
+      };
+      if (!url.pathname.endsWith("/tags")) return new Response(JSON.stringify({ repository }));
+      const indexing = url.searchParams.has("filter[search]") && searches++ === 0;
+      return new Response(
+        JSON.stringify({
+          tags: {
+            count: indexing ? 0 : 1,
+            totalCount: 9270,
+            page: 1,
+            pageSize: 25,
+            repository: repository.repository,
+            tags: indexing ? [] : [{ name: "trixie", digest, favorite: false }],
+            ...(indexing ? { digestIndex: { completed: 1200, total: 9270 } } : {}),
+          },
+        }),
+        { status: indexing ? 202 : 200 },
+      );
+    }),
+  );
+  render(
+    <ImageRepositoryDetailPage
+      id="repository-id"
+      isBusy={() => false}
+      onCreateContainer={vi.fn()}
+      onDownload={vi.fn()}
+      onRepositoryChange={vi.fn()}
+      refreshToken="initial"
+      runtimeAvailable
+    />,
+  );
+  await screen.findByText("trixie");
+  await user.type(screen.getByRole("searchbox", { name: "태그 검색" }), digest);
+  await user.click(screen.getByRole("button", { name: "태그 검색 실행" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("1200 / 9270개 확인");
+  expect(screen.queryByText("검색 결과가 없습니다.")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText("검색 결과 1개 · 1 / 1페이지")).toBeInTheDocument(), {
+    timeout: 3000,
+  });
+  expect(screen.getByText(digest)).toBeInTheDocument();
+});
+
 it("requests tag sorting and filtering, resets pages, and reloads favorites", async () => {
   const user = userEvent.setup();
   const digest = `sha256:${"a".repeat(64)}`;

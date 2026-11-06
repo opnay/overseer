@@ -32,7 +32,7 @@
 
 예: `GET /api/image-repositories/:id/tags?page=1&sort=-tag&filter[tag]=alpine`
 
-실제 URL의 대괄호와 검색어는 `URLSearchParams` 등으로 인코딩합니다. 검색·정렬·페이지 이동은 60초 동안 캐시된 원격 태그 메타데이터를 재사용할 수 있으며, 즐겨찾기는 현재 저장된 상태를 적용합니다. 수동 동기화는 원격 목록을 새로 조회합니다.
+실제 URL의 대괄호와 검색어는 `URLSearchParams` 등으로 인코딩합니다. 앱 API가 원격 태그 이름 캐시에서 필터·정렬·페이지 분할을 수행하고 프런트에는 25개만 반환합니다. 전역 즐겨찾기 우선, 대소문자 무시 검색과 전체 digest 검색을 유지하기 위한 앱의 책임입니다. 캐시는 마지막 사용·해시 인덱스 완료 후 60초 동안 유지하며, 인덱스 준비 중에는 만료하지 않습니다. 즐겨찾기는 현재 저장된 상태를 적용하고 수동 동기화는 원격 목록을 새로 조회합니다.
 
 응답의 `count`는 검색 결과 수, `totalCount`는 검색 전 전체 태그 수입니다. 저장소 개요는 `totalCount`, 표의 결과 수와 페이지 수는 `count`를 사용합니다.
 
@@ -42,11 +42,13 @@
 
 태그 이름 아래에는 전체 이미지 주소 대신 manifest digest를 표시합니다. 멀티 플랫폼 태그는 개별 플랫폼 이미지의 digest가 아닌 상위 manifest index/list의 digest를 표시합니다. 원격에서 제공하지 않거나 태그가 삭제된 경우에는 `해시 정보 없음`을 표시합니다. 다운로드와 컨테이너 생성에는 기존 `저장소:태그` 참조를 계속 사용합니다.
 
-## 원격 digest 조회와 실패
+## 원격 조회와 해시 검색 준비
 
-- Docker Hub는 태그 목록에 포함된 최상위 digest를 사용합니다. 최대 100페이지·페이지당 100개를 조회하며, 첫 페이지 이후에는 최대 4개 요청을 병행합니다. digest가 없는 항목은 Registry manifest 조회로 보완합니다.
-- 다른 registry는 목록의 이름을 조회한 뒤 현재 표시할 태그만 manifest HEAD로 보완합니다. 이름/digest 통합 검색과 digest 필터는 페이지를 나누기 전에 후보 전체의 digest를 조회합니다. 최대 8개 요청을 병행하고 성공 결과를 같은 캐시에 보존합니다. 태그가 많은 registry의 첫 해시 검색은 오래 걸릴 수 있습니다.
-- manifest HEAD에는 OCI index/image 및 Docker manifest list/v2 미디어 타입을 수락합니다. `Docker-Content-Digest`의 SHA-256/SHA-512 값을 사용하며, 헤더가 없으면 해시를 임의로 생성하지 않습니다.
-- 원격 HTTP 오류는 검색 결과 0건으로 바꾸지 않고 오류로 전달합니다. 실패한 digest 요청은 캐시에서 제거해 재시도할 수 있게 합니다.
+- Docker Hub를 포함한 registry의 태그 이름은 Registry V2 `tags/list?n=1000`과 `Link` 페이지를 사용해 조회합니다. 서버가 더 작은 페이지를 반환하면 그 `Link`를 따릅니다. 최대 100페이지를 허용합니다. Docker Hub의 익명 메타데이터 API는 깊은 페이지를 403으로 거부하므로 전체 목록 수집에 사용하지 않습니다.
+- 일반 목록·이름 검색·정렬에서는 선택한 페이지의 태그만 manifest HEAD로 보완합니다. 이름 검색어가 유효한 SHA-256/SHA-512 digest에 포함될 수 없으면 전체 해시 조회를 시작하지 않습니다.
+- 해시 필터나 해시일 수 있는 검색어는 전체 digest 인덱스를 준비합니다. 아직 준비 중이면 HTTP `202`와 `digestIndex: { completed, total }`을 반환합니다. 이때 `count=0`과 빈 tags는 미완료 자리표시자이며 빈 검색 결과가 아닙니다. 화면은 진행 상태를 표시하고 1초 간격으로 같은 조건을 다시 조회합니다. 다른 검색과 페이지 조회는 계속 사용할 수 있습니다.
+- 준비가 끝나면 HTTP `200`으로 필터·정렬·페이지 결과를 반환합니다. 최대 8개 manifest 요청을 병행하고 성공·미제공 결과를 캐시합니다. 원격에서 digest를 제공하지 않으면 임의로 생성하지 않습니다. 대규모 저장소의 최초 전체 해시 검색은 시간이 걸릴 수 있습니다.
+- manifest HEAD는 OCI index/image와 Docker manifest list/v2를 수락하며 `Docker-Content-Digest`의 SHA-256/SHA-512 값을 사용합니다. 익명 bearer token이 만료되어 401이 오면 한 번 갱신해 재요청합니다.
+- 원격 HTTP 오류는 검색 결과 0건으로 바꾸지 않고 오류로 전달합니다. 실패한 digest 요청은 재시도할 수 있으며, 저장소 삭제·수동 동기화·캐시 교체 시 기존 인덱스 작업은 다음 요청 묶음부터 중단합니다.
 
-근거: [Docker Hub 태그 목록 API](https://docs.docker.com/reference/api/hub/latest/operations/ListRepositoryTags/), [OCI Distribution manifest 조회 규약](https://github.com/opencontainers/distribution-spec/blob/main/spec.md). Docker Hub의 최상위 digest 필드는 공개 목록 응답에서도 확인했습니다.
+근거: [Docker Registry V2 목록·manifest 규약](https://distribution.github.io/distribution/spec/api/), [OCI Distribution 명세](https://github.com/opencontainers/distribution-spec/blob/main/spec.md). Docker Hub 공개 node에서 이름 9천여 개와 첫 페이지 digest, 이름 검색·정렬·즐겨찾기를 실제 검증합니다. Hub 메타데이터 API의 익명 1천개 초과 페이지 403을 수정 전 실패 회귀로 보존합니다.
