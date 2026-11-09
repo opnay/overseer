@@ -237,3 +237,9 @@ ResourceCollection의 Table 구성, ResourceDetail의 summary·section 내용, S
 City DS를 갱신할 때 제거된 API를 맞추는 것과 별도로 필터·설명 header의 실제 padding, 표와의 정렬선, 필터 조건 wrapper의 너비, Dialog·Drawer의 본문 padding을 브라우저에서 확인합니다. 타입·빌드 통과만으로 여백 호환성을 판단하지 않습니다.
 
 이 앱은 Tailwind utility를 직접 생성하지 않습니다. 패키지 CSS에 없는 utility를 새로 쓰지 않으며 프로젝트 레이아웃 보정은 `--city-*` 토큰으로 작성합니다. Item 전환에서는 Media와 Content의 실제 거리, 제목의 계산된 typography, Header·행의 정렬, 첫 행·마지막 행의 여백과 divider를 확인합니다. 클래스 이름이나 외곽 padding만으로 검증을 끝내지 않습니다.
+
+## 통합 창 타이틀바
+
+macOS native 창 제어 버튼을 유지하고 인앱 타이틀바를 창 전체 너비로 배치합니다. 좌측의 창 제어 영역과 뒤로·앞으로 이동, 중앙의 드래그 영역, 우측의 런타임 상태·작업·테마를 구분합니다. 페이지별 제목·조회·생성 액션은 본문 헤더에 둡니다.
+
+이동 버튼은 City DS `Button`의 `iconOnly`·`ghost`와 `Tooltip`·접근 가능한 이름을 사용합니다. 이동 가능한 이력이 없으면 비활성화합니다. 시작 준비·로딩 중에는 최소 타이틀바와 드래그 영역을 유지하고 일반 화면용 작업을 노출하지 않습니다.

@@ -508,7 +508,7 @@ describe("App", () => {
     expect(screen.queryByLabelText("화면 준비 중")).not.toBeInTheDocument();
   });
 
-  it("uses the mobile header skeleton without flashing desktop navigation", () => {
+  it("keeps the window titlebar while loading without flashing desktop navigation", () => {
     mockViewport(390);
     vi.stubGlobal(
       "fetch",
@@ -517,9 +517,9 @@ describe("App", () => {
 
     const { container } = render(<App />);
 
-    expect(container.querySelector(".overseer-mobile-header")).toBeInTheDocument();
+    expect(screen.getByRole("banner", { name: "창 제목 표시줄" })).toBeInTheDocument();
     expect(container.querySelector(".overseer-sidebar")).not.toBeInTheDocument();
-    expect(container.querySelector(".overseer-loading-mobile-brand")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "화면 이동" })).not.toBeInTheDocument();
   });
 
   it("does not flash the requested resource page before startup state resolves", async () => {

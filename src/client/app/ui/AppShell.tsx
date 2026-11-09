@@ -7,7 +7,6 @@ import { useNavigationMode } from "../model/use-navigation-mode.ts";
 import { AppRoutes } from "../routing/AppRoutes.tsx";
 import { useAppSession } from "../runtime/AppSession.tsx";
 import { AppSidebar } from "./AppNavigation.tsx";
-import { AppTopbar } from "./AppTopbar.tsx";
 import { PageHeader } from "./PageHeader.tsx";
 import { RuntimeFeedback } from "./RuntimeFeedback.tsx";
 const ContainerLauncher = lazy(() =>
@@ -57,12 +56,6 @@ export function AppShell() {
           ) : null}
 
           <div className="overseer-workspace">
-            <AppTopbar
-              navigationMode={navigationMode}
-              currentPath={currentRoute.path}
-              settingsSection={settingsSection}
-            />
-
             <main className="overseer-main" id="main-content">
               <PageHeader {...presentation} navigationMode={navigationMode} />
 

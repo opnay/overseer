@@ -3,6 +3,11 @@ use tauri::{
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
+#[cfg(target_os = "macos")]
+mod navigation;
+#[cfg(target_os = "macos")]
+pub(crate) use navigation::{install_navigation_monitor, remove_navigation_monitor};
+
 pub(crate) const APP_WINDOW_HIDE_ID: &str = "app-window-hide";
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 
@@ -92,6 +97,14 @@ fn create_main_window(
         let path = serde_json::to_string(path).expect("launcher 경로는 JSON 문자열로 변환됩니다.");
         window =
             window.initialization_script(format!("window.history.replaceState(null, '', {path});"));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        window = window
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            // Wry retains the native 9pt button origin: 26 - 9 + 14/2 = 24pt.
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 26.0));
     }
     window
         .center()

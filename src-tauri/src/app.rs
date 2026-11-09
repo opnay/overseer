@@ -57,6 +57,10 @@ fn run_app(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
         .setup(move |app| {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             app.set_dock_visibility(false);
+            #[cfg(target_os = "macos")]
+            if let Err(error) = crate::window::install_navigation_monitor(app.handle()) {
+                eprintln!("{error}");
+            }
             setup_tray(app, tray_api)?;
             if let Err(error) = configure_app_autostart() {
                 eprintln!("로그인 자동 시작을 설정하지 못했습니다: {error}");
@@ -111,6 +115,8 @@ fn run_app(context: tauri::Context<tauri::Wry>) -> Result<(), String> {
             }
         }
         tauri::RunEvent::Exit => {
+            #[cfg(target_os = "macos")]
+            crate::window::remove_navigation_monitor();
             if let Ok(mut api) = shutdown_api.lock() {
                 api.stop();
             }

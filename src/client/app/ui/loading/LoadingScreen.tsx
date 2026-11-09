@@ -202,17 +202,6 @@ export function LoadingScreen({
         </aside>
       ) : null}
       <div className="overseer-workspace">
-        {mode === "mobile" ? (
-          <header aria-hidden="true" className="overseer-mobile-header">
-            <Skeleton className="overseer-loading-mobile-brand" />
-            <Skeleton className="overseer-loading-mobile-actions" />
-          </header>
-        ) : (
-          <header aria-hidden="true" className="overseer-topbar">
-            <Skeleton className="overseer-loading-topbar-context" />
-            <Skeleton className="overseer-loading-topbar-action" />
-          </header>
-        )}
         <main className="overseer-main">
           <div aria-hidden="true" className="overseer-loading-heading">
             <Skeleton className="overseer-loading-eyebrow" />
