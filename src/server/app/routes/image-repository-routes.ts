@@ -25,7 +25,41 @@ export function registerImageRepositoryRoutes(
   app.get("/image-repositories/:id/tags", async (context) => {
     const id = requireImageRepositoryIdentifier(context.req.param("id"));
     const page = requirePageNumber(context.req.query("page"));
-    return context.json({ tags: await repositories.getTags(id, page) });
+    const sort = context.req.query("sort");
+    if (
+      sort !== undefined &&
+      sort !== "tag" &&
+      sort !== "-tag" &&
+      sort !== "lastUpdated" &&
+      sort !== "-lastUpdated"
+    ) {
+      throw new ExpectedError(
+        "invalid_image_repository_tag_sort",
+        "태그 정렬 기준을 확인하십시오.",
+        400,
+      );
+    }
+    const tag = context.req.query("filter[tag]")?.trim();
+    const digest = context.req.query("filter[digest]")?.trim();
+    const search = context.req.query("filter[search]")?.trim();
+    const unsupportedFilter = Object.keys(context.req.query()).some(
+      (key) =>
+        key.startsWith("filter[") &&
+        !["filter[tag]", "filter[digest]", "filter[search]"].includes(key),
+    );
+    if (
+      unsupportedFilter ||
+      (tag?.length ?? 0) > 128 ||
+      [digest, search].some((value) => (value?.length ?? 0) > 256)
+    ) {
+      throw new ExpectedError(
+        "invalid_image_repository_tag_filter",
+        "태그 검색 조건을 확인하십시오.",
+        400,
+      );
+    }
+    const tags = await repositories.getTags(id, page, { filter: { tag, digest, search }, sort });
+    return context.json({ tags }, tags.digestIndex ? 202 : 200);
   });
   app.patch("/image-repositories/:id/tags/:tag/favorite", async (context) => {
     const id = requireImageRepositoryIdentifier(context.req.param("id"));

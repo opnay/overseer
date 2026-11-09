@@ -191,6 +191,11 @@ export function ImageRepositoriesPage({
                     >
                       {repository.repository}
                     </a>
+                    {repository.official ? (
+                      <Badge className="ml-2" size="sm" tone="info">
+                        Official
+                      </Badge>
+                    ) : null}
                   </Table.Cell>
                   <Table.Cell>{repository.tagCount ?? "—"}</Table.Cell>
                   <Table.Cell>
