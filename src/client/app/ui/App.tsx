@@ -1445,6 +1445,10 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     currentDetail?.type === "volume"
       ? dashboard?.volumes.find(({ name }) => name === currentDetail.identifier)
       : undefined;
+  const currentVolumeAnonymous =
+    currentVolume?.labels
+      .split(",")
+      .some((label) => label.split("=", 1)[0]?.trim() === "com.docker.volume.anonymous") ?? false;
   const detailOperationResource =
     currentDetail?.type === "instance" ? "runtime" : currentDetail?.type;
   const latestFinishedDetailOperation = currentDetail
@@ -1484,7 +1488,9 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
               : currentDetail.type === "network"
                 ? (currentNetwork?.name ?? currentDetail.identifier)
                 : currentDetail.type === "volume"
-                  ? (currentVolume?.name ?? currentDetail.identifier)
+                  ? currentVolumeAnonymous
+                    ? "docker:anonymous"
+                    : (currentVolume?.name ?? currentDetail.identifier)
                   : currentDetail.identifier
     : currentRoute.path === "/settings"
       ? settingsPresentation.label
@@ -1502,7 +1508,9 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
               ? "Lima VM과 Docker Engine 연결을 관리합니다."
               : currentDetail.type === "network"
                 ? "Docker 네트워크의 연결 관계와 원본 구성을 탐색합니다."
-                : "Docker 볼륨의 저장 위치와 원본 구성을 탐색합니다."
+                : currentVolumeAnonymous
+                  ? currentDetail.identifier
+                  : undefined
     : currentRoute.path === "/settings"
       ? settingsPresentation.description
       : currentRoute.description;
@@ -1872,7 +1880,17 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
                 <p>{pageEyebrow}</p>
               )}
               <h1 className="city-text-page-title">{pageLabel}</h1>
-              <span className="city-text-supporting">{pageDescription}</span>
+              {pageDescription ? (
+                <span
+                  className={
+                    currentVolumeAnonymous
+                      ? "city-text-caption text-city-muted-foreground font-mono"
+                      : "city-text-supporting"
+                  }
+                >
+                  {pageDescription}
+                </span>
+              ) : null}
             </div>
             <div className="overseer-page-actions">
               <div className="overseer-page-utilities">

@@ -4734,6 +4734,61 @@ describe("App", () => {
     expect(imageDialog).toHaveTextContent("uptime-kuma:2.5.3");
   });
 
+  it.each([true, false])(
+    "presents the volume detail header without generic copy (anonymous=%s)",
+    async (anonymous) => {
+      const name = anonymous ? "a".repeat(64) : "app-data";
+      const labels = anonymous ? "com.docker.volume.anonymous=" : "team=platform";
+      const dashboard: DashboardSnapshot = {
+        composeProjects: [],
+        containers: [],
+        images: [],
+        networks: [],
+        volumes: [{ name, labels, driver: "local", scope: "local" }],
+        runtime: {
+          phase: "running",
+          instance: "overseer",
+          message: "정상",
+          dockerVersion: "29.7.2",
+        },
+      };
+      const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.endsWith(`/api/volumes/${name}`))
+          return jsonResponse({
+            volume: {
+              name,
+              driver: "local",
+              scope: "local",
+              mountpoint: "/volume-data",
+              inspectJson: "{}",
+              options: [],
+              labels: anonymous ? [{ key: "com.docker.volume.anonymous", value: "" }] : [],
+            },
+          });
+        return jsonResponse(dashboard);
+      });
+      vi.stubGlobal("fetch", fetcher);
+      window.history.replaceState(null, "", `/volumes/${name}`);
+      render(<App />);
+      const heading = await screen.findByRole("heading", {
+        level: 1,
+        name: anonymous ? "docker:anonymous" : name,
+      });
+      if (anonymous) expect(within(heading.parentElement!).getByText(name)).toBeInTheDocument();
+      expect(
+        screen.queryByText("Docker 볼륨의 저장 위치와 원본 구성을 탐색합니다."),
+      ).not.toBeInTheDocument();
+      expect(await screen.findByText("/volume-data")).toBeInTheDocument();
+      expect(window.location.pathname).toBe(`/volumes/${name}`);
+      expect(
+        fetcher.mock.calls.some(([input]) => String(input).endsWith(`/api/volumes/${name}`)),
+      ).toBe(true);
+    },
+  );
+
   it("opens volume and network detail pages with raw information", async () => {
     const user = userEvent.setup();
     const containerId = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";

@@ -118,6 +118,8 @@
 - `Operations`는 이 패턴의 변형이며 상세 Dialog와 공통 `LogViewer`를 추가합니다.
 - 이미지 저장소 상세의 태그 표는 검색 입력 없이 표시합니다. 태그 이름을 주정보로 유지하고, 이름 아래의 OS/아키텍처/variant는 City DS Badge의 `tone="neutral" appearance="subtle" size="sm"`으로 낮춰 표시합니다. 플랫폼이 없으면 `플랫폼 정보 없음`을 표시합니다. 갱신일 열을 제공하고 날짜가 없으면 `—`를 표시합니다. Docker Hub는 갱신일 최신순을 기본으로 하며 태그·갱신일 헤더로 정렬을 전환합니다. 다른 registry의 날짜 정렬은 비활성화합니다. Docker Hub `library` 저장소에만 주소 옆 Official 배지를 표시합니다. 정렬·즐겨찾기 변경 시 1페이지부터 표시합니다. 갱신 중 기존 행과 `aria-busy`를 제공합니다. API 계약은 [목록 쿼리 규약](../decisions/0010-list-query-parameters.md)을 따릅니다.
 
+- 볼륨 표는 라벨 칼럼 없이 표시합니다. `com.docker.volume.anonymous` 라벨 키가 있으면 값이 비어 있어도 첫 줄 링크에 `docker:anonymous`, 둘째 줄에 실제 이름을 `city-text-caption`·고정폭·보조 색상으로 표시합니다. 이름 모양만으로 익명을 추정하지 않습니다. 상세 헤더도 익명 볼륨은 `docker:anonymous` 제목과 작은 실제 이름을 사용하며, 볼륨 상세의 일반 설명 문구는 표시하지 않습니다. 일반 볼륨의 제목은 실제 이름입니다. 상세 링크·행 작업에는 실제 이름을 계속 사용합니다.
+
 ## CliToolManagement
 
 ### 사용자 목표와 적용 조건
