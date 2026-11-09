@@ -3,14 +3,17 @@ import { BrowserRouter } from "react-router";
 import { AppSessionProvider } from "../runtime/AppSession.tsx";
 import { StartupGate } from "../startup/StartupGate.tsx";
 import { AppShell } from "./AppShell.tsx";
+import { WindowFrame } from "./WindowFrame.tsx";
 
 export function App() {
   return (
     <BrowserRouter>
       <AppSessionProvider>
-        <StartupGate>
-          <AppShell />
-        </StartupGate>
+        <WindowFrame>
+          <StartupGate>
+            <AppShell />
+          </StartupGate>
+        </WindowFrame>
         <Toaster
           duration={5_000}
           toastOptions={{ closeButtonAriaLabel: "알림 닫기" }}

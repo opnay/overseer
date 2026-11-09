@@ -18,6 +18,66 @@
 }
 
 @layer city-app {
+  .overseer-window {
+    --overseer-titlebar-height: var(--city-space-12);
+    min-height: 100dvh;
+  }
+
+  .overseer-titlebar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    height: var(--overseer-titlebar-height);
+    box-sizing: border-box;
+    padding: var(--city-space-2) var(--city-space-4);
+    border-bottom: 1px solid var(--city-color-border);
+    background: var(--city-color-surface-raised);
+    align-items: center;
+    gap: var(--city-space-3);
+    user-select: none;
+  }
+
+  .overseer-window[data-native-window] .overseer-titlebar {
+    padding-left: calc(var(--city-space-12) + var(--city-space-8) + var(--city-space-2));
+  }
+
+  .overseer-history-navigation,
+  .overseer-titlebar-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-titlebar-drag {
+    display: flex;
+    min-width: var(--city-space-8);
+    height: 100%;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-xs);
+    font-weight: var(--city-font-weight-medium);
+  }
+
+  .overseer-titlebar .overseer-runtime-state {
+    margin-right: var(--city-space-2);
+    font-size: var(--city-font-size-xs);
+    white-space: nowrap;
+  }
+
+  .overseer-window .overseer-shell,
+  .overseer-window .overseer-startup-shell {
+    min-height: calc(100dvh - var(--overseer-titlebar-height));
+  }
+
+  .overseer-window .overseer-sidebar {
+    top: var(--overseer-titlebar-height);
+    height: calc(100dvh - var(--overseer-titlebar-height));
+  }
+
   .overseer-shell {
     display: grid;
     grid-template-columns: 15rem minmax(0, 1fr);

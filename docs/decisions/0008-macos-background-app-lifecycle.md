@@ -77,3 +77,18 @@
 - Bun API sidecar는 별도 실행 파일로 유지하지만 Tauri 프로세스가 시작과 종료를 소유합니다.
 - 로그인 자동 시작은 `Overseer` 실행 파일에 `--background`를 전달합니다.
 - 이전 Helper 앱 번들과 `helper.sock`, `launcher.sock` 실행 경로는 더 이상 생성하지 않습니다.
+
+## 인앱 타이틀바와 화면 이력
+
+- macOS 창은 Overlay titlebar와 native 창 제어 버튼을 유지합니다. `WindowFrame`이 창 전체 너비의 인앱 타이틀바를 소유하며 시작 준비·로딩 중에도 드래그 영역을 제공합니다.
+- 창 제어 영역 다음에 뒤로·앞으로 이동을 배치하고, 우측에는 런타임 상태·작업·테마를 둡니다. 페이지 제목·페이지별 액션은 본문 헤더에 유지합니다.
+- 이동 버튼·Cmd+[ / Cmd+]·BrowserBack/BrowserForward·DOM 보조 마우스 mouseup 3/4는 같은 React Router 이력을 사용합니다. 앱 진입 이전 이력은 탐색하지 않으며 이력이 없거나 필수 시작 준비 경로이면 비활성화합니다.
+- 이력은 Router location key와 PUSH/REPLACE/POP으로 추적하며 Router 내부 history.state 형식에 의존하지 않습니다. 보조 버튼 처리는 기본 동작을 취소해 Wry의 후속 History 이동과 중복되지 않게 합니다.
+- 클릭 가능한 버튼을 드래그 영역으로 지정하지 않습니다. 창 드래그·더블클릭 최대화만 허용하고 기존 닫기·Cmd+Q·메뉴바 수명주기는 유지합니다.
+
+### macOS 보조 마우스 입력
+
+- macOS에서는 앱 내부 `NSEvent` local monitor가 보조 버튼 down/up과 Swipe를 WebView 전달 전에 받습니다. main window에 대한 버튼 3/4만 처리하고 mouseup에서 `overseer:history` 이벤트를 Router에 전달합니다. Logitech 등의 드라이버가 보조 버튼을 가로 Swipe로 전달하는 경우 deltaX 양수는 뒤로, 음수는 앞으로 전달합니다. 영벡터·세로 우세 Swipe는 통과시킵니다. 이벤트에 window 정보가 없을 때는 main window의 focus를 확인합니다.
+- 처리한 두 단계는 native dispatch에서 소비해 Wry의 DOM 합성과 기본 History 이동이 중복되지 않도록 합니다. 일반·우클릭·가운데 버튼과 다른 창의 이벤트는 원래 경로로 전달합니다.
+- 모니터는 앱 시작 때 한 번 등록하고 실제 앱 종료 시 제거합니다. 창 숨김·재열기는 모니터를 재등록하지 않습니다. 다른 앱을 관찰하는 global monitor나 입력 감시 권한은 사용하지 않습니다.
+- DOM 마우스 처리는 웹 실행의 fallback으로 유지합니다. 디버그 로그에는 처리한 native 이벤트 종류와 이동 방향만 남깁니다.

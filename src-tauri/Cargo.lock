@@ -2308,6 +2308,7 @@ name = "overseer-desktop"
 version = "0.0.1"
 dependencies = [
  "auto-launch",
+ "block2",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",

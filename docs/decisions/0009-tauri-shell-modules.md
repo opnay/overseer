@@ -17,7 +17,7 @@ Tauri shell을 앱 기능과 수명주기 기준으로 나눕니다.
 - `lib.rs`: crate 공개 진입점 `run`만 제공합니다.
 - `app.rs`: Tauri Builder 구성과 최상위 이벤트를 조정합니다.
 - `sidecar.rs`: `overseer-server` 자식 프로세스와 JSON Lines 요청·응답을 소유합니다.
-- `window.rs`: launcher WebView, Dock과 activation policy를 소유합니다.
+- `window.rs`: launcher WebView, Dock과 activation policy를 소유합니다. `window/navigation.rs`는 macOS 앱 내부의 보조 마우스 입력과 화면 이동 전달을 소유합니다.
 - `single_instance.rs`: `app.sock`, 재실행 명령과 프로세스 리스너를 소유합니다.
 - `autostart.rs`: 로그인 자동 시작과 이전 Helper 항목 정리를 소유합니다.
 - `updates.rs`: 서명된 앱 업데이트 확인·설치, 작업 잠금과 설치 후 재실행을 소유합니다.

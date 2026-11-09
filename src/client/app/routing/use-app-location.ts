@@ -1,11 +1,13 @@
 import { getAppLocation, type AppLocationPath } from "@/shared/routes";
 import { useCallback, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { useAppHistory } from "./use-app-history.ts";
 
 export function useAppLocation() {
   const location = useLocation();
   const navigate = useNavigate();
   const startupRoute = location.pathname === "/startup";
+  const history = useAppHistory(startupRoute);
   const startupReturnPath = useRef<AppLocationPath>(getAppLocation(location.pathname));
   const resourcePath = startupRoute ? startupReturnPath.current : getAppLocation(location.pathname);
   const navigationSearch = location.search;
@@ -44,6 +46,7 @@ export function useAppLocation() {
     return () => window.removeEventListener("overseer:navigate", onNavigate);
   }, [selectNavigationHref]);
   return {
+    ...history,
     location,
     navigate,
     startupRoute,
