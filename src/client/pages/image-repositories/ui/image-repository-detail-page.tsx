@@ -403,7 +403,12 @@ export function ImageRepositoryDetailPage({
                               <div className="overseer-primary-meta">
                                 {tag.platforms?.length ? (
                                   tag.platforms.map((platform) => (
-                                    <Badge key={platform} size="sm" tone="neutral">
+                                    <Badge
+                                      appearance="subtle"
+                                      key={platform}
+                                      size="sm"
+                                      tone="neutral"
+                                    >
                                       {platform}
                                     </Badge>
                                   ))
