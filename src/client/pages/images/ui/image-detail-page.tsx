@@ -180,7 +180,6 @@ export function ImageDetailPage({ id, refreshToken, summary }: ImageDetailPagePr
   const [historyError, setHistoryError] = useState<string>();
   const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
-    locationKey: id,
     values: sectionOrder,
   });
 

@@ -344,7 +344,6 @@ export function ContainerDetailPage({
   const [inspectionLoading, setInspectionLoading] = useState(false);
   const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
-    locationKey: id,
     values: sectionOrder,
   });
   const [terminal, setTerminal] = useState<ContainerTerminalAccess>();

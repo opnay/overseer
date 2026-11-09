@@ -8,4 +8,4 @@ export {
   type DockerDaemonConfigurationErrors,
   type DockerDaemonConfigurationForm,
 } from "./model/docker-daemon-configuration.ts";
-export { SettingsPage } from "./ui/settings-page.tsx";
+export { SettingsWorkspace } from "./ui/settings-workspace.tsx";

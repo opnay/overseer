@@ -18,7 +18,7 @@ pub(crate) fn show_main_window(app: &tauri::AppHandle, path: Option<&str>) -> Re
     if let Some(path) = path.filter(|path| navigate && valid_window_path(path)) {
         let path = serde_json::to_string(path).expect("launcher 경로는 JSON 문자열로 변환됩니다.");
         if let Err(error) = window.eval(format!(
-            "window.history.pushState(null, '', {path}); window.dispatchEvent(new PopStateEvent('popstate'));"
+            "window.dispatchEvent(new CustomEvent('overseer:navigate', {{ detail: {{ path: {path} }} }}));"
         )) {
             eprintln!("launcher 화면을 이동하지 못했습니다: {error}");
         }
