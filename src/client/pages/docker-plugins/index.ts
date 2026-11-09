@@ -1,1 +1,5 @@
-export { DockerCliPluginsPage } from "./ui/docker-cli-plugins-page.tsx";
+export type {
+  DockerPluginBulkUpdate,
+  DockerPluginBulkUpdateResult,
+} from "./model/plugin-updates.ts";
+export { DockerPluginsWorkspace } from "./ui/docker-plugins-workspace.tsx";

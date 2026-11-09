@@ -1,3 +1,1 @@
-export { ContainerDetailPage } from "./ui/container-detail-page.tsx";
-export { ContainersPage } from "./ui/ContainersPage.tsx";
-export { EditContainerDialog, RunContainerDialog } from "./ui/container-dialog.tsx";
+export { ContainerLauncher, ContainersWorkspace } from "./ui/containers-workspace.tsx";

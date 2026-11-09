@@ -4774,6 +4774,11 @@ describe("App", () => {
     });
     expect(imageDialog).toHaveTextContent("연결된 태그 3개와 이미지 데이터를 삭제");
     expect(imageDialog).toHaveTextContent("uptime-kuma:2.5.3");
+    await user.click(within(imageDialog).getByRole("button", { name: "취소" }));
+    await user.click(screen.getByRole("link", { name: "볼륨" }));
+    await screen.findByRole("heading", { name: "볼륨", level: 1 });
+    await user.click(screen.getByRole("link", { name: "이미지" }));
+    expect(await screen.findByRole("table", { name: "이미지 ID 목록" })).toBeInTheDocument();
   });
 
   it.each([true, false])(
