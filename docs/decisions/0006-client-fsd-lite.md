@@ -25,3 +25,11 @@
 - URL, API 요청·응답, 작업 기록, Tauri sidecar와 서버 계약은 변경하지 않습니다.
 - 구조 이전과 제품 동작 변경을 같은 작업에 섞지 않습니다.
 - `app/styles/app.css`는 기존 전역 스타일을 그대로 보존합니다. 화면별 스타일 분리는 소유권과 회귀 범위를 별도로 검증할 수 있을 때 진행합니다.
+
+## 클라이언트 라우팅
+
+- React Router의 Declarative 모드와 `BrowserRouter`를 사용합니다. 전역 provider·`Routes` 조합과 시작 준비 진입 정책은 `app`이 소유합니다.
+- 경로는 Router의 location에서 파생합니다. 페이지 이동은 `navigate`, 섹션 쿼리는 `useSearchParams`로 읽으며 수동 History 상태와 합성 `popstate`를 병행하지 않습니다.
+- `shared/routes`는 기존 경로 빌더·검증·탐색 메타데이터를 유지합니다. 페이지 slice끼리 import하지 않습니다.
+- 이미 열린 창으로 전달하는 Tauri 이동은 `overseer:navigate` 이벤트의 `detail.path`를 앱의 Router에 전달합니다. 새 창의 초기 경로는 Router가 마운트되기 전에 설정합니다.
+- 기존 URL·잘못된 경로의 기본 화면 복귀·시작 준비·lazy loading·API 계약을 보존합니다. 마우스 보조 버튼 입력은 WebView 계층의 별도 검증 대상입니다.

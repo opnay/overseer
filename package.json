@@ -34,7 +34,8 @@
     "hono": "4.13.3",
     "lucide-react": "1.26.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-router": "8.5.1"
   },
   "devDependencies": {
     "@hono/vite-dev-server": "0.26.1",

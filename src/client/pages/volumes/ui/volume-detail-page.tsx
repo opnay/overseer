@@ -75,7 +75,6 @@ export function VolumeDetailPage({ name, refreshToken }: VolumeDetailPageProps) 
   const [error, setError] = useState<string>();
   const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
-    locationKey: name,
     values: sectionOrder,
   });
 

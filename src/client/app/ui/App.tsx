@@ -25,6 +25,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import type {
   ComposeProjectAction,
   ComposeBuilderInput,
@@ -627,14 +628,6 @@ interface DockerPluginBulkUpdateResult {
   trackingLost?: boolean;
 }
 
-function resourcePathFromLocation(): AppLocationPath {
-  return getAppLocation(window.location.pathname);
-}
-
-function startupRouteFromLocation(): boolean {
-  return window.location.pathname === "/startup";
-}
-
 type StartupPreview = Exclude<StartupPrerequisiteId, "compose">;
 
 function startupPreviewFromLocation(): StartupPreview | undefined {
@@ -678,6 +671,14 @@ function withStartupPreview(snapshot: StartupSnapshot, preview: StartupPreview):
 }
 
 export function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
+    </BrowserRouter>
+  );
+}
+
+function AppShell() {
   const navigationMode = useNavigationMode();
   return (
     <>
@@ -694,9 +695,14 @@ export function App() {
 }
 
 function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const startupRoute = location.pathname === "/startup";
+  const startupReturnPath = useRef<AppLocationPath>(getAppLocation(location.pathname));
+  const resourcePath = startupRoute ? startupReturnPath.current : getAppLocation(location.pathname);
+  const navigationSearch = location.search;
   const [startupPreview] = useState(startupPreviewFromLocation);
-  const [startupRoute, setStartupRoute] = useState(startupRouteFromLocation);
-  const [startupReviewMode, setStartupReviewMode] = useState(startupRouteFromLocation);
+  const [startupReviewMode, setStartupReviewMode] = useState(startupRoute);
   const [dashboard, setDashboard] = useState<DashboardSnapshot>();
   const [loadError, setLoadError] = useState<string>();
   const [startup, setStartup] = useState<StartupSnapshot>();
@@ -723,8 +729,6 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   const [runContainerImage, setRunContainerImage] = useState<string>();
   const [logsTarget, setLogsTarget] = useState<LogsTarget>();
   const [dark, setDark] = useState(() => window.localStorage.getItem("overseer-theme") === "dark");
-  const [resourcePath, setResourcePath] = useState<AppLocationPath>(resourcePathFromLocation);
-  const [navigationSearch, setNavigationSearch] = useState(window.location.search);
   const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [settingsRefreshRevision, setSettingsRefreshRevision] = useState(0);
   const operationCategory = APP_OPERATION_ROUTES.find(
@@ -872,9 +876,19 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
       return;
     }
     setStartupReviewMode(false);
-    setStartupRoute(true);
-    window.history.replaceState(null, "", `/startup${window.location.search}`);
-  }, [displayedStartup, isOperationsPage, requiredStartupStep, resourcePath, startupRoute]);
+    void navigate(`/startup${location.search}`, {
+      replace: true,
+      state: { automaticStartup: true },
+    });
+  }, [
+    displayedStartup,
+    isOperationsPage,
+    requiredStartupStep,
+    resourcePath,
+    startupRoute,
+    location.search,
+    navigate,
+  ]);
 
   useEffect(() => {
     void refreshStartup();
@@ -1027,33 +1041,25 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
   }, [dark]);
 
   useEffect(() => {
-    if (!startupRoute && window.location.pathname !== resourcePath) {
-      window.history.replaceState(null, "", resourcePath);
-    }
-    const syncResourcePath = () => {
-      const nextStartupRoute = startupRouteFromLocation();
-      setStartupRoute(nextStartupRoute);
-      setStartupReviewMode(nextStartupRoute);
-      setStartupOperationId(undefined);
-      setStartupStep(nextStartupRoute ? "homebrew" : undefined);
-      if (!nextStartupRoute) setResourcePath(resourcePathFromLocation());
-      setNavigationSearch(window.location.search);
-    };
-    window.addEventListener("popstate", syncResourcePath);
-    return () => window.removeEventListener("popstate", syncResourcePath);
-  }, []);
+    if (startupRoute) return;
+    startupReturnPath.current = resourcePath;
+    if (location.pathname !== resourcePath) void navigate(resourcePath, { replace: true });
+  }, [location.pathname, navigate, resourcePath, startupRoute]);
 
-  const selectResourcePath = useCallback((nextPath: AppLocationPath, search = "") => {
-    setStartupRoute(false);
-    setStartupReviewMode(false);
-    setResourcePath(nextPath);
-    const href = `${nextPath}${search}`;
-    if (`${window.location.pathname}${window.location.search}` !== href) {
-      window.history.pushState(null, "", href);
-    }
-    setNavigationSearch(search);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }, []);
+  useEffect(() => {
+    const review = startupRoute && location.state?.automaticStartup !== true;
+    setStartupReviewMode(review);
+    setStartupOperationId(undefined);
+    setStartupStep(review && !startupPreview ? "homebrew" : undefined);
+  }, [location, startupRoute, startupPreview]);
+
+  const selectResourcePath = useCallback(
+    (nextPath: AppLocationPath, search = "") => {
+      const href = `${nextPath}${search}`;
+      if (`${location.pathname}${location.search}` !== href) void navigate(href);
+    },
+    [location.pathname, location.search, navigate],
+  );
 
   const selectNavigationHref = useCallback(
     (href: string) => {
@@ -1062,6 +1068,22 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
     },
     [selectResourcePath],
   );
+
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const detail: unknown = (event as CustomEvent).detail;
+      if (
+        !detail ||
+        typeof detail !== "object" ||
+        !("path" in detail) ||
+        typeof detail.path !== "string"
+      )
+        return;
+      selectNavigationHref(detail.path);
+    };
+    window.addEventListener("overseer:navigate", onNavigate);
+    return () => window.removeEventListener("overseer:navigate", onNavigate);
+  }, [selectNavigationHref]);
 
   const mutate = async ({ key, onAccepted, request }: MutationOptions) => {
     setSubmitting(key);
@@ -2010,195 +2032,6 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
             </section>
           ) : null}
 
-          {dashboard && resourcePath === "/instances" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <RuntimeInstancesPage
-                busy={runtimeBusy || Boolean(submitting)}
-                onDelete={deleteRuntimeInstance}
-                onForceStop={(name) => mutateRuntimeInstance(name, "force-stop")}
-                onOpenDetail={(name) => selectResourcePath(runtimeInstanceDetailPath(name))}
-                onPrepare={(name) => mutateRuntimeInstance(name, "prepare")}
-                onSelect={(name) => mutateRuntimeInstance(name, "select")}
-                onStart={(name) => mutateRuntimeInstance(name, "start")}
-                onStop={(name) => mutateRuntimeInstance(name, "stop")}
-                onUpdate={updateRuntimeInstance}
-                refreshToken={settingsRefreshToken}
-              />
-            </Suspense>
-          ) : null}
-
-          {dashboard && currentDetail?.type === "instance" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <RuntimeInstanceDetailPage
-                name={currentDetail.identifier}
-                onHeaderStateChange={setRuntimeInstanceHeaderState}
-                refreshToken={detailRefreshToken}
-              />
-            </Suspense>
-          ) : null}
-
-          {dashboard && resourcePath === "/settings" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <SettingsPage
-                busy={runtimeBusy || Boolean(submitting)}
-                dashboard={dashboard}
-                onApplyDaemonConfiguration={applyDockerDaemonConfiguration}
-                refreshToken={settingsRefreshToken}
-              />
-            </Suspense>
-          ) : null}
-
-          {operationCategory !== undefined ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <OperationsPage
-                category={operationCategory}
-                key={operationCategory}
-                busyId={
-                  submitting?.startsWith("operation-retry-") ? submitting.slice(16) : undefined
-                }
-                onRetry={retryOperation}
-                refreshToken={`${operationsRefreshToken}:${operationsRefreshRevision}`}
-              />
-            </Suspense>
-          ) : null}
-
-          {resourcePath === "/docker-plugins" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <DockerCliPluginsPage
-                busy={
-                  Boolean(submitting) ||
-                  activeOperations.some(
-                    ({ kind }) => kind.startsWith("docker.plugin.") || kind.startsWith("startup."),
-                  )
-                }
-                onCheck={checkDockerPluginUpdates}
-                onClearBulkResult={resetDockerPluginBulkResult}
-                onInstall={installDockerPlugin}
-                onUpdate={updateDockerPlugin}
-                onUpdateAll={updateAllDockerPlugins}
-                operation={operations.find(({ target }) => target.resource === "dockerPlugin")}
-                bulkOperation={dockerPluginBulkOperation}
-                bulkProgress={
-                  dockerPluginBulkUpdate
-                    ? {
-                        currentId: dockerPluginBulkUpdate.ids[dockerPluginBulkUpdate.index]!,
-                        index: dockerPluginBulkUpdate.index,
-                        total: dockerPluginBulkUpdate.ids.length,
-                      }
-                    : undefined
-                }
-                bulkResult={dockerPluginBulkResult}
-                refreshToken={`${settingsRefreshRevision}:${dockerPluginOperationRefreshToken}`}
-              />
-            </Suspense>
-          ) : null}
-
-          {resourcePath === "/image-repositories" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <ImageRepositoriesPage
-                isBusy={(repository) =>
-                  targetBusy("imageRepository", repository.id) ||
-                  submitting === `image-repository-remove-${repository.id}`
-                }
-                onInspect={(repository) =>
-                  selectResourcePath(imageRepositoryDetailPath(repository.id))
-                }
-                onRemove={async (repository) => {
-                  setSubmitting(`image-repository-remove-${repository.id}`);
-                  setOperationError(undefined);
-                  try {
-                    await apiRequest(`/image-repositories/${encodeURIComponent(repository.id)}`, {
-                      method: "DELETE",
-                    });
-                    setImageRepositoryRefreshRevision((value) => value + 1);
-                  } catch (error) {
-                    setOperationError(actionError(error));
-                    throw error;
-                  } finally {
-                    setSubmitting(undefined);
-                  }
-                }}
-                onSync={(repository) =>
-                  mutate({
-                    key: `image-repository-sync-${repository.id}`,
-                    request: () =>
-                      apiRequest<OperationAccepted>(
-                        `/image-repositories/${encodeURIComponent(repository.id)}/sync`,
-                        { method: "POST" },
-                      ),
-                  })
-                }
-                refreshToken={`${imageRepositoryRefreshRevision}:${imageRepositoryOperationRefreshToken}`}
-              />
-            </Suspense>
-          ) : null}
-
-          {currentDetail?.type === "imageRepository" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <ImageRepositoryDetailPage
-                id={currentDetail.identifier}
-                isBusy={(reference) =>
-                  submitting === `image-repository-pull-${reference}` ||
-                  targetBusy("image", reference)
-                }
-                onCreateContainer={setRunContainerImage}
-                onDownload={(reference) =>
-                  pullImage(reference, `image-repository-pull-${reference}`)
-                }
-                onRepositoryChange={setImageRepositoryHeader}
-                refreshToken={detailRefreshToken}
-                runtimeAvailable={runtimeRunning}
-              />
-            </Suspense>
-          ) : null}
-
-          {dashboard &&
-          runtimeRunning &&
-          dockerComposeAvailable &&
-          currentDetail?.type === "compose" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <ComposeProjectDetailPage
-                busy={runtimeBusy || targetBusy("compose", currentDetail.identifier)}
-                name={currentDetail.identifier}
-                onBuilderUpdate={(input, expectedConfigHash) =>
-                  mutate({
-                    key: `compose-${currentDetail.identifier}-builder-update`,
-                    request: () =>
-                      apiRequest<OperationAccepted>(
-                        `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/builder`,
-                        {
-                          body: JSON.stringify({ expectedConfigHash, input }),
-                          method: "PATCH",
-                        },
-                      ),
-                  })
-                }
-                onOpenContainer={(id) => selectResourcePath(containerDetailPath(id))}
-                onRemoteCheck={() =>
-                  mutate({
-                    key: `compose-${currentDetail.identifier}-remote-check`,
-                    request: () =>
-                      apiRequest<OperationAccepted>(
-                        `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/remote/check`,
-                        { method: "POST" },
-                      ),
-                  })
-                }
-                onRemoteUpdate={() =>
-                  mutate({
-                    key: `compose-${currentDetail.identifier}-remote-update`,
-                    request: () =>
-                      apiRequest<OperationAccepted>(
-                        `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/remote/update`,
-                        { method: "POST" },
-                      ),
-                  })
-                }
-                refreshToken={detailRefreshToken}
-              />
-            </Suspense>
-          ) : null}
-
           {dashboard &&
           runtimeRunning &&
           !dockerComposeAvailable &&
@@ -2225,226 +2058,484 @@ function AppContent({ navigationMode }: { navigationMode: NavigationMode }) {
               </EmptyState.Root>
             </section>
           ) : null}
-
-          {dashboard && runtimeRunning && currentDetail?.type === "container" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <ContainerDetailPage
-                id={currentDetail.identifier}
-                onOpenCompose={(name) => selectResourcePath(composeProjectDetailPath(name))}
-                refreshToken={detailRefreshToken}
-                summary={currentContainer}
-              />
-            </Suspense>
-          ) : null}
-
-          {dashboard && runtimeRunning && currentDetail?.type === "image" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <ImageDetailPage
-                id={currentDetail.identifier}
-                refreshToken={detailRefreshToken}
-                summary={currentImage}
-              />
-            </Suspense>
-          ) : null}
-
-          {dashboard && runtimeRunning && currentDetail?.type === "network" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <NetworkDetailPage
-                name={currentDetail.identifier}
-                onOpenContainer={(id) => selectResourcePath(containerDetailPath(id))}
-                refreshToken={detailRefreshToken}
-              />
-            </Suspense>
-          ) : null}
-
-          {dashboard && runtimeRunning && currentDetail?.type === "volume" ? (
-            <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
-              <VolumeDetailPage name={currentDetail.identifier} refreshToken={detailRefreshToken} />
-            </Suspense>
-          ) : null}
-
-          {dashboard &&
-          runtimeRunning &&
-          !currentDetail &&
-          !isOperationsPage &&
-          resourcePath !== "/image-repositories" &&
-          resourcePath !== "/settings" ? (
-            <>
-              {resourcePath === "/compose" && dockerComposeAvailable ? (
-                <ComposePage
-                  isBusy={(project) => runtimeBusy || targetBusy("compose", project.name)}
-                  onAction={(project, action) => runComposeAction(project.name, action)}
-                  onBuilderRemove={(project) =>
-                    mutate({
-                      key: `compose-${project.name}-builder-remove`,
-                      request: () =>
-                        apiRequest<OperationAccepted>(
-                          `/compose/projects/${encodeURIComponent(project.name)}/builder`,
-                          { method: "DELETE" },
-                        ),
-                    })
-                  }
-                  onBuilderUpdate={(project, input, expectedConfigHash) =>
-                    mutate({
-                      key: `compose-${project.name}-builder-update`,
-                      request: () =>
-                        apiRequest<OperationAccepted>(
-                          `/compose/projects/${encodeURIComponent(project.name)}/builder`,
+          <Routes>
+            <Route
+              path="/instances"
+              element={
+                dashboard ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <RuntimeInstancesPage
+                      busy={runtimeBusy || Boolean(submitting)}
+                      onDelete={deleteRuntimeInstance}
+                      onForceStop={(name) => mutateRuntimeInstance(name, "force-stop")}
+                      onOpenDetail={(name) => selectResourcePath(runtimeInstanceDetailPath(name))}
+                      onPrepare={(name) => mutateRuntimeInstance(name, "prepare")}
+                      onSelect={(name) => mutateRuntimeInstance(name, "select")}
+                      onStart={(name) => mutateRuntimeInstance(name, "start")}
+                      onStop={(name) => mutateRuntimeInstance(name, "stop")}
+                      onUpdate={updateRuntimeInstance}
+                      refreshToken={settingsRefreshToken}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/instances/:name"
+              element={
+                dashboard && currentDetail?.type === "instance" ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <RuntimeInstanceDetailPage
+                      name={currentDetail.identifier}
+                      onHeaderStateChange={setRuntimeInstanceHeaderState}
+                      refreshToken={detailRefreshToken}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                dashboard ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <SettingsPage
+                      busy={runtimeBusy || Boolean(submitting)}
+                      dashboard={dashboard}
+                      onApplyDaemonConfiguration={applyDockerDaemonConfiguration}
+                      refreshToken={settingsRefreshToken}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/operations/*"
+              element={
+                operationCategory !== undefined ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <OperationsPage
+                      category={operationCategory}
+                      key={operationCategory}
+                      busyId={
+                        submitting?.startsWith("operation-retry-")
+                          ? submitting.slice(16)
+                          : undefined
+                      }
+                      onRetry={retryOperation}
+                      refreshToken={`${operationsRefreshToken}:${operationsRefreshRevision}`}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/docker-plugins"
+              element={
+                <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                  <DockerCliPluginsPage
+                    busy={
+                      Boolean(submitting) ||
+                      activeOperations.some(
+                        ({ kind }) =>
+                          kind.startsWith("docker.plugin.") || kind.startsWith("startup."),
+                      )
+                    }
+                    onCheck={checkDockerPluginUpdates}
+                    onClearBulkResult={resetDockerPluginBulkResult}
+                    onInstall={installDockerPlugin}
+                    onUpdate={updateDockerPlugin}
+                    onUpdateAll={updateAllDockerPlugins}
+                    operation={operations.find(({ target }) => target.resource === "dockerPlugin")}
+                    bulkOperation={dockerPluginBulkOperation}
+                    bulkProgress={
+                      dockerPluginBulkUpdate
+                        ? {
+                            currentId: dockerPluginBulkUpdate.ids[dockerPluginBulkUpdate.index]!,
+                            index: dockerPluginBulkUpdate.index,
+                            total: dockerPluginBulkUpdate.ids.length,
+                          }
+                        : undefined
+                    }
+                    bulkResult={dockerPluginBulkResult}
+                    refreshToken={`${settingsRefreshRevision}:${dockerPluginOperationRefreshToken}`}
+                  />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/image-repositories"
+              element={
+                <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                  <ImageRepositoriesPage
+                    isBusy={(repository) =>
+                      targetBusy("imageRepository", repository.id) ||
+                      submitting === `image-repository-remove-${repository.id}`
+                    }
+                    onInspect={(repository) =>
+                      selectResourcePath(imageRepositoryDetailPath(repository.id))
+                    }
+                    onRemove={async (repository) => {
+                      setSubmitting(`image-repository-remove-${repository.id}`);
+                      setOperationError(undefined);
+                      try {
+                        await apiRequest(
+                          `/image-repositories/${encodeURIComponent(repository.id)}`,
                           {
-                            body: JSON.stringify({ expectedConfigHash, input }),
-                            method: "PATCH",
+                            method: "DELETE",
                           },
-                        ),
-                    })
-                  }
-                  onInspect={(project) =>
-                    selectResourcePath(composeProjectDetailPath(project.name))
-                  }
-                  onLogs={(project) =>
-                    setLogsTarget({
-                      description: "프로젝트 전체 서비스의 최근 300줄을 표시합니다.",
-                      requestPath: `/compose/projects/${encodeURIComponent(project.name)}/logs`,
-                      title: `${project.name} 로그`,
-                    })
-                  }
-                  onRemoteCheck={(project) =>
-                    mutate({
-                      key: `compose-${project.name}-remote-check`,
-                      request: () =>
-                        apiRequest<OperationAccepted>(
-                          `/compose/projects/${encodeURIComponent(project.name)}/remote/check`,
-                          { method: "POST" },
-                        ),
-                    })
-                  }
-                  onRemoteRemove={(project) =>
-                    mutate({
-                      key: `compose-${project.name}-remote-remove`,
-                      request: () =>
-                        apiRequest<OperationAccepted>(
-                          `/compose/projects/${encodeURIComponent(project.name)}/remote`,
-                          { method: "DELETE" },
-                        ),
-                    })
-                  }
-                  onRemoteUpdate={(project) =>
-                    mutate({
-                      key: `compose-${project.name}-remote-update`,
-                      request: () =>
-                        apiRequest<OperationAccepted>(
-                          `/compose/projects/${encodeURIComponent(project.name)}/remote/update`,
-                          { method: "POST" },
-                        ),
-                    })
-                  }
-                  projects={dashboard.composeProjects}
-                />
-              ) : null}
-
-              {resourcePath === "/containers" ? (
-                <section className="overseer-panel" id="containers">
-                  <ContainersPage
-                    containers={dashboard?.containers ?? []}
-                    isBusy={(container) => runtimeBusy || targetBusy("container", container.id)}
-                    onAction={(container, action) =>
-                      void mutate({
-                        key: `${container.id}-${action}`,
+                        );
+                        setImageRepositoryRefreshRevision((value) => value + 1);
+                      } catch (error) {
+                        setOperationError(actionError(error));
+                        throw error;
+                      } finally {
+                        setSubmitting(undefined);
+                      }
+                    }}
+                    onSync={(repository) =>
+                      mutate({
+                        key: `image-repository-sync-${repository.id}`,
                         request: () =>
                           apiRequest<OperationAccepted>(
-                            `/containers/${container.id}/actions/${action}`,
+                            `/image-repositories/${encodeURIComponent(repository.id)}/sync`,
                             { method: "POST" },
+                          ),
+                      })
+                    }
+                    refreshToken={`${imageRepositoryRefreshRevision}:${imageRepositoryOperationRefreshToken}`}
+                  />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/image-repositories/:id"
+              element={
+                currentDetail?.type === "imageRepository" ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <ImageRepositoryDetailPage
+                      id={currentDetail.identifier}
+                      isBusy={(reference) =>
+                        submitting === `image-repository-pull-${reference}` ||
+                        targetBusy("image", reference)
+                      }
+                      onCreateContainer={setRunContainerImage}
+                      onDownload={(reference) =>
+                        pullImage(reference, `image-repository-pull-${reference}`)
+                      }
+                      onRepositoryChange={setImageRepositoryHeader}
+                      refreshToken={detailRefreshToken}
+                      runtimeAvailable={runtimeRunning}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/compose/:name"
+              element={
+                dashboard &&
+                runtimeRunning &&
+                dockerComposeAvailable &&
+                currentDetail?.type === "compose" ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <ComposeProjectDetailPage
+                      busy={runtimeBusy || targetBusy("compose", currentDetail.identifier)}
+                      name={currentDetail.identifier}
+                      onBuilderUpdate={(input, expectedConfigHash) =>
+                        mutate({
+                          key: `compose-${currentDetail.identifier}-builder-update`,
+                          request: () =>
+                            apiRequest<OperationAccepted>(
+                              `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/builder`,
+                              {
+                                body: JSON.stringify({ expectedConfigHash, input }),
+                                method: "PATCH",
+                              },
+                            ),
+                        })
+                      }
+                      onOpenContainer={(id) => selectResourcePath(containerDetailPath(id))}
+                      onRemoteCheck={() =>
+                        mutate({
+                          key: `compose-${currentDetail.identifier}-remote-check`,
+                          request: () =>
+                            apiRequest<OperationAccepted>(
+                              `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/remote/check`,
+                              { method: "POST" },
+                            ),
+                        })
+                      }
+                      onRemoteUpdate={() =>
+                        mutate({
+                          key: `compose-${currentDetail.identifier}-remote-update`,
+                          request: () =>
+                            apiRequest<OperationAccepted>(
+                              `/compose/projects/${encodeURIComponent(currentDetail.identifier)}/remote/update`,
+                              { method: "POST" },
+                            ),
+                        })
+                      }
+                      refreshToken={detailRefreshToken}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/containers/:id"
+              element={
+                dashboard && runtimeRunning && currentDetail?.type === "container" ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <ContainerDetailPage
+                      id={currentDetail.identifier}
+                      onOpenCompose={(name) => selectResourcePath(composeProjectDetailPath(name))}
+                      refreshToken={detailRefreshToken}
+                      summary={currentContainer}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/images/:id"
+              element={
+                dashboard && runtimeRunning && currentDetail?.type === "image" ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <ImageDetailPage
+                      id={currentDetail.identifier}
+                      refreshToken={detailRefreshToken}
+                      summary={currentImage}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/networks/:name"
+              element={
+                dashboard && runtimeRunning && currentDetail?.type === "network" ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <NetworkDetailPage
+                      name={currentDetail.identifier}
+                      onOpenContainer={(id) => selectResourcePath(containerDetailPath(id))}
+                      refreshToken={detailRefreshToken}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/volumes/:name"
+              element={
+                dashboard && runtimeRunning && currentDetail?.type === "volume" ? (
+                  <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+                    <VolumeDetailPage
+                      name={currentDetail.identifier}
+                      refreshToken={detailRefreshToken}
+                    />
+                  </Suspense>
+                ) : null
+              }
+            />
+            <Route
+              path="/compose"
+              element={
+                dashboard && runtimeRunning && dockerComposeAvailable ? (
+                  <ComposePage
+                    isBusy={(project) => runtimeBusy || targetBusy("compose", project.name)}
+                    onAction={(project, action) => runComposeAction(project.name, action)}
+                    onBuilderRemove={(project) =>
+                      mutate({
+                        key: `compose-${project.name}-builder-remove`,
+                        request: () =>
+                          apiRequest<OperationAccepted>(
+                            `/compose/projects/${encodeURIComponent(project.name)}/builder`,
+                            { method: "DELETE" },
+                          ),
+                      })
+                    }
+                    onBuilderUpdate={(project, input, expectedConfigHash) =>
+                      mutate({
+                        key: `compose-${project.name}-builder-update`,
+                        request: () =>
+                          apiRequest<OperationAccepted>(
+                            `/compose/projects/${encodeURIComponent(project.name)}/builder`,
+                            {
+                              body: JSON.stringify({ expectedConfigHash, input }),
+                              method: "PATCH",
+                            },
+                          ),
+                      })
+                    }
+                    onInspect={(project) =>
+                      selectResourcePath(composeProjectDetailPath(project.name))
+                    }
+                    onLogs={(project) =>
+                      setLogsTarget({
+                        description: "프로젝트 전체 서비스의 최근 300줄을 표시합니다.",
+                        requestPath: `/compose/projects/${encodeURIComponent(project.name)}/logs`,
+                        title: `${project.name} 로그`,
+                      })
+                    }
+                    onRemoteCheck={(project) =>
+                      mutate({
+                        key: `compose-${project.name}-remote-check`,
+                        request: () =>
+                          apiRequest<OperationAccepted>(
+                            `/compose/projects/${encodeURIComponent(project.name)}/remote/check`,
+                            { method: "POST" },
+                          ),
+                      })
+                    }
+                    onRemoteRemove={(project) =>
+                      mutate({
+                        key: `compose-${project.name}-remote-remove`,
+                        request: () =>
+                          apiRequest<OperationAccepted>(
+                            `/compose/projects/${encodeURIComponent(project.name)}/remote`,
+                            { method: "DELETE" },
+                          ),
+                      })
+                    }
+                    onRemoteUpdate={(project) =>
+                      mutate({
+                        key: `compose-${project.name}-remote-update`,
+                        request: () =>
+                          apiRequest<OperationAccepted>(
+                            `/compose/projects/${encodeURIComponent(project.name)}/remote/update`,
+                            { method: "POST" },
+                          ),
+                      })
+                    }
+                    projects={dashboard.composeProjects}
+                  />
+                ) : null
+              }
+            />
+            <Route
+              path="/containers"
+              element={
+                dashboard && runtimeRunning ? (
+                  <section className="overseer-panel" id="containers">
+                    <ContainersPage
+                      containers={dashboard?.containers ?? []}
+                      isBusy={(container) => runtimeBusy || targetBusy("container", container.id)}
+                      onAction={(container, action) =>
+                        void mutate({
+                          key: `${container.id}-${action}`,
+                          request: () =>
+                            apiRequest<OperationAccepted>(
+                              `/containers/${container.id}/actions/${action}`,
+                              { method: "POST" },
+                            ),
+                        }).catch(() => undefined)
+                      }
+                      onEdit={setEditContainer}
+                      onInspect={(container) =>
+                        selectResourcePath(containerDetailPath(container.id))
+                      }
+                      onLogs={(container) =>
+                        setLogsTarget({
+                          description: "최근 300줄을 시간 정보와 함께 표시합니다.",
+                          requestPath: `/containers/${container.id}/logs`,
+                          title: `${container.name} 로그`,
+                        })
+                      }
+                      onRemove={(container) =>
+                        void mutate({
+                          key: `${container.id}-remove`,
+                          request: () =>
+                            apiRequest<OperationAccepted>(`/containers/${container.id}`, {
+                              method: "DELETE",
+                            }),
+                        }).catch(() => undefined)
+                      }
+                    />
+                  </section>
+                ) : null
+              }
+            />
+            <Route
+              path="/images"
+              element={
+                dashboard && runtimeRunning ? (
+                  <section className="overseer-panel" id="images">
+                    <ImagesPage
+                      images={dashboard?.images ?? []}
+                      isBusy={(image) => runtimeBusy || targetBusy("image", image.id)}
+                      onInspect={(image) => selectResourcePath(imageDetailPath(image.id))}
+                      onRemoveImage={(id) =>
+                        void mutate({
+                          key: `${id}-remove`,
+                          request: () =>
+                            apiRequest<OperationAccepted>(`/images/${id}`, {
+                              method: "DELETE",
+                            }),
+                        }).catch(() => undefined)
+                      }
+                      onRemoveTag={(image) =>
+                        void mutate({
+                          key: `${image.id}-${image.url}-remove-tag`,
+                          request: () =>
+                            apiRequest<OperationAccepted>("/images/tags/remove", {
+                              body: JSON.stringify({ id: image.id, reference: image.url }),
+                              method: "POST",
+                            }),
+                        }).catch(() => undefined)
+                      }
+                      view={imageView}
+                    />
+                  </section>
+                ) : null
+              }
+            />
+            <Route
+              path="/volumes"
+              element={
+                dashboard && runtimeRunning ? (
+                  <VolumesPage
+                    isBusy={(volume) => runtimeBusy || targetBusy("volume", volume.name)}
+                    onRemove={(volume) =>
+                      void mutate({
+                        key: `${volume.name}-remove`,
+                        request: () =>
+                          apiRequest<OperationAccepted>(
+                            `/volumes/${encodeURIComponent(volume.name)}`,
+                            { method: "DELETE" },
                           ),
                       }).catch(() => undefined)
                     }
-                    onEdit={setEditContainer}
-                    onInspect={(container) => selectResourcePath(containerDetailPath(container.id))}
-                    onLogs={(container) =>
-                      setLogsTarget({
-                        description: "최근 300줄을 시간 정보와 함께 표시합니다.",
-                        requestPath: `/containers/${container.id}/logs`,
-                        title: `${container.name} 로그`,
-                      })
-                    }
-                    onRemove={(container) =>
+                    onInspect={(volume) => selectResourcePath(volumeDetailPath(volume.name))}
+                    volumes={dashboard?.volumes ?? []}
+                  />
+                ) : null
+              }
+            />
+            <Route
+              path="/networks"
+              element={
+                dashboard && runtimeRunning ? (
+                  <NetworksPage
+                    isBusy={(network) => runtimeBusy || targetBusy("network", network.name)}
+                    networks={dashboard?.networks ?? []}
+                    onInspect={(network) => selectResourcePath(networkDetailPath(network.name))}
+                    onRemove={(network) =>
                       void mutate({
-                        key: `${container.id}-remove`,
+                        key: `${network.name}-remove`,
                         request: () =>
-                          apiRequest<OperationAccepted>(`/containers/${container.id}`, {
-                            method: "DELETE",
-                          }),
+                          apiRequest<OperationAccepted>(
+                            `/networks/${encodeURIComponent(network.name)}`,
+                            { method: "DELETE" },
+                          ),
                       }).catch(() => undefined)
                     }
                   />
-                </section>
-              ) : null}
-
-              {resourcePath === "/images" ? (
-                <section className="overseer-panel" id="images">
-                  <ImagesPage
-                    images={dashboard?.images ?? []}
-                    isBusy={(image) => runtimeBusy || targetBusy("image", image.id)}
-                    onInspect={(image) => selectResourcePath(imageDetailPath(image.id))}
-                    onRemoveImage={(id) =>
-                      void mutate({
-                        key: `${id}-remove`,
-                        request: () =>
-                          apiRequest<OperationAccepted>(`/images/${id}`, {
-                            method: "DELETE",
-                          }),
-                      }).catch(() => undefined)
-                    }
-                    onRemoveTag={(image) =>
-                      void mutate({
-                        key: `${image.id}-${image.url}-remove-tag`,
-                        request: () =>
-                          apiRequest<OperationAccepted>("/images/tags/remove", {
-                            body: JSON.stringify({ id: image.id, reference: image.url }),
-                            method: "POST",
-                          }),
-                      }).catch(() => undefined)
-                    }
-                    view={imageView}
-                  />
-                </section>
-              ) : null}
-
-              {resourcePath === "/volumes" ? (
-                <VolumesPage
-                  isBusy={(volume) => runtimeBusy || targetBusy("volume", volume.name)}
-                  onRemove={(volume) =>
-                    void mutate({
-                      key: `${volume.name}-remove`,
-                      request: () =>
-                        apiRequest<OperationAccepted>(
-                          `/volumes/${encodeURIComponent(volume.name)}`,
-                          { method: "DELETE" },
-                        ),
-                    }).catch(() => undefined)
-                  }
-                  onInspect={(volume) => selectResourcePath(volumeDetailPath(volume.name))}
-                  volumes={dashboard?.volumes ?? []}
-                />
-              ) : null}
-
-              {resourcePath === "/networks" ? (
-                <NetworksPage
-                  isBusy={(network) => runtimeBusy || targetBusy("network", network.name)}
-                  networks={dashboard?.networks ?? []}
-                  onInspect={(network) => selectResourcePath(networkDetailPath(network.name))}
-                  onRemove={(network) =>
-                    void mutate({
-                      key: `${network.name}-remove`,
-                      request: () =>
-                        apiRequest<OperationAccepted>(
-                          `/networks/${encodeURIComponent(network.name)}`,
-                          { method: "DELETE" },
-                        ),
-                    }).catch(() => undefined)
-                  }
-                />
-              ) : null}
-            </>
-          ) : null}
+                ) : null
+              }
+            />
+            <Route path="*" element={null} />
+          </Routes>
         </main>
       </div>
       <Suspense fallback={null}>

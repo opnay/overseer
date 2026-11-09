@@ -185,7 +185,6 @@ export function NetworkDetailPage({ name, onOpenContainer, refreshToken }: Netwo
   const [error, setError] = useState<string>();
   const [section, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
-    locationKey: name,
     values: sectionOrder,
   });
 

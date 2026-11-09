@@ -1,6 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { act } from "react";
+import { BrowserRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import { useUrlSection } from "../src/client/shared/lib/url-section/index.ts";
 
@@ -27,7 +28,11 @@ describe("useUrlSection", () => {
   it("persists a selected section in the URL and restores it after mounting", async () => {
     const user = userEvent.setup();
     window.history.replaceState(null, "", "/settings?section=network");
-    render(<SectionProbe />);
+    render(
+      <BrowserRouter>
+        <SectionProbe />
+      </BrowserRouter>,
+    );
     expect(screen.getByText("network")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "네트워크 설정" })).toHaveAttribute(
       "href",
@@ -40,19 +45,26 @@ describe("useUrlSection", () => {
     expect(screen.getByText("engine")).toBeInTheDocument();
 
     cleanup();
-    render(<SectionProbe />);
+    render(
+      <BrowserRouter>
+        <SectionProbe />
+      </BrowserRouter>,
+    );
     expect(screen.getByText("engine")).toBeInTheDocument();
 
-    act(() => {
-      window.history.pushState(null, "", "/settings?section=network");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
-    expect(screen.getByText("network")).toBeInTheDocument();
+    act(() => window.history.back());
+    await waitFor(() => expect(screen.getByText("network")).toBeInTheDocument());
+    act(() => window.history.forward());
+    await waitFor(() => expect(screen.getByText("engine")).toBeInTheDocument());
   });
 
   it("falls back to the default for an unknown section", () => {
     window.history.replaceState(null, "", "/settings?section=unknown");
-    render(<SectionProbe />);
+    render(
+      <BrowserRouter>
+        <SectionProbe />
+      </BrowserRouter>,
+    );
     expect(screen.getByText("general")).toBeInTheDocument();
   });
 });

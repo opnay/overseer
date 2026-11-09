@@ -102,7 +102,6 @@ export function ComposeProjectDetailPage({
   const [logsLoading, setLogsLoading] = useState(false);
   const [requestedSection, setSection, getSectionHref] = useUrlSection({
     defaultValue: "overview",
-    locationKey: name,
     values: sectionOrder,
   });
   const section =

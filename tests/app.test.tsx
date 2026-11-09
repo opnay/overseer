@@ -3265,6 +3265,48 @@ describe("App", () => {
     ).toBe(true);
   });
 
+  it("keeps tray navigation and browser back/forward in the same page history", async () => {
+    const dashboard: DashboardSnapshot = {
+      composeProjects: [],
+      containers: [],
+      images: [],
+      networks: [],
+      volumes: [],
+      runtime: { instance: "overseer", message: "정상", phase: "running" },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        if (String(input).includes("/api/operations")) return jsonResponse({ operations: [] });
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/containers");
+    render(<App />);
+    await screen.findByRole("heading", { name: "컨테이너", level: 1 });
+
+    const openFromTray = (path: string) =>
+      act(() => {
+        window.dispatchEvent(new CustomEvent("overseer:navigate", { detail: { path } }));
+      });
+    openFromTray("/images");
+    await screen.findByRole("heading", { name: "이미지", level: 1 });
+    openFromTray("/volumes");
+    await screen.findByRole("heading", { name: "볼륨", level: 1 });
+    openFromTray("/volumes");
+
+    act(() => window.history.back());
+    await screen.findByRole("heading", { name: "이미지", level: 1 });
+    expect(window.location.pathname).toBe("/images");
+    act(() => window.history.back());
+    await screen.findByRole("heading", { name: "컨테이너", level: 1 });
+    expect(window.location.pathname).toBe("/containers");
+    act(() => window.history.forward());
+    await screen.findByRole("heading", { name: "이미지", level: 1 });
+    expect(window.location.pathname).toBe("/images");
+  });
+
   it("opens all navigation groups from one mobile header", async () => {
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {

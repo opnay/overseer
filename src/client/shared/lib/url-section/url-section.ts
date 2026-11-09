@@ -1,54 +1,32 @@
-import { useCallback, useEffect, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 export function useUrlSection<Section extends string>({
   defaultValue,
-  locationKey,
   parameter = "section",
   values,
 }: {
   defaultValue: Section;
-  locationKey?: string;
   parameter?: string;
   values: ReadonlyArray<Section>;
 }): [Section, (section: Section) => void, (section: Section) => string] {
-  const read = useCallback(() => {
-    const candidate = new URLSearchParams(window.location.search).get(parameter);
-    return candidate && values.includes(candidate as Section)
-      ? (candidate as Section)
-      : defaultValue;
-  }, [defaultValue, parameter, values]);
-  const [section, setSection] = useState<Section>(read);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const candidate = params.get(parameter);
+  const section =
+    candidate && values.includes(candidate as Section) ? (candidate as Section) : defaultValue;
 
-  useEffect(() => setSection(read()), [locationKey, read]);
+  const getHref = (next: Section) => {
+    const search = new URLSearchParams(params);
+    if (next === defaultValue) search.delete(parameter);
+    else search.set(parameter, next);
+    const query = search.toString();
+    return `${location.pathname}${query ? `?${query}` : ""}${location.hash}`;
+  };
 
-  useEffect(() => {
-    const sync = () => setSection(read());
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
-  }, [read]);
-
-  const select = useCallback(
-    (next: Section) => {
-      if (next === section) return;
-      const url = new URL(window.location.href);
-      if (next === defaultValue) url.searchParams.delete(parameter);
-      else url.searchParams.set(parameter, next);
-      window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
-      setSection(next);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    },
-    [defaultValue, parameter, section],
-  );
-
-  const getHref = useCallback(
-    (next: Section) => {
-      const url = new URL(window.location.href);
-      if (next === defaultValue) url.searchParams.delete(parameter);
-      else url.searchParams.set(parameter, next);
-      return `${url.pathname}${url.search}${url.hash}`;
-    },
-    [defaultValue, parameter],
-  );
+  const select = (next: Section) => {
+    if (next !== section) void navigate(getHref(next));
+  };
 
   return [section, select, getHref];
 }
