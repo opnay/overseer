@@ -1,6 +1,24 @@
 export interface RemoteRepositoryTag {
   digest?: string;
   name: string;
+  lastUpdated?: string;
+  platforms?: string[];
+}
+
+export function imagePlatforms(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.flatMap((item: unknown) => {
+        if (!item || typeof item !== "object") return [];
+        const { os, architecture, variant } = item as Record<string, unknown>;
+        const part = (value: unknown): value is string =>
+          typeof value === "string" && /^[a-z0-9._-]{1,64}$/i.test(value) && value !== "unknown";
+        if (!part(os) || !part(architecture)) return [];
+        return [`${os}/${architecture}${part(variant) ? `/${variant}` : ""}`];
+      }),
+    ),
+  ].sort();
 }
 
 export function manifestDigest(value: unknown): string | undefined {

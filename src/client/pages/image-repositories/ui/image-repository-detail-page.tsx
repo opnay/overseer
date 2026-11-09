@@ -1,4 +1,5 @@
 import { Alert } from "@opnay/city-ds-react/alert";
+import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
 import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
@@ -152,15 +153,18 @@ export function ImageRepositoryDetailPage({
   const [error, setError] = useState<string>();
   const [favoritePending, setFavoritePending] = useState<string>();
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<ImageRepositoryTagSort>("tag");
+  const [sort, setSort] = useState<ImageRepositoryTagSort>();
   const [repository, setRepository] = useState<ImageRepositoryDetail>();
   const [requestRevision, setRequestRevision] = useState(0);
   const [tagList, setTagList] = useState<ImageRepositoryTagList>();
   const [tagRevision, setTagRevision] = useState(0);
   const [tagsLoading, setTagsLoading] = useState(true);
+  const supportsDateSort = repository?.repository.startsWith("docker.io/") ?? false;
+  const activeSort = sort ?? (supportsDateSort ? "-lastUpdated" : "tag");
 
   useEffect(() => {
     setPage(1);
+    setSort(undefined);
     setTagList(undefined);
     return () => onRepositoryChange(undefined);
   }, [id, onRepositoryChange]);
@@ -184,10 +188,11 @@ export function ImageRepositoryDetailPage({
   }, [id, onRepositoryChange, refreshToken, requestRevision]);
 
   useEffect(() => {
+    if (!repository || repository.id !== id) return;
     let active = true;
     setError(undefined);
     setTagsLoading(true);
-    const parameters = new URLSearchParams({ page: String(page), sort });
+    const parameters = new URLSearchParams({ page: String(page), sort: activeSort });
     void apiRequest<{ tags: ImageRepositoryTagList }>(
       `/image-repositories/${encodeURIComponent(id)}/tags?${parameters}`,
     )
@@ -197,7 +202,7 @@ export function ImageRepositoryDetailPage({
     return () => {
       active = false;
     };
-  }, [id, page, sort, refreshToken, requestRevision, tagRevision]);
+  }, [id, page, activeSort, repository?.id, refreshToken, requestRevision, tagRevision]);
 
   const setFavorite = async (tag: ImageRepositoryTagItem) => {
     setFavoritePending(tag.name);
@@ -313,12 +318,20 @@ export function ImageRepositoryDetailPage({
                 <Table.Header>
                   <Table.Row>
                     <Table.Head
-                      aria-sort={sort === "tag" ? "ascending" : "descending"}
+                      aria-sort={
+                        activeSort === "tag"
+                          ? "ascending"
+                          : activeSort === "-tag"
+                            ? "descending"
+                            : "none"
+                      }
                       className="overseer-table-column-wide"
                     >
                       <Table.SortButton
-                        aria-label={`태그 ${sort === "tag" ? "내림차순" : "오름차순"} 정렬`}
-                        direction={sort === "tag" ? "asc" : "desc"}
+                        aria-label={`태그 ${activeSort === "tag" ? "내림차순" : "오름차순"} 정렬`}
+                        direction={
+                          activeSort === "tag" ? "asc" : activeSort === "-tag" ? "desc" : undefined
+                        }
                         disabled={tagsLoading || Boolean(favoritePending)}
                         onDirectionChange={(nextOrder) => {
                           setSort(nextOrder === "asc" ? "tag" : "-tag");
@@ -328,12 +341,45 @@ export function ImageRepositoryDetailPage({
                         태그
                       </Table.SortButton>
                     </Table.Head>
+                    <Table.Head
+                      aria-sort={
+                        activeSort === "lastUpdated"
+                          ? "ascending"
+                          : activeSort === "-lastUpdated"
+                            ? "descending"
+                            : "none"
+                      }
+                    >
+                      <Table.SortButton
+                        aria-label={`갱신일 ${activeSort === "-lastUpdated" ? "오름차순" : "내림차순"} 정렬`}
+                        disabled={!supportsDateSort || tagsLoading || Boolean(favoritePending)}
+                        direction={
+                          activeSort === "lastUpdated"
+                            ? "asc"
+                            : activeSort === "-lastUpdated"
+                              ? "desc"
+                              : undefined
+                        }
+                        onDirectionChange={(nextOrder) => {
+                          setSort(
+                            activeSort === "lastUpdated" || activeSort === "-lastUpdated"
+                              ? nextOrder === "asc"
+                                ? "lastUpdated"
+                                : "-lastUpdated"
+                              : "-lastUpdated",
+                          );
+                          setPage(1);
+                        }}
+                      >
+                        갱신일
+                      </Table.SortButton>
+                    </Table.Head>
                     <Table.Head className="overseer-actions-column">작업</Table.Head>
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
                   {tagList.tags.length === 0 ? (
-                    <Table.StateRow colSpan={2}>
+                    <Table.StateRow colSpan={3}>
                       <EmptyState.Root density="compact">
                         <EmptyState.Icon>
                           <Tags aria-hidden="true" />
@@ -355,9 +401,26 @@ export function ImageRepositoryDetailPage({
                             <div className="overseer-primary-cell">
                               <strong>{tag.name}</strong>
                               <div className="overseer-primary-meta">
-                                <code>{tag.digest ?? "해시 정보 없음"}</code>
+                                {tag.platforms?.length ? (
+                                  tag.platforms.map((platform) => (
+                                    <Badge key={platform} size="sm" tone="neutral">
+                                      {platform}
+                                    </Badge>
+                                  ))
+                                ) : (
+                                  <span>플랫폼 정보 없음</span>
+                                )}
                               </div>
                             </div>
+                          </Table.Cell>
+                          <Table.Cell>
+                            {tag.lastUpdated ? (
+                              <time dateTime={tag.lastUpdated}>
+                                {formatDateTime(tag.lastUpdated)}
+                              </time>
+                            ) : (
+                              <span aria-label="갱신일 정보 없음">—</span>
+                            )}
                           </Table.Cell>
                           <Table.Cell>
                             <div className="overseer-row-actions">

@@ -1,6 +1,10 @@
 import { isImageTag, type ParsedImageRepository } from "../../../shared/validation.ts";
 import { ExpectedError } from "../../core/errors.ts";
-import { manifestDigest, type RemoteRepositoryTag } from "./registry-tag-metadata.ts";
+import {
+  imagePlatforms,
+  manifestDigest,
+  type RemoteRepositoryTag,
+} from "./registry-tag-metadata.ts";
 
 const MAX_TAG_PAGES = 100;
 const TAG_PAGE_SIZE = 1000;
@@ -246,7 +250,6 @@ export async function getRegistryRepositoryTags(
   let indexed = false;
   let indexError: unknown;
   const resolveDigest = (tag: RemoteRepositoryTag): Promise<void> => {
-    if (tag.digest) return Promise.resolve();
     const cached = pending.get(tag.name);
     if (cached) return cached;
     const load = async () => {
@@ -256,7 +259,7 @@ export async function getRegistryRepositoryTags(
         registryOrigin(repository.registry),
       );
       const result = await registryRequest(url, repository, fetcher, session.authorization, {
-        method: "HEAD",
+        method: "GET",
         headers: {
           accept:
             "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json",
@@ -272,6 +275,35 @@ export async function getRegistryRepositoryTags(
         );
       }
       tag.digest = manifestDigest(result.response.headers.get("docker-content-digest"));
+      let manifest: { manifests?: unknown; config?: { digest?: unknown } };
+      try {
+        manifest = await result.response.json();
+      } catch {
+        return;
+      }
+      if (!manifest || typeof manifest !== "object") return;
+      let platforms = imagePlatforms(
+        Array.isArray(manifest.manifests)
+          ? manifest.manifests.map((item: { platform?: unknown }) => item?.platform)
+          : [],
+      );
+      const configDigest = manifestDigest(manifest.config?.digest);
+      if (!platforms.length && configDigest) {
+        const configUrl = new URL(
+          `/v2/${name}/blobs/${configDigest}`,
+          registryOrigin(repository.registry),
+        );
+        const config = await registryRequest(configUrl, repository, fetcher, session.authorization);
+        session.authorization = config.authorization;
+        if (!config.response.ok)
+          throw new ExpectedError(
+            "image_repository_platform_unavailable",
+            "태그의 플랫폼 정보를 불러오지 못했습니다.",
+            503,
+          );
+        platforms = imagePlatforms([await config.response.json()]);
+      }
+      if (platforms.length) tag.platforms = platforms;
     };
     const request = load().catch((error: unknown) => {
       pending.delete(tag.name);

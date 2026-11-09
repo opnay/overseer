@@ -13,6 +13,7 @@ import type { OperationProgress } from "../operations/index.ts";
 import { MemoryImageRepositoryStore, type ImageRepositoryStore } from "./image-repository-store.ts";
 import { getRegistryRepositoryTags, type RegistryRepositoryTags } from "./registry-tags.ts";
 import { mayMatchManifestDigest } from "./registry-tag-metadata.ts";
+import { DockerHubTags } from "./docker-hub-tags.ts";
 
 const TAG_PAGE_SIZE = 25;
 const TAG_CACHE_TTL = 60_000;
@@ -43,6 +44,7 @@ export class ImageRepositoryService implements ImageRepositoryController {
   private readonly now: () => string;
   private readonly store: ImageRepositoryStore;
   private readonly tagCache = new Map<string, CachedRegistryTags>();
+  private readonly hubCache = new Map<string, { expiresAt: number; tags: DockerHubTags }>();
 
   constructor(
     store: ImageRepositoryStore = new MemoryImageRepositoryStore(),
@@ -66,16 +68,16 @@ export class ImageRepositoryService implements ImageRepositoryController {
       repository: input.repository,
     };
     this.store.add(repository);
-    return repository;
+    return this.summary(repository);
   }
 
   list(): ImageRepositorySummary[] {
-    return this.store.list();
+    return this.store.list().map((repository) => this.summary(repository));
   }
 
   get(id: string): ImageRepositoryDetail {
     const repository = this.requireRepository(id);
-    return { ...repository, favoriteCount: this.store.favoriteTags(id).length };
+    return { ...this.summary(repository), favoriteCount: this.store.favoriteTags(id).length };
   }
 
   async getTags(
@@ -84,6 +86,22 @@ export class ImageRepositoryService implements ImageRepositoryController {
     query: ImageRepositoryTagQuery = {},
   ): Promise<ImageRepositoryTagList> {
     const repository = this.requireRepository(id);
+    const parsed = parseImageRepository(repository.repository);
+    const hasFilter = Object.values(query.filter ?? {}).some((value) => value?.trim());
+    if (parsed?.registry === "docker.io" && !hasFilter) {
+      return this.hubTags(repository).list(
+        page,
+        query.sort ?? "-lastUpdated",
+        this.store.favoriteTags(id),
+      );
+    }
+    if (query.sort === "lastUpdated" || query.sort === "-lastUpdated") {
+      throw new ExpectedError(
+        "image_repository_date_sort_unavailable",
+        "이 저장소 또는 검색 조건에서는 날짜 정렬을 지원하지 않습니다.",
+        400,
+      );
+    }
     const remote = await this.remoteTags(repository);
     const tagFilter = query.filter?.tag?.trim().toLowerCase() ?? "";
     const digestFilter = query.filter?.digest?.trim().toLowerCase() ?? "";
@@ -138,6 +156,7 @@ export class ImageRepositoryService implements ImageRepositoryController {
     }
     this.tagCache.get(id)?.value?.cancel();
     this.tagCache.delete(id);
+    this.hubCache.delete(id);
   }
 
   setFavorite(id: string, tag: string, favorite: boolean): ImageRepositoryTagItem {
@@ -157,7 +176,10 @@ export class ImageRepositoryService implements ImageRepositoryController {
       );
     }
     progress?.step(`${parsed.registry} 태그 확인 중`);
-    const tagCount = (await this.remoteTags(repository, true)).tags.length;
+    const tagCount =
+      parsed.registry === "docker.io"
+        ? (await this.hubTags(repository, true).list(1, "-lastUpdated", [])).totalCount
+        : (await this.remoteTags(repository, true)).tags.length;
     const syncedAt = this.now();
     this.store.updateSync(id, syncedAt, tagCount);
     progress?.output(`${repository.repository}: 태그 ${tagCount}개`);
@@ -173,6 +195,27 @@ export class ImageRepositoryService implements ImageRepositoryController {
       );
     }
     return repository;
+  }
+
+  private summary(repository: ImageRepositorySummary): ImageRepositorySummary {
+    const parsed = parseImageRepository(repository.repository);
+    return {
+      ...repository,
+      official: parsed?.registry === "docker.io" && parsed.name.startsWith("library/"),
+    };
+  }
+
+  private hubTags(repository: ImageRepositorySummary, refresh = false): DockerHubTags {
+    let cached = this.hubCache.get(repository.id);
+    if (refresh || !cached || cached.expiresAt <= Date.now()) {
+      cached = {
+        expiresAt: Date.now() + TAG_CACHE_TTL,
+        tags: new DockerHubTags(repository.repository, this.fetcher),
+      };
+      this.hubCache.set(repository.id, cached);
+    }
+    cached.expiresAt = Date.now() + TAG_CACHE_TTL;
+    return cached.tags;
   }
 
   private remoteTags(

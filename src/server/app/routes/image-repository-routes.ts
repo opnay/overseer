@@ -25,8 +25,14 @@ export function registerImageRepositoryRoutes(
   app.get("/image-repositories/:id/tags", async (context) => {
     const id = requireImageRepositoryIdentifier(context.req.param("id"));
     const page = requirePageNumber(context.req.query("page"));
-    const sort = context.req.query("sort") ?? "tag";
-    if (sort !== "tag" && sort !== "-tag") {
+    const sort = context.req.query("sort");
+    if (
+      sort !== undefined &&
+      sort !== "tag" &&
+      sort !== "-tag" &&
+      sort !== "lastUpdated" &&
+      sort !== "-lastUpdated"
+    ) {
       throw new ExpectedError(
         "invalid_image_repository_tag_sort",
         "태그 정렬 기준을 확인하십시오.",

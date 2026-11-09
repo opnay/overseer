@@ -1230,13 +1230,53 @@ describe("API boundary", () => {
     expect(controller.removeImage).toHaveBeenCalledWith(input.id, expect.any(Object));
   });
 
+  it("accepts Docker Hub date sorting and returns platform and Official metadata", async () => {
+    const fetcher = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            count: 1,
+            next: null,
+            results: [
+              {
+                name: "latest",
+                last_updated: "2026-11-09T00:00:00Z",
+                images: [{ os: "linux", architecture: "arm64", variant: "v8" }],
+              },
+            ],
+          }),
+        ),
+    );
+    const repositories = new ImageRepositoryService(
+      new MemoryImageRepositoryStore(),
+      fetcher,
+      undefined,
+      () => "11111111-1111-4111-8111-111111111111",
+    );
+    repositories.add({ repository: "docker.io/library/node" });
+    const app = createApi(createController(), undefined, undefined, repositories);
+    const response = await app.request(
+      "/image-repositories/11111111-1111-4111-8111-111111111111/tags?sort=lastUpdated",
+      { headers: localHeaders },
+    );
+    expect(response.status).toBe(200);
+    expect((await response.json()).tags.tags).toMatchObject([
+      { name: "latest", lastUpdated: "2026-11-09T00:00:00Z", platforms: ["linux/arm64/v8"] },
+    ]);
+    expect(new URL(String(fetcher.mock.calls[0]![0])).searchParams.get("ordering")).toBe(
+      "-last_updated",
+    );
+    const listed = await app.request("/image-repositories", { headers: localHeaders });
+    expect((await listed.json()).repositories[0].official).toBe(true);
+  });
+
   it("manages and synchronizes image repository registrations", async () => {
     const controller = createController();
     const repositories = new ImageRepositoryService(
       new MemoryImageRepositoryStore(),
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const names = ["latest", "v1", "v2"];
-        if (init?.method === "HEAD") {
+        if (init?.method === "GET") {
           const name = new URL(String(input)).pathname.split("/").at(-1)!;
           return new Response(null, {
             headers: {
@@ -1252,16 +1292,16 @@ describe("API boundary", () => {
     const app = createApi(controller, undefined, undefined, repositories);
 
     const added = await app.request("/image-repositories", {
-      body: JSON.stringify({ repository: "nginx" }),
+      body: JSON.stringify({ repository: "ghcr.io/library/nginx" }),
       headers: { ...localHeaders, "content-type": "application/json" },
       method: "POST",
     });
     expect(added.status).toBe(201);
     await expect(added.json()).resolves.toMatchObject({
-      repository: { repository: "docker.io/library/nginx" },
+      repository: { repository: "ghcr.io/library/nginx" },
     });
     const duplicate = await app.request("/image-repositories", {
-      body: JSON.stringify({ repository: "docker.io/library/nginx" }),
+      body: JSON.stringify({ repository: "ghcr.io/library/nginx" }),
       headers: { ...localHeaders, "content-type": "application/json" },
       method: "POST",
     });
@@ -1364,7 +1404,7 @@ describe("API boundary", () => {
 
     const listed = await app.request("/image-repositories", { headers: localHeaders });
     await expect(listed.json()).resolves.toMatchObject({
-      repositories: [{ repository: "docker.io/library/nginx", tagCount: 3 }],
+      repositories: [{ repository: "ghcr.io/library/nginx", tagCount: 3 }],
     });
 
     const removed = await app.request("/image-repositories/11111111-1111-4111-8111-111111111111", {
