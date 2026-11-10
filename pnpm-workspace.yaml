@@ -1,3 +1,7 @@
 minimumReleaseAgeExclude:
   - "@testing-library/user-event@14.6.6"
   - "@opnay/city-ds-react@0.3.0"
+
+overrides:
+  # 9.2.0 calls a tokenizer method absent from its parse5 8 dependency.
+  "rehype-raw>hast-util-raw": "9.1.0"

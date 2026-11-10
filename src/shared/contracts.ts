@@ -503,7 +503,17 @@ export interface ImageRepositorySummary {
   official?: boolean;
 }
 
+export const IMAGE_REPOSITORY_FAVORITE_LIMIT = 10;
+
+export interface ImageRepositoryMetadata {
+  description?: string;
+  fullDescription?: string;
+  lastUpdated?: string;
+}
+
 export interface ImageRepositoryDetail extends ImageRepositorySummary {
+  description?: string;
+  favoriteTags: string[];
   favoriteCount: number;
 }
 

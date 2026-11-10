@@ -250,7 +250,16 @@ export function AppSidebar({
       <div className="overseer-secondary-sidebar">
         <header className="overseer-secondary-heading">
           <span>Overseer</span>
-          <strong title={title}>{title}</strong>
+          <strong
+            className={
+              detail?.type === "imageRepository"
+                ? "overseer-repository-navigation-title"
+                : undefined
+            }
+            title={title}
+          >
+            {title}
+          </strong>
         </header>
         {contextVisible && detail ? (
           <a
@@ -275,14 +284,7 @@ export function AppSidebar({
             ))}
           </nav>
         ) : null}
-        {contextVisible && detail?.type === "imageRepository" ? (
-          <nav aria-label="이미지 저장소 상세 메뉴" className="overseer-secondary-navigation">
-            <a aria-current="page" href={detail.path}>
-              태그
-            </a>
-          </nav>
-        ) : null}
-        <WorkspaceNavigationOutlet hidden={!contextVisible || detail?.type === "imageRepository"} />
+        <WorkspaceNavigationOutlet hidden={!contextVisible} />
       </div>
     </aside>
   );

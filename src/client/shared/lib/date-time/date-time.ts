@@ -18,3 +18,25 @@ export function formatDateTime(value: string | number | Date): string {
   if (!date) return typeof value === "string" ? value : "—";
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
+
+const relativeTime = new Intl.RelativeTimeFormat("ko", { numeric: "always" });
+
+export function formatRelativeDateTime(
+  value: string | number | Date,
+  now = Date.now(),
+): string | undefined {
+  const date = parseDateTime(value);
+  if (!date) return undefined;
+  const seconds = (date.getTime() - now) / 1000;
+  const elapsed = Math.abs(seconds);
+  if (elapsed < 60) return "방금";
+  const units = [
+    [31_536_000, "year"],
+    [2_592_000, "month"],
+    [86_400, "day"],
+    [3_600, "hour"],
+    [60, "minute"],
+  ] as const;
+  const [duration, unit] = units.find(([duration]) => elapsed >= duration)!;
+  return relativeTime.format(Math.trunc(seconds / duration), unit);
+}

@@ -15,6 +15,7 @@ export function SectionedWorkspace<Section extends string>({
   description,
   getSectionHref,
   groups,
+  hideHeader = false,
   navigationLabel,
   onSectionChange,
   section,
@@ -25,6 +26,7 @@ export function SectionedWorkspace<Section extends string>({
   description: string;
   getSectionHref(section: Section): string;
   groups: ReadonlyArray<SectionedWorkspaceGroup<Section>>;
+  hideHeader?: boolean;
   navigationLabel: string;
   onSectionChange(section: Section): void;
   section: Section;
@@ -111,11 +113,13 @@ export function SectionedWorkspace<Section extends string>({
         ? navigation.target && createPortal(sectionNavigation, navigation.target)
         : sectionNavigation}
       <div className="overseer-sectioned-workspace-content">
-        <header className="overseer-sectioned-workspace-header">
-          <p>{category}</p>
-          <h2 className="city-text-section-title">{title}</h2>
-          <span className="city-text-supporting">{description}</span>
-        </header>
+        {!hideHeader ? (
+          <header className="overseer-sectioned-workspace-header">
+            <p>{category}</p>
+            <h2 className="city-text-section-title">{title}</h2>
+            <span className="city-text-supporting">{description}</span>
+          </header>
+        ) : null}
         <div className="overseer-sectioned-workspace-body">{children}</div>
       </div>
     </div>

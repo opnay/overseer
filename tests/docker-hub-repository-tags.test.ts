@@ -42,9 +42,10 @@ function hubFixture(count = 1200) {
       }),
     );
   });
-  const service = new ImageRepositoryService(new MemoryImageRepositoryStore(), fetcher);
+  const store = new MemoryImageRepositoryStore();
+  const service = new ImageRepositoryService(store, fetcher);
   const repository = service.add({ repository: "docker.io/library/node" });
-  return { service, repository, fetcher, items };
+  return { service, repository, fetcher, items, store };
 }
 
 describe("Docker Hub repository metadata", () => {
@@ -120,9 +121,14 @@ describe("Docker Hub repository metadata", () => {
   });
 
   it("sorts dates in both directions and keeps overflowing favorites before ordinary tags", async () => {
-    const { service, repository } = hubFixture(130);
+    const { service, repository, store } = hubFixture(130);
     for (let index = 0; index < 27; index++)
-      service.setFavorite(repository.id, `tag${String(index).padStart(4, "0")}`, true);
+      store.setFavorite(
+        repository.id,
+        `tag${String(index).padStart(4, "0")}`,
+        true,
+        "2026-11-01T00:00:00Z",
+      );
     const first = await service.getTags(repository.id, 1, { sort: "lastUpdated" });
     expect(first.tags.every(({ favorite }) => favorite)).toBe(true);
     const second = await service.getTags(repository.id, 2, { sort: "lastUpdated" });

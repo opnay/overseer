@@ -1,5 +1,6 @@
 use tauri::{
     menu::{Menu, MenuItem},
+    webview::NewWindowResponse,
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
@@ -107,6 +108,21 @@ fn create_main_window(
             .traffic_light_position(tauri::LogicalPosition::new(16.0, 26.0));
     }
     window
+        .on_new_window(|url, _features| {
+            if is_browser_url(&url) {
+                std::thread::spawn(move || {
+                    match std::process::Command::new("/usr/bin/open")
+                        .arg(url.as_str())
+                        .status()
+                    {
+                        Ok(status) if status.success() => {}
+                        Ok(status) => eprintln!("기본 브라우저를 열지 못했습니다: {status}"),
+                        Err(error) => eprintln!("기본 브라우저를 열지 못했습니다: {error}"),
+                    }
+                });
+            }
+            NewWindowResponse::Deny
+        })
         .center()
         .inner_size(1_200.0, 800.0)
         .min_inner_size(760.0, 560.0)
@@ -116,9 +132,29 @@ fn create_main_window(
         .build()
 }
 
+fn is_browser_url(url: &tauri::Url) -> bool {
+    matches!(url.scheme(), "https" | "http") && url.host_str().is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opens_only_web_urls_in_the_browser() {
+        for address in ["https://hub.docker.com/_/node", "http://localhost:8080"] {
+            assert!(is_browser_url(&address.parse().unwrap()));
+        }
+        for address in [
+            "file:///Applications/Overseer.app",
+            "javascript:alert(1)",
+            "mailto:test@example.com",
+            "tauri://localhost",
+            "about:blank",
+        ] {
+            assert!(!is_browser_url(&address.parse().unwrap()));
+        }
+    }
 
     #[test]
     fn accepts_only_supported_detail_routes() {
