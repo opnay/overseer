@@ -255,18 +255,25 @@ fn sidecar_path() -> Result<PathBuf, String> {
         }
     }
 
-    let target = if cfg!(target_arch = "aarch64") {
-        "aarch64-apple-darwin"
-    } else if cfg!(target_arch = "x86_64") {
-        "x86_64-apple-darwin"
-    } else {
-        return Err("지원하지 않는 macOS 아키텍처입니다.".into());
-    };
-    let development = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("binaries")
-        .join(format!("overseer-server-{target}"));
-    std::fs::canonicalize(development)
-        .map_err(|error| format!("API sidecar를 찾지 못했습니다: {error}"))
+    #[cfg(debug_assertions)]
+    {
+        let target = if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
+        } else if cfg!(target_arch = "x86_64") {
+            "x86_64-apple-darwin"
+        } else {
+            return Err("지원하지 않는 macOS 아키텍처입니다.".into());
+        };
+        let development = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("binaries")
+            .join(format!("overseer-server-{target}"));
+        std::fs::canonicalize(development)
+            .map_err(|error| format!("API sidecar를 찾지 못했습니다: {error}"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        Err("앱 번들에서 API sidecar를 찾지 못했습니다.".into())
+    }
 }
 
 #[tauri::command]

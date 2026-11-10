@@ -215,7 +215,21 @@ export function verifyUpdateArchive(root: string, path: string): void {
 }
 
 export function archiveApp(root: string, app: string, path: string): void {
-  const options = process.platform === "darwin" ? ["--no-mac-metadata", "--no-xattrs"] : [];
+  const options =
+    process.platform === "darwin"
+      ? [
+          "--no-mac-metadata",
+          "--no-xattrs",
+          "--uid",
+          "0",
+          "--gid",
+          "0",
+          "--uname",
+          "root",
+          "--gname",
+          "wheel",
+        ]
+      : ["--owner=root:0", "--group=root:0"];
   run(root, "tar", [...options, "-czf", path, "-C", resolve(app, ".."), "Overseer.app"]);
   verifyUpdateArchive(root, path);
 }

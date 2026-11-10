@@ -40,6 +40,7 @@ single_instance → window
 - 메뉴 ID, `app.sock` 명령, `--background`, `--route` 형식을 유지합니다.
 - `Cmd+Q`, 재실행, 메뉴바 종료와 sidecar 정리 동작은 0008 결정을 따릅니다.
 - 트레이 이미지는 파일 위치와 무관하게 `CARGO_MANIFEST_DIR` 기준으로 포함합니다.
+- sidecar 실행 파일은 릴리즈에서 앱 번들만 탐색합니다. `CARGO_MANIFEST_DIR`를 사용하는 개발 경로 fallback은 debug 빌드에만 포함해 빌드 머신 경로가 배포 바이너리에 남지 않도록 합니다.
 
 ## 검증
 
