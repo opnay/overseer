@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { gunzipSync } from "node:zlib";
+import { verifyBundlePrivacy } from "../scripts/verify-release-privacy.ts";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   setVersion,
@@ -52,6 +54,17 @@ afterAll(() => {
 });
 
 describe("수동 릴리즈 버전과 태그", () => {
+  it("서명된 앱을 수정하지 않고 번들 안의 로컬 경로를 검출합니다", () => {
+    const { root } = fixture();
+    const bundle = join(root, "Overseer.app");
+    mkdirSync(join(bundle, "Contents/MacOS"), { recursive: true });
+    const binary = join(bundle, "Contents/MacOS/app");
+    writeFileSync(binary, "binary\0/Users/private-account/.cargo/source.rs\0");
+    expect(() => verifyBundlePrivacy(bundle, ["/Users/private-account"])).toThrow(/로컬 경로/);
+    expect(readFileSync(binary, "utf8")).toContain("/Users/private-account");
+    writeFileSync(binary, "binary\0/build/.cargo/source.rs\0");
+    expect(() => verifyBundlePrivacy(bundle, ["/Users/private-account"])).not.toThrow();
+  });
   it("정식 버전만 허용하고 package·Cargo 버전을 함께 변경합니다", () => {
     for (const value of ["v0.0.2", "01.0.0", "0.0.2-beta", "0.0", "0.0.2+build"])
       expect(() => stableVersion(value)).toThrow();
@@ -128,6 +141,13 @@ describe("Tauri CLI와 호환되는 자산 서명 검증", () => {
     ).toString("base64");
     expect(() => verifyUpdaterSignature(publicKey, changed, archive)).toThrow();
     expect(() => verifyUpdaterSignature(publicKey, "invalid", archive)).toThrow();
+  });
+
+  it("업데이트 압축 소유자를 빌드 계정 대신 root로 정규화합니다", () => {
+    const header = gunzipSync(archive).subarray(0, 512);
+    expect(header.subarray(265, 297).toString().replace(/\0.*$/, "")).toBe("root");
+    expect(parseInt(header.subarray(108, 116).toString().replace(/\0.*$/, ""), 8)).toBe(0);
+    expect(parseInt(header.subarray(116, 124).toString().replace(/\0.*$/, ""), 8)).toBe(0);
   });
 
   it("앱 외부 메타데이터가 있는 압축은 게시 전에 거부합니다", () => {
