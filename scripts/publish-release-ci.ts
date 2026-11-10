@@ -88,12 +88,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       .trim()
       .split("\n");
     const remoteCommit = (refs.find((line) => line.endsWith("^{}")) ?? refs[0])?.split(/\s+/)[0];
-    if (remoteCommit && remoteCommit !== source.commit)
-      throw new Error("원격 태그가 빌드 커밋과 다릅니다.");
+    if (remoteCommit !== source.commit) throw new Error("원격 태그가 빌드 커밋과 다릅니다.");
     gh("release", "download", source.tag, "--repo", "opnay/overseer", "--dir", directory);
     const checksums = verifyCiReleaseAssets(root, directory, source.version, release.assets);
-    if (!remoteCommit)
-      execFileSync("git", ["push", "origin", `refs/tags/${source.tag}`], { stdio: "inherit" });
     const sums = join(directory, "SHA256SUMS.txt");
     writeFileSync(sums, checksums.map(({ name, sha256 }) => `${sha256}  ${name}\n`).join(""));
     gh("release", "upload", source.tag, sums, "--repo", "opnay/overseer");

@@ -2,7 +2,16 @@
 
 ## GitHub Actions 릴리즈
 
-`.github/workflows/release.yml`은 `deployments` 브랜치 푸시 또는 수동 실행으로 Apple Silicon 릴리즈를 만듭니다. 워크플로우가 `main`에 반영되기 전의 최초 테스트는 `deployments` 푸시로 시작합니다. 수동 실행은 `main` 또는 `deployments`에서 사용하십시오. 버전 파일과 `docs/releases/<버전>.md`를 먼저 커밋하며, 기존 공개 버전을 재사용하지 않습니다.
+정식 릴리즈는 태그 기반입니다. `main`에서 버전 파일과 `docs/releases/<버전>.md`를 갱신·커밋하고 `main`을 먼저 푸시합니다. 그 버저닝 커밋에 `vX.Y.Z` 태그를 생성·푸시하면 `.github/workflows/release.yml`이 실행됩니다. 브랜치 푸시나 수동 실행은 릴리즈를 시작하지 않습니다. 태그와 코드 버전이 다르거나 태그가 checkout 커밋과 다르면 거부합니다.
+
+```sh
+# 버전 갱신 커밋을 main에 반영한 뒤
+git push origin main
+git tag v0.0.2 <버저닝-커밋-SHA>
+git push origin v0.0.2
+```
+
+위 태그는 예시이며 이미 공개된 버전은 재사용하거나 옮기지 않습니다. 다음 배포에는 새 버전을 사용하십시오.
 
 검사·테스트·프런트엔드 빌드는 Ubuntu의 재사용 Check job에서 수행하고 macOS release job은 `needs: checks`로 통과를 기다립니다. 두 job은 `pnpm/setup@v3.1.2`로 pnpm·Node를 함께 설치합니다. Bun은 기존 `scripts/build-sidecar.ts`의 단일 서버 실행 파일 컴파일에 필요하므로 macOS job에서만 설치합니다. 레지스트리 주소는 `.npmrc`, CI 인증 토큰의 환경변수 참조는 `.npmrc.ci`에서 관리합니다. Actions는 `NODE_AUTH_TOKEN`만 주입하며 파일에 실제 토큰을 저장하지 않습니다.
 
@@ -10,7 +19,7 @@
 
 `tauri-apps/tauri-action@v1.0.0`이 앱·DMG 빌드, Apple 서명·공증, updater manifest 생성과 Draft 업로드를 담당합니다. 문서화된 `tauriScript` hook은 빌드를 한 번 호출한 뒤 앱의 경로 잔존·서명·공증 티켓·버전과 압축을 검사합니다. Rust 홈·작업 경로를 치환하고 압축 소유자를 정규화한 뒤 updater 서명을 다시 생성해 공식 액션이 검증된 파일을 업로드하도록 합니다.
 
-Draft 자산은 다시 내려받아 GitHub digest, updater 공개키 서명, manifest 버전·다운로드 URL과 빌드 커밋을 확인합니다. 검증 후 체크섬 파일을 추가하고 정식 latest로 공개합니다. 원격 태그가 아직 없다면 검증 후 빌드 커밋으로 생성합니다. 공식 액션의 updater URL은 GitHub API asset URL일 수도 있으며 이 경우에도 해당 아카이브의 정확한 asset ID만 허용합니다. 이 workflow는 공개까지 수행하므로 테스트할 커밋과 버전을 확인한 뒤 푸시하십시오.
+Draft 자산은 다시 내려받아 GitHub digest, updater 공개키 서명, manifest 버전·다운로드 URL과 빌드 커밋을 확인합니다. 검증 후 체크섬 파일을 추가하고 정식 latest로 공개합니다. 원격 태그가 미리 존재하고 빌드 커밋과 일치하는지 확인하며 CI는 태그를 생성하거나 이동하지 않습니다. 공식 액션의 updater URL은 GitHub API asset URL일 수도 있으며 이 경우에도 해당 아카이브의 정확한 asset ID만 허용합니다. 이 workflow는 공개까지 수행하므로 버저닝 커밋과 버전을 확인한 뒤 태그를 푸시하십시오.
 
 실패 시 공개된 버전·태그를 옮기거나 덮어쓰지 않습니다. 원격 태그만 생성된 경우 같은 커밋에서 재실행할 수 있습니다. draft가 남았다면 자산과 오류를 확인하고 해당 draft를 정리한 뒤 재실행하십시오. 다른 커밋을 가리키는 기존 태그는 거부합니다. Apple 서명 인증서의 개발자명은 경로 치환 대상이 아니며 CI에서도 공개됩니다.
 

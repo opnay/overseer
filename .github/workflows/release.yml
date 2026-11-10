@@ -2,8 +2,7 @@ name: Release macOS
 
 on:
   push:
-    branches: [deployments]
-  workflow_dispatch:
+    tags: ["v*"]
 
 concurrency:
   group: release-macos
@@ -11,7 +10,7 @@ concurrency:
 
 jobs:
   checks:
-    if: github.repository == 'opnay/overseer' && (github.ref == 'refs/heads/deployments' || github.ref == 'refs/heads/main')
+    if: github.repository == 'opnay/overseer' && startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/check.yml
     permissions:
       contents: read
@@ -54,14 +53,14 @@ jobs:
         run: |
           VERSION=$(node --input-type=module -e 'import { sourceVersion } from "./scripts/release.ts"; console.log(sourceVersion(process.cwd()))')
           TAG="v$VERSION"
+          test "$GITHUB_REF_NAME" = "$TAG"
+          node --input-type=module -e 'import { verifyReleaseSource } from "./scripts/release.ts"; verifyReleaseSource(process.cwd())'
+          COMMIT=$(git rev-parse HEAD)
+          git merge-base --is-ancestor "$COMMIT" origin/main
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
           if gh release view "$TAG" --repo opnay/overseer >/dev/null 2>&1; then
             echo "Release already exists; inspect it before retrying: $TAG" >&2
             exit 1
-          fi
-          if git show-ref --verify --quiet "refs/tags/$TAG"; then
-            test "$(git rev-parse "$TAG^{commit}")" = "$GITHUB_SHA"
-          else
-            git tag "$TAG" "$GITHUB_SHA"
           fi
           echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
           echo "RUSTFLAGS=--remap-path-prefix=$HOME=/build --remap-path-prefix=$GITHUB_WORKSPACE=/src -C strip=debuginfo" >> "$GITHUB_ENV"
@@ -105,7 +104,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: __VERSION__
           releaseBody: ${{ steps.source.outputs.notes }}
-          releaseCommitish: ${{ github.sha }}
+          releaseCommitish: ${{ steps.source.outputs.commit }}
           releaseDraft: true
           prerelease: false
           uploadWorkflowArtifacts: true
