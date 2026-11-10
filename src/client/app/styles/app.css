@@ -42,6 +42,12 @@
     padding-left: calc(var(--city-space-12) + var(--city-space-8) + var(--city-space-2));
   }
 
+  .overseer-secondary-navigation a[aria-disabled="true"],
+  .overseer-navigation a[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .overseer-history-navigation,
   .overseer-titlebar-actions {
     display: flex;
