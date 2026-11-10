@@ -31,8 +31,9 @@ import {
   type AppRouteGroup,
 } from "@/shared/routes";
 import { WorkspaceNavigationOutlet } from "@/shared/ui/sectioned-workspace";
+import { useAppSession } from "../runtime/AppSession.tsx";
 
-type NavigationItem = { href: string; label: string; icon: LucideIcon };
+type NavigationItem = { href: string; label: string; icon: LucideIcon; disabledReason?: string };
 
 const routeIcons = {
   "/compose": Layers3,
@@ -65,12 +66,16 @@ function isUtilityCurrent(item: NavigationItem, currentPath: AppPath, settingsSe
   return isCurrent(item, currentPath, settingsSection);
 }
 
-function groupItems(group: AppRouteGroup): NavigationItem[] {
+function groupItems(group: AppRouteGroup, composeAvailable = true): NavigationItem[] {
   if (group === "utility") return [];
   const items = APP_ROUTES.filter((route) => route.group === group).map((route) => ({
     href: route.path,
     label: route.label,
     icon: routeIcons[route.path],
+    disabledReason:
+      route.path === "/compose" && !composeAvailable
+        ? "CLI 메뉴에서 Docker Compose를 설치해 주세요."
+        : undefined,
   }));
   if (group !== "engine") return items;
   return [
@@ -103,13 +108,34 @@ function NavigationLink({
     <a
       aria-current={current ? "page" : undefined}
       aria-label={iconOnly ? item.label : undefined}
-      href={item.href}
-      onClick={(event) => followLink(event, () => onNavigate(item.href))}
+      aria-disabled={item.disabledReason ? true : undefined}
+      href={item.disabledReason ? undefined : item.href}
+      role={item.disabledReason ? "link" : undefined}
+      tabIndex={item.disabledReason ? 0 : undefined}
+      onClick={(event) => {
+        if (item.disabledReason) {
+          event.preventDefault();
+          return;
+        }
+        followLink(event, () => onNavigate(item.href));
+      }}
     >
       <Icon aria-hidden="true" size={iconOnly ? 18 : 16} />
       {!iconOnly ? <span>{item.label}</span> : null}
     </a>
   );
+  if (item.disabledReason) {
+    return (
+      <Tooltip.Root>
+        <Tooltip.Trigger render={link} />
+        <Tooltip.Portal>
+          <Tooltip.Positioner side="right" sideOffset={8}>
+            <Tooltip.Popup>{item.disabledReason}</Tooltip.Popup>
+          </Tooltip.Positioner>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    );
+  }
   if (!iconOnly) return link;
   return (
     <Tooltip.Root>
@@ -149,6 +175,8 @@ export function AppSidebar({
   onNavigate(href: string): void;
   settingsSection: string;
 }) {
+  const { dashboard } = useAppSession();
+  const composeAvailable = dashboard?.capabilities?.dockerCompose ?? true;
   const route = getAppRoute(currentPath);
   const currentGroup: AppRouteGroup =
     currentPath === "/settings" && settingsSection !== "general" ? "engine" : route.group;
@@ -163,7 +191,7 @@ export function AppSidebar({
     ? operationItems
     : currentPath === "/settings" && settingsSection === "general"
       ? [utilities[1]!]
-      : groupItems(group);
+      : groupItems(group, composeAvailable);
 
   return (
     <aside aria-label="Overseer 주요 탐색" className="overseer-sidebar" data-navigation-mode={mode}>
@@ -183,7 +211,13 @@ export function AppSidebar({
                       aria-label={category.label}
                       aria-pressed={selected}
                       iconOnly
-                      onClick={() => onNavigate(groupItems(category.id)[0]!.href)}
+                      onClick={() =>
+                        onNavigate(
+                          groupItems(category.id, composeAvailable).find(
+                            (item) => !item.disabledReason,
+                          )!.href,
+                        )
+                      }
                       size="xlg"
                       variant={selected ? "secondary" : "ghost"}
                     />
@@ -263,6 +297,8 @@ export function MobileNavigationDrawer({
   onNavigate(href: string): void;
   settingsSection: string;
 }) {
+  const { dashboard } = useAppSession();
+  const composeAvailable = dashboard?.capabilities?.dockerCompose ?? true;
   const [open, setOpen] = useState(false);
   const navigate = (href: string) => {
     setOpen(false);
@@ -301,7 +337,7 @@ export function MobileNavigationDrawer({
                   >
                     <span className="overseer-nav-group-label">{group.label}</span>
                     <div className="overseer-nav-group-items">
-                      {groupItems(group.id).map((item) => (
+                      {groupItems(group.id, composeAvailable).map((item) => (
                         <NavigationLink
                           current={isCurrent(item, currentPath, settingsSection)}
                           item={item}

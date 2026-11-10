@@ -1080,7 +1080,8 @@ describe("App", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/startup"));
   });
 
-  it("keeps non-Compose resources available when optional Compose is missing", async () => {
+  it.each([1280, 390])("disables unavailable Compose navigation at viewport %i", async (width) => {
+    mockViewport(width);
     const user = userEvent.setup();
     const dashboard: DashboardSnapshot = {
       capabilities: { dockerCompose: false },
@@ -1123,6 +1124,19 @@ describe("App", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "직접 작성" })).not.toBeInTheDocument();
+
+    if (width === 390) await user.click(screen.getByRole("button", { name: "주요 메뉴 열기" }));
+    const composeLink = screen.getByRole("link", { name: "Compose" });
+    expect(composeLink).toHaveAttribute("aria-disabled", "true");
+    expect(composeLink).not.toHaveAttribute("href");
+    await user.hover(composeLink);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "CLI 메뉴에서 Docker Compose를 설치해 주세요.",
+    );
+    await user.unhover(composeLink);
+    await user.click(composeLink);
+    expect(window.location.pathname).toBe("/compose");
+    if (width === 390) await user.click(screen.getByRole("button", { name: "주요 메뉴 닫기" }));
 
     await user.click(screen.getByRole("button", { name: "Docker Compose 설치" }));
     await waitFor(() =>
