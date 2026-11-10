@@ -175,6 +175,13 @@
     font-size: var(--city-font-size-sm);
   }
 
+  .overseer-secondary-heading .overseer-repository-navigation-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .overseer-secondary-navigation {
     display: grid;
     gap: var(--city-space-1);
@@ -1175,6 +1182,141 @@
     text-decoration: underline;
     text-decoration-color: var(--city-color-border);
     text-underline-offset: 0.2em;
+  }
+
+  .overseer-detail-section > .overseer-repository-favorites-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--city-space-4);
+  }
+
+  .overseer-repository-favorites-count {
+    color: var(--city-color-muted-foreground);
+    font-size: var(--city-font-size-sm);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .overseer-repository-readme {
+    --overseer-readme-link-color: var(--city-palette-blue-700);
+    color: var(--city-color-foreground);
+    font-size: var(--city-font-size-sm);
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+
+  .overseer-repository-updated-relative {
+    color: var(--city-color-muted-foreground);
+  }
+
+  .overseer-repository-readme > * + * {
+    margin-top: var(--city-space-4);
+  }
+
+  .overseer-repository-readme :is(h1, h2, h3, h4) {
+    font-weight: var(--city-font-weight-semibold);
+    line-height: var(--city-line-height-xl);
+    margin-top: var(--city-space-6);
+  }
+
+  .overseer-repository-readme > :first-child {
+    margin-top: 0;
+  }
+
+  .overseer-repository-readme :is(h1, h2) {
+    font-size: var(--city-font-size-xl);
+  }
+
+  .overseer-repository-readme :is(h3, h4) {
+    font-size: var(--city-font-size-lg);
+  }
+
+  .overseer-repository-readme :is(ul, ol) {
+    padding-left: var(--city-space-6);
+  }
+
+  .overseer-repository-readme ul {
+    list-style: disc;
+  }
+  .overseer-repository-readme ol {
+    list-style: decimal;
+  }
+
+  [data-theme="dark"] .overseer-repository-readme {
+    --overseer-readme-link-color: var(--city-palette-blue-400);
+  }
+
+  .overseer-repository-readme a {
+    color: var(--overseer-readme-link-color);
+    text-decoration: none;
+    text-underline-offset: 0.2em;
+  }
+
+  .overseer-repository-readme a:hover {
+    text-decoration: underline;
+  }
+
+  .overseer-repository-readme a > svg {
+    display: inline-block;
+    margin-left: var(--city-space-1);
+    vertical-align: text-bottom;
+  }
+
+  .overseer-repository-readme img {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    vertical-align: middle;
+  }
+
+  .overseer-repository-readme :not(pre) > code {
+    padding: 0 var(--city-space-1);
+    border: 1px solid var(--city-color-border);
+    border-radius: var(--city-radius-sm);
+    background: var(--city-color-muted);
+  }
+
+  .overseer-repository-readme pre {
+    overflow-x: auto;
+    padding: var(--city-space-4);
+    border-radius: var(--city-radius-sm);
+    background: var(--city-color-muted);
+    white-space: pre;
+  }
+
+  .overseer-repository-readme code {
+    font-family: var(--city-font-family-mono);
+  }
+
+  .overseer-repository-readme blockquote {
+    padding-left: var(--city-space-4);
+    border-left: 2px solid var(--city-color-border);
+    color: var(--city-color-muted-foreground);
+  }
+
+  .overseer-repository-readme :is(th, td) {
+    padding: var(--city-space-2) var(--city-space-3);
+    border: 1px solid var(--city-color-border);
+    text-align: left;
+  }
+
+  .overseer-repository-source-link {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: var(--city-space-1);
+  }
+
+  .overseer-repository-source-link > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .overseer-repository-source-link > svg {
+    flex-shrink: 0;
   }
 
   .overseer-detail-link:hover {
@@ -2864,5 +3006,16 @@
       scroll-behavior: auto !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+@layer utilities {
+  .overseer-repository-description-motion,
+  .overseer-repository-description-motion[data-ending-style] {
+    transition-duration: var(--city-duration-xslow);
+  }
+
+  .overseer-repository-description-motion[data-swiping] {
+    transition-duration: 0ms;
   }
 }

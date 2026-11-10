@@ -83,7 +83,8 @@ export function pagePresentation(
         : currentDetail.type === "image"
           ? "이미지의 출처, 실행 기본값과 레이어를 탐색합니다."
           : currentDetail.type === "imageRepository"
-            ? "원격 태그를 탐색하고 이미지 다운로드·즐겨찾기·컨테이너 생성을 관리합니다."
+            ? imageRepositoryHeader?.description ||
+              "레지스트리에서 제공한 이미지 정보와 태그를 확인합니다."
             : currentDetail.type === "instance"
               ? "Lima VM과 Docker Engine 연결을 관리합니다."
               : currentDetail.type === "network"

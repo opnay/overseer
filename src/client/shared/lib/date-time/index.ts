@@ -1,1 +1,1 @@
-export { formatDateTime } from "./date-time.ts";
+export { formatDateTime, formatRelativeDateTime } from "./date-time.ts";

@@ -1193,8 +1193,9 @@ describe("App", () => {
       }),
     ).toBeInTheDocument();
     await waitFor(() => expect(window.location.pathname).toBe("/startup"));
-    expect(screen.getByText("설정 필요")).toBeInTheDocument();
-    expect(screen.getByText("overseer")).toBeInTheDocument();
+    const engineStatus = await screen.findByRole("region", { name: "Docker Engine 준비 상태" });
+    expect(within(engineStatus).getByText("설정 필요")).toBeInTheDocument();
+    expect(within(engineStatus).getByText("overseer")).toBeInTheDocument();
     expect(await screen.findByLabelText("CPU")).toHaveValue("4");
     await user.click(screen.getByRole("button", { name: "Docker Engine 만들기" }));
 
@@ -3134,6 +3135,10 @@ describe("App", () => {
     let favorite = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/metadata"))
+        return jsonResponse({
+          metadata: { description: "원본 저장소의 짧은 설명", fullDescription: "# 상세 본문" },
+        });
       if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
       if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
       if (url.endsWith("/api/image-repositories") && init?.method === "POST") {
@@ -3165,6 +3170,7 @@ describe("App", () => {
           repository: {
             ...repositories[0],
             favoriteCount: favorite ? 1 : 0,
+            favoriteTags: favorite ? ["latest"] : [],
             tagCount: 2,
           },
         });
@@ -3249,6 +3255,16 @@ describe("App", () => {
     expect(window.location.pathname).toBe(
       "/image-repositories/11111111-1111-4111-8111-111111111111",
     );
+    expect(screen.queryByRole("table", { name: "이미지 저장소 목록" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "저장소 추가" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "개요", level: 2 })).not.toBeInTheDocument();
+    expect(await screen.findByText("원본 저장소의 짧은 설명")).toBeInTheDocument();
+    const readDescription = await screen.findByRole("button", { name: "상세 설명 열기" });
+    expect(readDescription.closest(".overseer-page-actions")).toContainElement(
+      screen.getByRole("button", { name: "새로고침" }),
+    );
+    expect(screen.getByText("즐겨찾기한 태그가 없습니다.")).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "태그" }));
     expect(
       await screen.findByRole("table", { name: "ghcr.io/opnay/overseer 태그 목록" }),
     ).toBeInTheDocument();
@@ -3260,6 +3276,14 @@ describe("App", () => {
       "true",
     );
 
+    await user.click(screen.getByRole("link", { name: "개요" }));
+    expect(
+      await screen.findByRole("list", { name: "ghcr.io/opnay/overseer 즐겨찾기 태그 목록" }),
+    ).toHaveTextContent("latest");
+    expect(
+      screen.queryByRole("table", { name: "ghcr.io/opnay/overseer 태그 목록" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "태그" }));
     await user.click(screen.getByRole("button", { name: "latest 작업 메뉴" }));
     await user.click(await screen.findByRole("menuitem", { name: "컨테이너 생성" }));
     const runDialog = await screen.findByRole("dialog", { name: "컨테이너 실행" });

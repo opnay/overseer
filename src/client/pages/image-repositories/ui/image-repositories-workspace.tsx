@@ -62,8 +62,8 @@ export function ImageRepositoriesWorkspace({
 
   return (
     <>
-      <PageHeaderSlot name="actions">
-        {resourcePath === "/image-repositories" ? (
+      {resourcePath === "/image-repositories" ? (
+        <PageHeaderSlot name="actions">
           <Suspense fallback={<Skeleton className="overseer-loading-topbar-action" />}>
             <AddImageRepositoryDialog
               busy={submitting === "image-repository-add"}
@@ -85,9 +85,9 @@ export function ImageRepositoriesWorkspace({
               }}
             />
           </Suspense>
-        ) : null}
-      </PageHeaderSlot>
-      {
+        </PageHeaderSlot>
+      ) : null}
+      {resourcePath === "/image-repositories" ? (
         <ImageRepositoriesPage
           isBusy={(repository) =>
             targetBusy("imageRepository", repository.id) ||
@@ -121,7 +121,7 @@ export function ImageRepositoriesWorkspace({
           }
           refreshToken={`${imageRepositoryRefreshRevision}:${imageRepositoryOperationRefreshToken}`}
         />
-      }
+      ) : null}
       {currentDetail?.type === "imageRepository" ? (
         <ImageRepositoryDetailPage
           id={currentDetail.identifier}

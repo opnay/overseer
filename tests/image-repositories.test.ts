@@ -343,10 +343,8 @@ describe("ImageRepositoryService", () => {
           },
         );
       });
-      const service = new ImageRepositoryService(
-        new MemoryImageRepositoryStore(),
-        withoutDigestHeader(fetcher),
-      );
+      const store = new MemoryImageRepositoryStore();
+      const service = new ImageRepositoryService(store, withoutDigestHeader(fetcher));
       const expectedRequests = 2;
       const repository = service.add({ repository: address });
       service.setFavorite(repository.id, "tag54", true);
@@ -413,7 +411,8 @@ describe("ImageRepositoryService", () => {
       expect((await completeTags(service, repository.id, 1, { filter: { tag: "  " } })).count).toBe(
         55,
       );
-      for (const name of names.slice(28)) service.setFavorite(repository.id, name, true);
+      for (const name of names.slice(28))
+        store.setFavorite(repository.id, name, true, "2026-11-01T00:00:00Z");
       const favoritePage = await completeTags(service, repository.id, 1);
       const overflowPage = await completeTags(service, repository.id, 2);
       expect(favoritePage.tags).toHaveLength(25);
@@ -588,4 +587,26 @@ describe("ImageRepositoryService", () => {
       rmSync(dataDirectory, { force: true, recursive: true });
     }
   });
+});
+
+it("limits favorites per repository while preserving existing favorites and removals", () => {
+  const store = new MemoryImageRepositoryStore();
+  const service = new ImageRepositoryService(store);
+  const repository = service.add({ repository: "docker.io/library/node" });
+  const other = service.add({ repository: "docker.io/library/nginx" });
+  for (let index = 0; index < 10; index++) service.setFavorite(repository.id, `v${index}`, true);
+  expect(() => service.setFavorite(repository.id, "eleventh", true)).toThrow(
+    "즐겨찾기는 저장소당 최대 10개까지 추가할 수 있습니다.",
+  );
+  expect(service.get(repository.id).favoriteTags).toHaveLength(10);
+  expect(service.setFavorite(repository.id, "v0", true)).toEqual({ favorite: true, name: "v0" });
+  service.setFavorite(other.id, "latest", true);
+  service.setFavorite(repository.id, "v0", false);
+  service.setFavorite(repository.id, "replacement", true);
+  expect(service.get(repository.id)).toMatchObject({ favoriteCount: 10 });
+  store.setFavorite(repository.id, "legacy-overflow", true, "2026-11-01T00:00:00Z");
+  expect(service.get(repository.id).favoriteTags).toContain("legacy-overflow");
+  expect(() => service.setFavorite(repository.id, "another", true)).toThrow();
+  service.setFavorite(repository.id, "legacy-overflow", false);
+  expect(service.get(repository.id).favoriteCount).toBe(10);
 });

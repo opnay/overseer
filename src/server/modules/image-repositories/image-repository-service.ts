@@ -2,17 +2,20 @@ import { randomUUID } from "node:crypto";
 import type {
   AddImageRepositoryInput,
   ImageRepositoryDetail,
+  ImageRepositoryMetadata,
   ImageRepositorySummary,
   ImageRepositoryTagItem,
   ImageRepositoryTagList,
   ImageRepositoryTagQuery,
 } from "../../../shared/contracts.ts";
+import { IMAGE_REPOSITORY_FAVORITE_LIMIT } from "../../../shared/contracts.ts";
 import { parseImageRepository } from "../../../shared/validation.ts";
 import { ExpectedError } from "../../core/errors.ts";
 import type { OperationProgress } from "../operations/index.ts";
 import { MemoryImageRepositoryStore, type ImageRepositoryStore } from "./image-repository-store.ts";
 import { getRegistryRepositoryTags, type RegistryRepositoryTags } from "./registry-tags.ts";
 import { mayMatchManifestDigest } from "./registry-tag-metadata.ts";
+import { getDockerHubMetadata } from "./docker-hub-metadata.ts";
 import { DockerHubTags } from "./docker-hub-tags.ts";
 
 const TAG_PAGE_SIZE = 25;
@@ -27,6 +30,7 @@ interface CachedRegistryTags {
 export interface ImageRepositoryController {
   add(input: AddImageRepositoryInput): ImageRepositorySummary;
   get(id: string): ImageRepositoryDetail;
+  getMetadata(id: string): Promise<ImageRepositoryMetadata>;
   getTags(
     id: string,
     page: number,
@@ -44,6 +48,10 @@ export class ImageRepositoryService implements ImageRepositoryController {
   private readonly now: () => string;
   private readonly store: ImageRepositoryStore;
   private readonly tagCache = new Map<string, CachedRegistryTags>();
+  private readonly metadataCache = new Map<
+    string,
+    { expiresAt: number; value: Promise<ImageRepositoryMetadata> }
+  >();
   private readonly hubCache = new Map<string, { expiresAt: number; tags: DockerHubTags }>();
 
   constructor(
@@ -77,7 +85,27 @@ export class ImageRepositoryService implements ImageRepositoryController {
 
   get(id: string): ImageRepositoryDetail {
     const repository = this.requireRepository(id);
-    return { ...this.summary(repository), favoriteCount: this.store.favoriteTags(id).length };
+    const favoriteTags = this.store.favoriteTags(id);
+    return { ...this.summary(repository), favoriteTags, favoriteCount: favoriteTags.length };
+  }
+
+  getMetadata(id: string): Promise<ImageRepositoryMetadata> {
+    const repository = this.requireRepository(id);
+    const parsed = parseImageRepository(repository.repository);
+    if (parsed?.registry !== "docker.io") return Promise.resolve({});
+    const cached = this.metadataCache.get(id);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const entry = { expiresAt: Infinity, value: getDockerHubMetadata(parsed.name, this.fetcher) };
+    this.metadataCache.set(id, entry);
+    void entry.value.then(
+      () => {
+        entry.expiresAt = Date.now() + TAG_CACHE_TTL;
+      },
+      () => {
+        if (this.metadataCache.get(id) === entry) this.metadataCache.delete(id);
+      },
+    );
+    return entry.value;
   }
 
   async getTags(
@@ -157,16 +185,30 @@ export class ImageRepositoryService implements ImageRepositoryController {
     this.tagCache.get(id)?.value?.cancel();
     this.tagCache.delete(id);
     this.hubCache.delete(id);
+    this.metadataCache.delete(id);
   }
 
   setFavorite(id: string, tag: string, favorite: boolean): ImageRepositoryTagItem {
     this.requireRepository(id);
+    const favorites = this.store.favoriteTags(id);
+    if (
+      favorite &&
+      !favorites.includes(tag) &&
+      favorites.length >= IMAGE_REPOSITORY_FAVORITE_LIMIT
+    ) {
+      throw new ExpectedError(
+        "image_repository_favorite_limit",
+        `즐겨찾기는 저장소당 최대 ${IMAGE_REPOSITORY_FAVORITE_LIMIT}개까지 추가할 수 있습니다.`,
+        409,
+      );
+    }
     this.store.setFavorite(id, tag, favorite, this.now());
     return { favorite, name: tag };
   }
 
   async sync(id: string, progress?: OperationProgress): Promise<void> {
     const repository = this.requireRepository(id);
+    this.metadataCache.delete(id);
     const parsed = parseImageRepository(repository.repository);
     if (!parsed) {
       throw new ExpectedError(

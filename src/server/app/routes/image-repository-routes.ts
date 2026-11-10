@@ -22,6 +22,10 @@ export function registerImageRepositoryRoutes(
     };
     return context.json({ repository: repositories.add(input) }, 201);
   });
+  app.get("/image-repositories/:id/metadata", async (context) => {
+    const id = requireImageRepositoryIdentifier(context.req.param("id"));
+    return context.json({ metadata: await repositories.getMetadata(id) });
+  });
   app.get("/image-repositories/:id/tags", async (context) => {
     const id = requireImageRepositoryIdentifier(context.req.param("id"));
     const page = requirePageNumber(context.req.query("page"));
