@@ -1,6 +1,7 @@
 name: Check
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main]
@@ -14,16 +15,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v3.1.2
         with:
           version: 11.24.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 26.3.1
-          cache: pnpm
-          registry-url: https://npm.pkg.github.com
-          scope: "@opnay"
-      - run: pnpm install --frozen-lockfile
+          runtime: node@26.3.1
+          cache: true
+          install: false
+      - name: Install dependencies
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ github.workspace }}/.npmrc.ci
+        run: |
+          pnpm install --frozen-lockfile
       - run: pnpm check

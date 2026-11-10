@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { verifyBundlePrivacy } from "../scripts/verify-release-privacy.ts";
+import { verifyCiReleaseAssets } from "../scripts/publish-release-ci.ts";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   setVersion,
@@ -159,6 +160,7 @@ describe("Tauri CLI와 호환되는 자산 서명 검증", () => {
     const file = join(root, "invalid.tar.gz");
     execFileSync("tar", ["-czf", file, "-C", root, "Overseer.app", "._Overseer.app"], {
       stdio: "pipe",
+      env: { ...process.env, COPYFILE_DISABLE: "1" },
     });
     expect(() => verifyUpdateArchive(root, file)).toThrow(/압축 구조/);
   });
@@ -222,6 +224,29 @@ describe("Tauri CLI와 호환되는 자산 서명 검증", () => {
     writeFileSync(recordPath, JSON.stringify(record));
     writeFileSync(join(directory, "Overseer_0.0.2_aarch64.dmg"), "changed dmg");
     expect(() => verifyAssets(root, directory, "0.0.2", "aarch64")).toThrow(/변경됐습니다/);
+  });
+
+  it("공식 액션의 자산 URL과 서명을 검증하고 다른 다운로드 URL은 거부합니다", () => {
+    const { root, directory, manifest, record } = assetsFixture();
+    const assets = record.assets.map((asset, index) => ({
+      id: index + 1,
+      name: asset.name,
+      digest: `sha256:${asset.sha256}`,
+    }));
+    expect(verifyCiReleaseAssets(root, directory, "0.0.2", assets)).toHaveLength(4);
+    manifest.platforms["darwin-aarch64"]!.url =
+      "https://api.github.com/repos/opnay/overseer/releases/assets/1";
+    const update = () => {
+      writeFileSync(join(directory, "latest.json"), JSON.stringify(manifest));
+      assets.find((asset) => asset.name === "latest.json")!.digest = `sha256:${createHash("sha256")
+        .update(readFileSync(join(directory, "latest.json")))
+        .digest("hex")}`;
+    };
+    update();
+    expect(() => verifyCiReleaseAssets(root, directory, "0.0.2", assets)).not.toThrow();
+    manifest.platforms["darwin-aarch64"]!.url = "https://example.com/foreign-app.tar.gz";
+    update();
+    expect(() => verifyCiReleaseAssets(root, directory, "0.0.2", assets)).toThrow(/manifest/);
   });
 
   it.runIf(process.platform === "darwin")(

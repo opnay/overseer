@@ -4,9 +4,13 @@
 
 `.github/workflows/release.yml`은 `deployments` 브랜치 푸시 또는 수동 실행으로 Apple Silicon 릴리즈를 만듭니다. 워크플로우가 `main`에 반영되기 전의 최초 테스트는 `deployments` 푸시로 시작합니다. 수동 실행은 `main` 또는 `deployments`에서 사용하십시오. 버전 파일과 `docs/releases/<버전>.md`를 먼저 커밋하며, 기존 공개 버전을 재사용하지 않습니다.
 
-필요한 저장소 Actions Secrets는 `APPLE_CERTIFICATE`(Base64 p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`(앱 전용 암호), `APPLE_TEAM_ID`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`입니다. 인증서·공증 인증은 runner의 임시 키체인에만 복원하고 종료 시 제거합니다. 공증은 기존 릴리즈 도구가 수행하므로 Tauri 빌드 단계에 Apple ID 인증 환경변수를 중복 전달하지 않습니다.
+검사·테스트·프런트엔드 빌드는 Ubuntu의 재사용 Check job에서 수행하고 macOS release job은 `needs: checks`로 통과를 기다립니다. 두 job은 `pnpm/setup@v3.1.2`로 pnpm·Node를 함께 설치합니다. Bun은 기존 `scripts/build-sidecar.ts`의 단일 서버 실행 파일 컴파일에 필요하므로 macOS job에서만 설치합니다. 레지스트리 주소는 `.npmrc`, CI 인증 토큰의 환경변수 참조는 `.npmrc.ci`에서 관리합니다. Actions는 `NODE_AUTH_TOKEN`만 주입하며 파일에 실제 토큰을 저장하지 않습니다.
 
-전체 검사 후 태그를 로컬에 준비하고 빌드·서명·공증·staple·업데이트 서명·자산 검증을 수행합니다. Rust 경로를 치환하고 앱에 홈·작업 경로가 남으면 실패시킵니다. 업데이트 압축의 UID/GID·소유자명은 정규화합니다. 검증된 자산을 Actions artifact로 보관한 뒤에만 원격 태그를 게시하고 GitHub Release를 정식 latest로 공개합니다. 이 workflow는 공개까지 수행하므로 테스트할 커밋과 버전을 확인한 뒤 푸시하십시오.
+필요한 저장소 Actions Secrets는 `APPLE_CERTIFICATE`(Base64 p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`(앱 전용 암호), `APPLE_TEAM_ID`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`입니다. 인증서는 runner의 임시 키체인에 복원하고 종료 시 제거합니다. 공증 인증은 공식 액션의 Tauri 빌드에 전달합니다.
+
+`tauri-apps/tauri-action@v1.0.0`이 앱·DMG 빌드, Apple 서명·공증, updater manifest 생성과 Draft 업로드를 담당합니다. 문서화된 `tauriScript` hook은 빌드를 한 번 호출한 뒤 앱의 경로 잔존·서명·공증 티켓·버전과 압축을 검사합니다. Rust 홈·작업 경로를 치환하고 압축 소유자를 정규화한 뒤 updater 서명을 다시 생성해 공식 액션이 검증된 파일을 업로드하도록 합니다.
+
+Draft 자산은 다시 내려받아 GitHub digest, updater 공개키 서명, manifest 버전·다운로드 URL과 빌드 커밋을 확인합니다. 검증 후 체크섬 파일을 추가하고 정식 latest로 공개합니다. 원격 태그가 아직 없다면 검증 후 빌드 커밋으로 생성합니다. 공식 액션의 updater URL은 GitHub API asset URL일 수도 있으며 이 경우에도 해당 아카이브의 정확한 asset ID만 허용합니다. 이 workflow는 공개까지 수행하므로 테스트할 커밋과 버전을 확인한 뒤 푸시하십시오.
 
 실패 시 공개된 버전·태그를 옮기거나 덮어쓰지 않습니다. 원격 태그만 생성된 경우 같은 커밋에서 재실행할 수 있습니다. draft가 남았다면 자산과 오류를 확인하고 해당 draft를 정리한 뒤 재실행하십시오. 다른 커밋을 가리키는 기존 태그는 거부합니다. Apple 서명 인증서의 개발자명은 경로 치환 대상이 아니며 CI에서도 공개됩니다.
 
