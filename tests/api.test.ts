@@ -48,6 +48,17 @@ function createController(): RuntimeController {
       },
     })),
     getBuildLogs: vi.fn(async (_id, instance) => ({ instance, logs: { text: "step output" } })),
+    getBuildSteps: vi.fn(async (id, instance) => ({ instance, buildId: id, steps: [] })),
+    getRelatedBuilds: vi.fn(async (id, instance) => ({
+      instance,
+      buildId: id,
+      records: [],
+      scannedCount: 0,
+      candidateCount: 0,
+      failedCount: 0,
+      limited: false,
+      matchAvailable: false,
+    })),
     applyDockerDaemonConfiguration: vi.fn(async () => undefined),
     applyDockerDaemonConfigurationSection: vi.fn(async () => undefined),
     applyRemoteComposeUpdate: vi.fn(async () => undefined),
@@ -1702,6 +1713,51 @@ describe("API boundary", () => {
 });
 
 describe("build history API", () => {
+  it("reads analysis independently and preserves partial-result metadata", async () => {
+    const controller = createController();
+    const operations = new OperationQueue();
+    const app = createApi(controller, operations);
+    vi.mocked(controller.getRelatedBuilds).mockResolvedValueOnce({
+      instance: "overseer",
+      buildId: "build123",
+      records: [],
+      scannedCount: 20,
+      candidateCount: 32,
+      failedCount: 2,
+      limited: true,
+      matchAvailable: true,
+    });
+    const steps = await app.request("/builds/build123/steps?instance=overseer", {
+      headers: localHeaders,
+    });
+    expect(steps.status).toBe(200);
+    expect(controller.getBuildSteps).toHaveBeenCalledWith("build123", "overseer");
+    const related = await app.request("/builds/build123/related?instance=overseer", {
+      headers: localHeaders,
+    });
+    expect(related.status).toBe(200);
+    await expect(related.json()).resolves.toMatchObject({
+      scannedCount: 20,
+      failedCount: 2,
+      limited: true,
+    });
+    expect(controller.getBuildLogs).not.toHaveBeenCalled();
+    expect(operations.list()).toEqual([]);
+  });
+
+  it("keeps a running-step refusal separate from related-build reads", async () => {
+    const controller = createController();
+    vi.mocked(controller.getBuildSteps).mockRejectedValueOnce(
+      new ExpectedError("build_running", "아직 진행 중입니다.", 409),
+    );
+    const app = createApi(controller);
+    const response = await app.request("/builds/build123/steps?instance=overseer", {
+      headers: localHeaders,
+    });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "build_running" } });
+    expect(controller.getRelatedBuilds).not.toHaveBeenCalled();
+  });
   it("reads filtered build records and detail without creating an operation", async () => {
     const controller = createController();
     const operations = new OperationQueue();
@@ -1737,12 +1793,16 @@ describe("build history API", () => {
     "/builds/build123",
     "/builds/-flag?instance=overseer",
     "/builds/build123?instance=../other",
+    "/builds/build123/steps",
+    "/builds/-flag/related?instance=overseer",
   ])("rejects invalid build query %s before invoking the runtime", async (path) => {
     const controller = createController();
     const response = await createApi(controller).request(path, { headers: localHeaders });
     expect(response.status).toBe(400);
     expect(controller.getBuildHistory).not.toHaveBeenCalled();
     expect(controller.getBuild).not.toHaveBeenCalled();
+    expect(controller.getBuildSteps).not.toHaveBeenCalled();
+    expect(controller.getRelatedBuilds).not.toHaveBeenCalled();
   });
 
   it("preserves scope-change and expired-record failures", async () => {

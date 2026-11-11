@@ -37,15 +37,18 @@ describe("build history runtime scope", () => {
     ]);
   });
 
-  it("rejects a detail link for another engine before executing any command", async () => {
-    const store = new MemoryRuntimeInstanceStore();
-    store.setActiveInstanceName("second");
-    const command = vi.fn<CommandRunner>();
-    const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
-    await expect(runtime.getBuild("build123", "first")).rejects.toMatchObject({
-      code: "build_instance_changed",
-      status: 409,
-    });
-    expect(command).not.toHaveBeenCalled();
-  });
+  it.each(["getBuild", "getBuildSteps", "getRelatedBuilds"] as const)(
+    "rejects %s for another engine before executing any command",
+    async (method) => {
+      const store = new MemoryRuntimeInstanceStore();
+      store.setActiveInstanceName("second");
+      const command = vi.fn<CommandRunner>();
+      const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+      await expect(runtime[method]("build123", "first")).rejects.toMatchObject({
+        code: "build_instance_changed",
+        status: 409,
+      });
+      expect(command).not.toHaveBeenCalled();
+    },
+  );
 });
