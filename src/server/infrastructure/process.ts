@@ -64,7 +64,9 @@ export function runCommand(
       else stderr += text;
       options.onOutput?.(text);
       if (stdout.length + stderr.length > maxBuffer && !terminalError) {
-        terminalError = new Error("command output exceeded 10 MiB");
+        terminalError = Object.assign(new Error("command output exceeded 10 MiB"), {
+          code: "OUTPUT_LIMIT_EXCEEDED",
+        });
         child.kill("SIGTERM");
       }
     };

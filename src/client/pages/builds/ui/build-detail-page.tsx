@@ -467,7 +467,11 @@ export function BuildDetailPage({
                 ) : null}
               </>
             ) : section === "analysis" ? (
-              <BuildAnalysisSection onRetry={retry} state={visibleStepsState} />
+              <BuildAnalysisSection
+                onOpenLogs={() => setSection("logs")}
+                onRetry={retry}
+                state={visibleStepsState}
+              />
             ) : section === "related" ? (
               <RelatedBuildsSection
                 buildId={id}

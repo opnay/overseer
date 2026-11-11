@@ -124,6 +124,31 @@ afterEach(() => {
 });
 
 describe("build analysis detail sections", () => {
+  it("offers retained plain logs when the structured output exceeds the command limit", async () => {
+    const user = userEvent.setup();
+    installFetch((url) => {
+      if (url.pathname.endsWith("/steps"))
+        return jsonResponse(
+          {
+            error: {
+              code: "build_steps_too_large",
+              message: "단계 기록이 조회 용량을 초과했습니다.",
+            },
+          },
+          413,
+        );
+      if (url.pathname.endsWith("/logs"))
+        return jsonResponse({
+          instance: INSTANCE,
+          logs: { text: "retained prefix\n[로그 길이 제한으로 나머지 내용이 생략되었습니다.]" },
+        });
+      return jsonResponse(buildDetail("large"));
+    });
+    render(testApp(`/builds/large?instance=${INSTANCE}&section=analysis`));
+    await user.click(await screen.findByRole("button", { name: "보관 로그 보기" }));
+    expect(await screen.findByText(/retained prefix/)).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("section=logs");
+  });
   it("loads steps lazily, jumps from the overview failure, and shows output, cache, and unknown duration", async () => {
     const user = userEvent.setup();
     const failed = step("failed-step", {
