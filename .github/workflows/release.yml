@@ -68,24 +68,17 @@ jobs:
           echo "notes<<$DELIMITER" >> "$GITHUB_OUTPUT"
           cat "docs/releases/$VERSION.md" >> "$GITHUB_OUTPUT"
           echo "$DELIMITER" >> "$GITHUB_OUTPUT"
+      - name: Set up signing keychain
+        id: signing
+        uses: opnay/setup-keychain@v1
+        with:
+          set-default: "true"
       - name: Import signing certificate
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH="$RUNNER_TEMP/overseer-signing.keychain-db"
-          KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
-          echo "::add-mask::$KEYCHAIN_PASSWORD"
-          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/apple.p12"
-          chmod 600 "$RUNNER_TEMP/apple.p12"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$RUNNER_TEMP/apple.p12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db"
-          security default-keychain -d user -s "$KEYCHAIN_PATH"
-          rm "$RUNNER_TEMP/apple.p12"
+        uses: opnay/setup-keychain/import@v1
+        with:
+          keychain-path: ${{ steps.signing.outputs.keychain-path }}
+          certificate-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       - name: Build, notarize and upload draft with Tauri
         id: tauri
         uses: tauri-apps/tauri-action@v1.0.0
@@ -116,11 +109,3 @@ jobs:
             mv latest.json "$RUNNER_TEMP/tauri-latest.json"
           fi
           node scripts/publish-release-ci.ts
-      - name: Remove temporary signing material
-        if: always()
-        run: |
-          security default-keychain -d user -s "$HOME/Library/Keychains/login.keychain-db" || true
-          if test -f "$RUNNER_TEMP/overseer-signing.keychain-db"; then
-            security delete-keychain "$RUNNER_TEMP/overseer-signing.keychain-db"
-          fi
-          rm -f "$RUNNER_TEMP/apple.p12"
