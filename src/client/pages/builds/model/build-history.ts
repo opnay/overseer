@@ -114,6 +114,16 @@ export function buildLogsRequestPath(id: string, instance: string): string {
   return `/builds/${encodeURIComponent(id)}/logs?${params.toString()}`;
 }
 
+export function buildStepsRequestPath(id: string, instance: string): string {
+  const params = new URLSearchParams({ instance });
+  return `/builds/${encodeURIComponent(id)}/steps?${params.toString()}`;
+}
+
+export function relatedBuildsRequestPath(id: string, instance: string): string {
+  const params = new URLSearchParams({ instance });
+  return `/builds/${encodeURIComponent(id)}/related?${params.toString()}`;
+}
+
 export function buildRequestFailure(error: unknown, fallback: string): BuildRequestFailure {
   if (error instanceof ApiRequestError) return { code: error.code, message: error.message };
   return { message: error instanceof Error ? error.message : fallback };
@@ -137,6 +147,9 @@ export function formatBuildDuration(
     }
   }
   if (durationMs === undefined || !Number.isFinite(durationMs) || durationMs < 0) return "—";
+  if (durationMs > 0 && durationMs < 1_000) {
+    return `${Math.max(1, Math.round(durationMs))}ms`;
+  }
 
   const totalSeconds = Math.round(durationMs / 1_000);
   const hours = Math.floor(totalSeconds / 3_600);
