@@ -1107,6 +1107,61 @@
     gap: var(--city-space-6);
   }
 
+  .overseer-build-back {
+    justify-self: start;
+  }
+
+  #builds > .overseer-table-context {
+    display: grid;
+    gap: var(--city-space-3);
+  }
+
+  .overseer-detail-section > header > .overseer-build-step-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--city-space-2);
+    margin-top: var(--city-space-3);
+  }
+
+  .overseer-build-step-controls > * {
+    width: auto;
+    min-width: 10rem;
+  }
+
+  .overseer-table.overseer-build-steps-table {
+    width: 100%;
+    min-width: 44rem;
+    table-layout: fixed;
+  }
+
+  .overseer-build-steps-table th:first-child {
+    width: 48%;
+  }
+
+  .overseer-build-steps-table th:nth-child(3) {
+    width: 18%;
+  }
+
+  .overseer-build-steps-table .overseer-build-step-name {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .overseer-build-step-output {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-3);
+    padding: var(--city-space-3);
+    white-space: normal;
+  }
+
+  .overseer-build-step-duration {
+    display: grid;
+    min-width: 0;
+    gap: var(--city-space-1);
+  }
+
   .overseer-detail-loading > * {
     min-height: var(--city-control-lg);
   }

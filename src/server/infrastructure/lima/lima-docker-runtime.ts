@@ -812,6 +812,16 @@ export class LimaDockerRuntime implements OverseerController {
     return { instance, logs: await service.logs(id) };
   }
 
+  async getBuildSteps(id: string, expectedInstance: string) {
+    const { instance, service } = this.buildScope(expectedInstance);
+    return { instance, buildId: id, steps: await service.steps(id) };
+  }
+
+  async getRelatedBuilds(id: string, expectedInstance: string) {
+    const { instance, service } = this.buildScope(expectedInstance);
+    return { instance, buildId: id, ...(await service.related(id)) };
+  }
+
   async getImage(id: string): Promise<ImageDetail> {
     return this.images.get(id);
   }

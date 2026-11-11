@@ -53,3 +53,33 @@ export interface BuildLogsResponse {
   instance: string;
   logs: { text: string };
 }
+
+export interface BuildStep {
+  id: string;
+  name: string;
+  status: "pending" | "running" | "succeeded" | "failed";
+  cached: boolean;
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+  error?: string;
+  log: string;
+  logTruncated: boolean;
+}
+export interface BuildStepsResponse {
+  instance: string;
+  buildId: string;
+  steps: BuildStep[];
+}
+export interface RelatedBuilds {
+  records: BuildRecord[];
+  scannedCount: number;
+  candidateCount: number;
+  failedCount: number;
+  limited: boolean;
+  matchAvailable: boolean;
+}
+export interface RelatedBuildsResponse extends RelatedBuilds {
+  instance: string;
+  buildId: string;
+}

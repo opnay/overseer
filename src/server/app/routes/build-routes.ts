@@ -65,4 +65,20 @@ export function registerBuildRoutes(app: Hono, controller: BuildController): voi
       ),
     ),
   );
+  app.get("/builds/:id/steps", async (context) =>
+    context.json(
+      await controller.getBuildSteps(
+        requireBuildId(context.req.param("id")),
+        requireInstance(context.req.query("instance")),
+      ),
+    ),
+  );
+  app.get("/builds/:id/related", async (context) =>
+    context.json(
+      await controller.getRelatedBuilds(
+        requireBuildId(context.req.param("id")),
+        requireInstance(context.req.query("instance")),
+      ),
+    ),
+  );
 }
