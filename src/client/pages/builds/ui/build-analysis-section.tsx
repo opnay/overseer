@@ -192,9 +192,11 @@ function LoadingSteps() {
 }
 
 export function BuildAnalysisSection({
+  onOpenLogs,
   onRetry,
   state,
 }: {
+  onOpenLogs(): void;
   onRetry(): void;
   state?: BuildRequestState<BuildStepsResponse>;
 }) {
@@ -219,8 +221,12 @@ export function BuildAnalysisSection({
         <Alert.Title level={2}>빌드 단계 정보를 불러오지 못했습니다.</Alert.Title>
         <Alert.Description>{state.error.message}</Alert.Description>
         <Alert.Action>
-          <Button onClick={onRetry} size="sm" variant="outline">
-            다시 시도
+          <Button
+            onClick={state.error.code === "build_steps_too_large" ? onOpenLogs : onRetry}
+            size="sm"
+            variant="outline"
+          >
+            {state.error.code === "build_steps_too_large" ? "보관 로그 보기" : "다시 시도"}
           </Button>
         </Alert.Action>
       </Alert.Root>

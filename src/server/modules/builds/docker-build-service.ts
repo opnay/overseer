@@ -262,9 +262,11 @@ function stripTerminalControls(value: string): string {
   /* eslint-enable no-control-regex */
 }
 
-function normalizeLogs(value: string): string {
+function normalizeLogs(value: string, outputTruncated = false): string {
   const sanitized = stripTerminalControls(value);
-  if (sanitized.length <= MAX_LOG_CHARACTERS) return sanitized;
+  if (sanitized.length <= MAX_LOG_CHARACTERS) {
+    return outputTruncated ? `${sanitized}${LOG_TRUNCATION_MARKER}` : sanitized;
+  }
 
   let text = sanitized.slice(0, MAX_LOG_CHARACTERS);
   const lastCodeUnit = text.charCodeAt(text.length - 1);
@@ -448,6 +450,10 @@ function errorText(error: unknown): string {
   return values.filter((value): value is string => typeof value === "string").join("\n");
 }
 
+function isOutputLimitError(error: unknown): error is JsonRecord {
+  return isRecord(error) && error.code === "OUTPUT_LIMIT_EXCEEDED";
+}
+
 function unavailableError(): ExpectedError {
   return new ExpectedError(
     "build_history_unavailable",
@@ -575,6 +581,10 @@ export class DockerBuildService {
         COMMAND_TIMEOUT_MS,
       );
     } catch (error) {
+      if (isOutputLimitError(error)) {
+        const partial = readOptionalString(error.stderr) ?? readOptionalString(error.stdout) ?? "";
+        return { text: normalizeLogs(partial, true) };
+      }
       throw commandFailure(error, "logs");
     }
 
@@ -598,6 +608,13 @@ export class DockerBuildService {
         COMMAND_TIMEOUT_MS,
       );
     } catch (error) {
+      if (isOutputLimitError(error)) {
+        throw new ExpectedError(
+          "build_steps_too_large",
+          "단계 기록이 조회 용량을 초과했습니다. 로그 탭에서 보관 출력의 앞부분을 확인하십시오.",
+          413,
+        );
+      }
       throw commandFailure(error, "logs");
     }
 
