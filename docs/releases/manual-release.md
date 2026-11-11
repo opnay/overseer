@@ -15,6 +15,8 @@ git push origin v0.0.2
 
 검사·테스트·프런트엔드 빌드는 Ubuntu의 재사용 Check job에서 수행하고 macOS release job은 `needs: checks`로 통과를 기다립니다. 두 job은 `pnpm/setup@v3.1.2`로 pnpm·Node를 함께 설치합니다. Bun은 기존 `scripts/build-sidecar.ts`의 단일 서버 실행 파일 컴파일에 필요하므로 macOS job에서만 설치합니다. 레지스트리 주소는 `.npmrc`, CI 인증 토큰의 환경변수 참조는 `.npmrc.ci`에서 관리합니다. Actions는 `NODE_AUTH_TOKEN`만 주입하며 파일에 실제 토큰을 저장하지 않습니다.
 
+macOS 빌드는 [`xcode-27` Apple Silicon runner](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)에서 `DEVELOPER_DIR`로 Xcode 27.2를 선택합니다. 로컬에서 창 제어 버튼을 정렬한 환경과 동일하게 macOS SDK 27.2를 사용하며, SDK가 다르면 빌드 전에 실패합니다. 로컬에서 정식 빌드와 타이틀바를 비교할 때도 Xcode 27.2·SDK 27.2를 사용하십시오.
+
 필요한 저장소 Actions Secrets는 `APPLE_CERTIFICATE`(Base64 p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`(앱 전용 암호), `APPLE_TEAM_ID`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`입니다. 인증서는 runner의 임시 키체인에 복원하고 종료 시 제거합니다. 공증 인증은 공식 액션의 Tauri 빌드에 전달합니다.
 
 `tauri-apps/tauri-action@v1.0.0`이 앱·DMG 빌드, Apple 서명·공증, updater manifest 생성과 Draft 업로드를 담당합니다. 문서화된 `tauriScript` hook은 빌드를 한 번 호출한 뒤 앱의 경로 잔존·서명·공증 티켓·버전과 압축을 검사합니다. Rust 홈·작업 경로를 치환하고 압축 소유자를 정규화한 뒤 updater 서명을 다시 생성해 공식 액션이 검증된 파일을 업로드하도록 합니다.
