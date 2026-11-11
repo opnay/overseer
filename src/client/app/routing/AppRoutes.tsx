@@ -4,6 +4,9 @@ import { Suspense, lazy } from "react";
 import { Route, Routes } from "react-router";
 import { useAppSession } from "../runtime/AppSession.tsx";
 import { PageLoadingBody } from "../ui/loading/LoadingScreen.tsx";
+const BuildsWorkspace = lazy(() =>
+  import("@/pages/builds").then((module) => ({ default: module.BuildsWorkspace })),
+);
 const ComposeWorkspace = lazy(() =>
   import("@/pages/compose").then((module) => ({ default: module.ComposeWorkspace })),
 );
@@ -68,6 +71,35 @@ export function AppRoutes({
   )?.category;
   return (
     <Routes>
+      <Route
+        path="/builds/:id"
+        element={
+          <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+            {dashboard ? (
+              <BuildsWorkspace
+                key={dashboard.runtime.instance}
+                instance={dashboard.runtime.instance}
+                refreshToken={`${settingsRefreshToken}:${detailRefreshToken}`}
+              />
+            ) : null}
+          </Suspense>
+        }
+      />
+
+      <Route
+        path="/builds"
+        element={
+          <Suspense fallback={<PageLoadingBody path={resourcePath} />}>
+            {dashboard ? (
+              <BuildsWorkspace
+                key={dashboard.runtime.instance}
+                instance={dashboard.runtime.instance}
+                refreshToken={`${settingsRefreshToken}:${detailRefreshToken}`}
+              />
+            ) : null}
+          </Suspense>
+        }
+      />
       <Route
         path="/instances"
         element={

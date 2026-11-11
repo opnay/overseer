@@ -2841,7 +2841,7 @@ describe("App", () => {
       within(navigation)
         .getAllByRole("link")
         .map(({ textContent }) => textContent),
-    ).toEqual(["Compose", "컨테이너", "이미지", "볼륨", "네트워크"]);
+    ).toEqual(["Compose", "컨테이너", "이미지", "빌드", "볼륨", "네트워크"]);
     expect(within(sidebar).getByRole("button", { name: "도커" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -5703,5 +5703,48 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/현재 업데이트 ID를 찾지 못해/)).toBeInTheDocument();
     expect(updateRequests).toEqual(["docker"]);
+  });
+});
+
+describe("build history navigation", () => {
+  it("opens the build collection through the app router and refreshes its records", async () => {
+    const dashboard: DashboardSnapshot = {
+      containers: [],
+      images: [],
+      networks: [],
+      volumes: [],
+      composeProjects: [],
+      runtime: { instance: "overseer", phase: "running", message: "정상" },
+    };
+
+    let buildReads = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/startup")) return jsonResponse(startupSnapshot());
+        if (url.endsWith("/api/operations")) return jsonResponse({ operations: [] });
+        if (url.includes("/api/builds?")) {
+          buildReads += 1;
+          return jsonResponse({
+            instance: "overseer",
+            builder: "default",
+            records: [],
+            count: 0,
+            page: 1,
+            pageSize: 20,
+          });
+        }
+        return jsonResponse(dashboard);
+      }),
+    );
+    window.history.replaceState(null, "", "/builds");
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByRole("heading", { level: 1, name: "빌드" })).toBeVisible();
+    await waitFor(() => expect(buildReads).toBe(1));
+    await user.click(screen.getByRole("button", { name: "새로고침" }));
+    await waitFor(() => expect(buildReads).toBeGreaterThan(1));
+    expect(window.location.pathname).toBe("/builds");
   });
 });

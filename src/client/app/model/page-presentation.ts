@@ -76,22 +76,24 @@ export function pagePresentation(
       ? settingsPresentation.label
       : currentRoute.label;
   const pageDescription = currentDetail
-    ? currentDetail.type === "compose"
-      ? "서비스 운영과 Compose 구성을 한곳에서 관리합니다."
-      : currentDetail.type === "container"
-        ? "실행 중인 컨테이너의 운영·진단 정보를 관리합니다."
-        : currentDetail.type === "image"
-          ? "이미지의 출처, 실행 기본값과 레이어를 탐색합니다."
-          : currentDetail.type === "imageRepository"
-            ? imageRepositoryHeader?.description ||
-              "레지스트리에서 제공한 이미지 정보와 태그를 확인합니다."
-            : currentDetail.type === "instance"
-              ? "Lima VM과 Docker Engine 연결을 관리합니다."
-              : currentDetail.type === "network"
-                ? "Docker 네트워크의 연결 관계와 원본 구성을 탐색합니다."
-                : currentVolumeAnonymous
-                  ? currentDetail.identifier
-                  : undefined
+    ? currentDetail.type === "build"
+      ? "빌드 결과와 단계 출력, 입력 정보를 확인합니다."
+      : currentDetail.type === "compose"
+        ? "서비스 운영과 Compose 구성을 한곳에서 관리합니다."
+        : currentDetail.type === "container"
+          ? "실행 중인 컨테이너의 운영·진단 정보를 관리합니다."
+          : currentDetail.type === "image"
+            ? "이미지의 출처, 실행 기본값과 레이어를 탐색합니다."
+            : currentDetail.type === "imageRepository"
+              ? imageRepositoryHeader?.description ||
+                "레지스트리에서 제공한 이미지 정보와 태그를 확인합니다."
+              : currentDetail.type === "instance"
+                ? "Lima VM과 Docker Engine 연결을 관리합니다."
+                : currentDetail.type === "network"
+                  ? "Docker 네트워크의 연결 관계와 원본 구성을 탐색합니다."
+                  : currentVolumeAnonymous
+                    ? currentDetail.identifier
+                    : undefined
     : currentRoute.path === "/settings"
       ? settingsPresentation.description
       : currentRoute.description;
