@@ -27,6 +27,27 @@ import type {
 
 function createController(): RuntimeController {
   return {
+    getBuildHistory: vi.fn(async (query) => ({
+      instance: "overseer",
+      builder: "default" as const,
+      records: [],
+      count: 0,
+      page: query.page,
+      pageSize: query.pageSize,
+    })),
+    getBuild: vi.fn(async (id, instance) => ({
+      instance,
+      build: {
+        id,
+        name: "app",
+        status: "succeeded" as const,
+        startedAt: "2026-11-11T00:00:00Z",
+        platforms: [],
+        materials: [],
+        outputs: [],
+      },
+    })),
+    getBuildLogs: vi.fn(async (_id, instance) => ({ instance, logs: { text: "step output" } })),
     applyDockerDaemonConfiguration: vi.fn(async () => undefined),
     applyDockerDaemonConfigurationSection: vi.fn(async () => undefined),
     applyRemoteComposeUpdate: vi.fn(async () => undefined),
@@ -1677,5 +1698,70 @@ describe("API boundary", () => {
       { name: "retry-data" },
       expect.any(Object),
     );
+  });
+});
+
+describe("build history API", () => {
+  it("reads filtered build records and detail without creating an operation", async () => {
+    const controller = createController();
+    const operations = new OperationQueue();
+    const app = createApi(controller, operations);
+    const response = await app.request(
+      "/builds?instance=overseer&filter[name]=web&filter[status]=failed&page=2&pageSize=10",
+      { headers: localHeaders },
+    );
+    expect(response.status).toBe(200);
+    expect(controller.getBuildHistory).toHaveBeenCalledWith(
+      { name: "web", status: "failed", page: 2, pageSize: 10 },
+      "overseer",
+    );
+    const detail = await app.request("/builds/build123?instance=overseer", {
+      headers: localHeaders,
+    });
+    expect(detail.status).toBe(200);
+    await expect(detail.json()).resolves.toMatchObject({
+      instance: "overseer",
+      build: { id: "build123" },
+    });
+    const logs = await app.request("/builds/build123/logs?instance=overseer", {
+      headers: localHeaders,
+    });
+    await expect(logs.json()).resolves.toMatchObject({ logs: { text: "step output" } });
+    expect(operations.list()).toEqual([]);
+  });
+
+  it.each([
+    "/builds?filter[status]=invented",
+    "/builds?pageSize=101",
+    "/builds?filter[secret]=value",
+    "/builds/build123",
+    "/builds/-flag?instance=overseer",
+    "/builds/build123?instance=../other",
+  ])("rejects invalid build query %s before invoking the runtime", async (path) => {
+    const controller = createController();
+    const response = await createApi(controller).request(path, { headers: localHeaders });
+    expect(response.status).toBe(400);
+    expect(controller.getBuildHistory).not.toHaveBeenCalled();
+    expect(controller.getBuild).not.toHaveBeenCalled();
+  });
+
+  it("preserves scope-change and expired-record failures", async () => {
+    const controller = createController();
+    vi.mocked(controller.getBuild).mockRejectedValueOnce(
+      new ExpectedError("build_instance_changed", "활성 엔진이 변경되었습니다.", 409),
+    );
+    const app = createApi(controller);
+    const changed = await app.request("/builds/build123?instance=old", { headers: localHeaders });
+    expect(changed.status).toBe(409);
+    await expect(changed.json()).resolves.toMatchObject({
+      error: { code: "build_instance_changed" },
+    });
+    vi.mocked(controller.getBuild).mockRejectedValueOnce(
+      new ExpectedError("build_not_found", "빌드 기록이 없습니다.", 404),
+    );
+    const missing = await app.request("/builds/build123?instance=overseer", {
+      headers: localHeaders,
+    });
+    expect(missing.status).toBe(404);
   });
 });

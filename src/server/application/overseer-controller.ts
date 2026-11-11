@@ -36,6 +36,18 @@ import type {
   VolumeSummary,
 } from "../../shared/contracts.ts";
 import type { OperationProgress } from "../modules/operations/index.ts";
+import type {
+  BuildDetailResponse,
+  BuildHistory,
+  BuildListQuery,
+  BuildLogsResponse,
+} from "../../shared/builds.ts";
+
+export interface BuildController {
+  getBuildHistory(query: BuildListQuery, instance?: string): Promise<BuildHistory>;
+  getBuild(id: string, instance: string): Promise<BuildDetailResponse>;
+  getBuildLogs(id: string, instance: string): Promise<BuildLogsResponse>;
+}
 
 export interface DashboardController {
   getDashboard(): Promise<DashboardSnapshot>;
@@ -158,6 +170,7 @@ export interface NetworkController {
 
 export interface OverseerController
   extends
+    BuildController,
     ComposeController,
     ContainerController,
     DashboardController,

@@ -1,3 +1,5 @@
+import type { BuildListQuery } from "../../../shared/builds.ts";
+import { DockerBuildService } from "../../modules/builds/index.ts";
 import { homedir } from "node:os";
 import { isIPv4 } from "node:net";
 import { stripVTControlCharacters } from "node:util";
@@ -816,6 +818,36 @@ export class LimaDockerRuntime implements OverseerController {
 
   async removeImageTag(input: RemoveImageTagInput, progress?: OperationProgress): Promise<void> {
     await this.images.removeTag(input, progress);
+  }
+
+  private buildScope(expectedInstance?: string) {
+    const instance = this.instanceName;
+    if (expectedInstance !== undefined && expectedInstance !== instance) {
+      throw new ExpectedError(
+        "build_instance_changed",
+        "활성 엔진이 변경되었습니다. 빌드 목록에서 다시 선택하십시오.",
+        409,
+      );
+    }
+    const service = new DockerBuildService((args, timeoutMs) =>
+      this.rawDockerForInstance(instance, args, timeoutMs),
+    );
+    return { instance, service };
+  }
+
+  async getBuildHistory(query: BuildListQuery, expectedInstance?: string) {
+    const { instance, service } = this.buildScope(expectedInstance);
+    return { instance, builder: "default" as const, ...(await service.list(query)) };
+  }
+
+  async getBuild(id: string, expectedInstance: string) {
+    const { instance, service } = this.buildScope(expectedInstance);
+    return { instance, build: await service.get(id) };
+  }
+
+  async getBuildLogs(id: string, expectedInstance: string) {
+    const { instance, service } = this.buildScope(expectedInstance);
+    return { instance, logs: await service.logs(id) };
   }
 
   async getImage(id: string): Promise<ImageDetail> {

@@ -94,6 +94,7 @@ export function PageHeader(
               if (
                 resourcePath === "/settings" ||
                 resourcePath === "/docker-plugins" ||
+                resourcePath.startsWith("/builds") ||
                 resourcePath.startsWith("/instances")
               ) {
                 setSettingsRefreshRevision((value) => value + 1);
