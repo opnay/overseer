@@ -383,10 +383,6 @@ export function DockerDaemonSettings({
                     label="host-gateway를 macOS에 연결"
                     onCheckedChange={(checked) => update("hostGatewayToMacOS", checked)}
                   />
-                  <p>
-                    설정을 적용하면 Docker Engine이 재시작됩니다. 기존 컨테이너에도 적용하려면
-                    컨테이너를 다시 만드십시오.
-                  </p>
                   {/"host-gateway-ips?"\s*:/.test(snapshot.additionalJson) &&
                   !snapshot.configuration.hostGatewayToMacOS ? (
                     <p>
