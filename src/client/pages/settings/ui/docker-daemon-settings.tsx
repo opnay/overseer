@@ -375,22 +375,6 @@ export function DockerDaemonSettings({
                 <Fieldset.Description className="overseer-daemon-section-description">
                   DNS는 컨테이너 전체에, 주소 풀은 새 네트워크부터 적용됩니다.
                 </Fieldset.Description>
-                <Fieldset.Content>
-                  <SettingSwitch
-                    checked={form.hostGatewayToMacOS}
-                    disabled={controlsBusy}
-                    description="컨테이너에서 사용하는 host-gateway가 Linux VM 내부 대신 macOS를 가리키도록 설정합니다."
-                    label="host-gateway를 macOS에 연결"
-                    onCheckedChange={(checked) => update("hostGatewayToMacOS", checked)}
-                  />
-                  {/"host-gateway-ips?"\s*:/.test(snapshot.additionalJson) &&
-                  !snapshot.configuration.hostGatewayToMacOS ? (
-                    <p>
-                      사용자 지정 host-gateway 주소가 있습니다. 이 옵션을 켜면 macOS 주소로
-                      바뀝니다.
-                    </p>
-                  ) : null}
-                </Fieldset.Content>
                 <Fieldset.Content className="overseer-settings-grid">
                   <Field.Root>
                     <Field.Label>DNS 서버</Field.Label>
@@ -417,6 +401,22 @@ export function DockerDaemonSettings({
                     <Field.Description>CIDR과 네트워크 크기를 쉼표로 구분합니다.</Field.Description>
                     <Field.Error match>{errors.addressPools}</Field.Error>
                   </Field.Root>
+                </Fieldset.Content>
+                <Fieldset.Content>
+                  <SettingSwitch
+                    checked={form.hostGatewayToMacOS}
+                    disabled={controlsBusy}
+                    description="컨테이너에서 사용하는 host-gateway가 Linux VM 내부 대신 macOS를 가리키도록 설정합니다."
+                    label="host-gateway를 macOS에 연결"
+                    onCheckedChange={(checked) => update("hostGatewayToMacOS", checked)}
+                  />
+                  {/"host-gateway-ips?"\s*:/.test(snapshot.additionalJson) &&
+                  !snapshot.configuration.hostGatewayToMacOS ? (
+                    <p>
+                      사용자 지정 host-gateway 주소가 있습니다. 이 옵션을 켜면 macOS 주소로
+                      바뀝니다.
+                    </p>
+                  ) : null}
                 </Fieldset.Content>
                 <SectionActions
                   busy={controlsBusy}
