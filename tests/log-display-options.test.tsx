@@ -65,6 +65,13 @@ describe("LogViewer", () => {
     const fullscreenDialog = await screen.findByRole("dialog", { name: "테스트 로그" });
     expect(document.querySelectorAll("[data-city-dialog-popup]")).toHaveLength(2);
     expect(fullscreenDialog).toHaveAttribute("data-size", "full");
+    expect(within(fullscreenDialog).getByRole("heading", { name: "테스트 로그" })).toHaveClass(
+      "sr-only",
+    );
+    expect(within(fullscreenDialog).getByRole("button", { name: "닫기" })).toBeInTheDocument();
+    expect(fullscreenDialog.querySelector(".overseer-log-viewer-toolbar")).toHaveTextContent(
+      "테스트 로그",
+    );
     expect(fullscreenDialog).toHaveClass("overseer-log-viewer-fullscreen-dialog");
     expect(fullscreenDialog.parentElement).toHaveClass("overseer-log-viewer-fullscreen-viewport");
 

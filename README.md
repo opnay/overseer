@@ -155,6 +155,12 @@ pnpm check
 
 맥 접근 주소는 대상 VM의 `host.lima.internal`에서 조회합니다. 옵션을 끄면 Docker 기본 브리지 주소를 사용합니다. 최초 마이그레이션은 기존 주소도 macOS 주소로 전환합니다. 이후에는 고급 JSON에서 지정한 주소와 직접 끈 설정을 보존합니다. 저장하면 Docker Engine이 재시작됩니다. 기존 Compose 컨테이너에도 적용하려면 `docker compose up -d --force-recreate`로 다시 만드십시오.
 
+## 명령 출력 보기
+
+설치·업데이트 등 진행 출력을 기록하는 작업은 실행한 명령을 `$ …` 줄로 먼저 표시합니다. 여러 명령과 출력은 실행 순서대로 작업 기록에 남습니다. 명령 표시에 포함되는 환경변수 값·민감 옵션·URL 인증 정보와 인라인 스크립트는 가리며 표준입력은 기록하지 않습니다. 가려진 명령은 표시용이며 그대로 복사해 재실행할 수 없습니다. 명령을 기록하지 않았던 과거 출력은 그대로 유지합니다.
+
+로그의 **크게 보기**는 창 전체를 사용하며 상단 한 줄에 작업명과 로그 옵션을 표시합니다. macOS 앱에서는 창 제어 버튼의 공간을 확보합니다. 하단 **닫기** 또는 Escape로 돌아갈 수 있고, 폰트 크기·줄 번호·줄 바꿈 설정은 유지됩니다.
+
 ## URL Compose
 
 Compose 페이지에서 GitHub Raw처럼 인증 없이 파일 내용이 열리는 공개 HTTPS `compose.yaml` URL을 등록할 수 있습니다. 원본 URL과 현재·대기 중인 파일, ETag·Last-Modified, content hash와 업데이트 확인 결과는 `~/Library/Application Support/Overseer/overseer.sqlite`에 저장하며 materialized 파일은 같은 디렉터리의 `compose/<project>/compose.yaml`에 둡니다. `OVERSEER_DATA_DIR`과 `OVERSEER_DATABASE_PATH`로 위치를 바꿀 수 있습니다.

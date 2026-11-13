@@ -1,5 +1,6 @@
 @layer base {
   html {
+    --overseer-titlebar-height: var(--city-space-12);
     min-width: 20rem;
     background: var(--city-color-background);
   }
@@ -19,7 +20,6 @@
 
 @layer city-app {
   .overseer-window {
-    --overseer-titlebar-height: var(--city-space-12);
     min-height: 100dvh;
   }
 
@@ -2150,12 +2150,51 @@
   }
 
   .overseer-log-viewer-fullscreen-dialog {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
     width: 100vw;
     height: 100dvh;
     max-width: none;
     max-height: none;
     border: 0;
     border-radius: 0;
+  }
+
+  .overseer-log-viewer[data-fullscreen="true"] .overseer-log-viewer-toolbar {
+    box-sizing: border-box;
+    height: var(--overseer-titlebar-height);
+    min-height: var(--overseer-titlebar-height);
+    padding: var(--city-space-2) var(--city-space-4);
+    flex-wrap: nowrap;
+  }
+
+  body:has(.overseer-window[data-native-window])
+    .overseer-log-viewer[data-fullscreen="true"]
+    .overseer-log-viewer-toolbar {
+    padding-left: calc(var(--city-space-12) + var(--city-space-8) + var(--city-space-2));
+  }
+
+  .overseer-log-viewer[data-fullscreen="true"] .overseer-log-viewer-context {
+    height: 100%;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  .overseer-log-viewer-context .overseer-log-viewer-title {
+    overflow: hidden;
+    color: var(--city-color-foreground);
+    font-size: var(--city-font-size-sm);
+    font-weight: var(--city-font-weight-medium);
+    text-overflow: ellipsis;
+  }
+
+  .overseer-log-viewer[data-fullscreen="true"] .overseer-log-viewer-actions {
+    flex: none;
+  }
+
+  .overseer-log-command {
+    color: var(--city-palette-neutral-200);
+    font-weight: var(--city-font-weight-semibold);
   }
 
   .overseer-log-viewer-fullscreen-body {
@@ -2250,7 +2289,7 @@
   .overseer-log-code-line::before {
     padding: 0 var(--city-space-3) 0 var(--city-space-2);
     border-right: 1px solid var(--city-palette-neutral-800);
-    color: var(--city-palette-neutral-600);
+    color: var(--city-palette-neutral-400);
     content: counter(log-line);
     text-align: right;
     user-select: none;

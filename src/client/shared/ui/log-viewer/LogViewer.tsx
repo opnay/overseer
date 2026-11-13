@@ -125,7 +125,19 @@ export function LogViewer({
       data-height={height}
     >
       <div className="overseer-log-viewer-toolbar">
-        {context ? <div className="overseer-log-viewer-context">{context}</div> : null}
+        {fullscreen || context ? (
+          <div
+            className="overseer-log-viewer-context"
+            data-tauri-drag-region={fullscreen ? "deep" : undefined}
+          >
+            {fullscreen ? (
+              <span className="overseer-log-viewer-title" title={ariaLabel}>
+                {ariaLabel}
+              </span>
+            ) : null}
+            {context}
+          </div>
+        ) : null}
         <div className="overseer-log-viewer-actions">
           {actions}
           <LogDisplayOptions
@@ -187,12 +199,10 @@ export function LogViewer({
         <Dialog.Backdrop className="overseer-log-viewer-fullscreen-backdrop" />
         <Dialog.Viewport className="overseer-log-viewer-fullscreen-viewport">
           <Dialog.Popup className="overseer-log-viewer-fullscreen-dialog" scroll="body" size="full">
-            <Dialog.Header>
-              <div>
-                <Dialog.Title>{ariaLabel}</Dialog.Title>
-                <Dialog.Description>로그를 창 전체에서 확인합니다.</Dialog.Description>
-              </div>
-            </Dialog.Header>
+            <Dialog.Title className="sr-only">{ariaLabel}</Dialog.Title>
+            <Dialog.Description className="sr-only">
+              로그를 창 전체에서 확인합니다.
+            </Dialog.Description>
             <Dialog.Body className="overseer-log-viewer-fullscreen-body">
               {renderViewer(true)}
             </Dialog.Body>
@@ -213,7 +223,20 @@ export function LogCodeContent({
   showLineNumbers: boolean;
   value: string;
 }) {
-  if (!showLineNumbers) return <code>{value}</code>;
+  if (!showLineNumbers) {
+    return (
+      <code>
+        {value.split(/\r?\n/).map((line, index) => (
+          <Fragment key={index}>
+            {index > 0 ? "\n" : null}
+            <span className={line.startsWith("$ ") ? "overseer-log-command" : undefined}>
+              {line}
+            </span>
+          </Fragment>
+        ))}
+      </code>
+    );
+  }
 
   const lines = value.split(/\r?\n/);
   return (
@@ -221,7 +244,11 @@ export function LogCodeContent({
       {lines.map((line, index) => (
         <Fragment key={`${index}-${line.slice(0, 24)}`}>
           <span className="overseer-log-code-line">
-            <span className="overseer-log-code-line-content">{line || " "}</span>
+            <span
+              className={`overseer-log-code-line-content${line.startsWith("$ ") ? " overseer-log-command" : ""}`}
+            >
+              {line || " "}
+            </span>
           </span>
           {index < lines.length - 1 ? "\n" : null}
         </Fragment>
