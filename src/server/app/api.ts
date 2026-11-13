@@ -35,6 +35,7 @@ import { registerRuntimeRoutes } from "./routes/runtime-routes.ts";
 import { registerStartupRoutes } from "./routes/startup-routes.ts";
 import { registerVolumeRoutes } from "./routes/volume-routes.ts";
 import { requireLocalRequest } from "./security.ts";
+import { scheduleMacOSHostGatewayMigrations } from "./runtime-migrations.ts";
 
 function retryRequest(context: Context, body?: unknown): OperationRetryRequest {
   const method = context.req.method;
@@ -105,16 +106,15 @@ export function createApi(
   return app;
 }
 
-export function createPersistentApi() {
+export function createPersistentApi({ migrateHostGateway = true } = {}) {
   const history = new SqliteOperationHistoryStore();
   const instances = new SqliteRuntimeInstanceStore();
   const imageRepositories = new ImageRepositoryService(new SqliteImageRepositoryStore());
-  return createApi(
-    new LimaDockerRuntime(undefined, undefined, undefined, undefined, instances),
-    new OperationQueue(3, history),
-    undefined,
-    imageRepositories,
-  );
+  const runtime = new LimaDockerRuntime(undefined, undefined, undefined, undefined, instances);
+  const operations = new OperationQueue(3, history);
+  if (migrateHostGateway)
+    void scheduleMacOSHostGatewayMigrations(runtime, operations).catch(console.error);
+  return createApi(runtime, operations, undefined, imageRepositories);
 }
 
 export type ApiType = ReturnType<typeof createApi>;

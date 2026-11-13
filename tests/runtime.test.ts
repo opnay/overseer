@@ -1730,6 +1730,7 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         lifecycle.push("start");
         status = "Running";
       }
+      if (args.at(-1)?.includes("host-gateway-macos-v1")) return { stderr: "", stdout: "done\n" };
       if (executable === "docker") return docker(args);
       return { stderr: "", stdout: "" };
     });
@@ -1786,6 +1787,7 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         lifecycle.push("start");
         status = "Running";
       }
+      if (args.at(-1)?.includes("host-gateway-macos-v1")) return { stderr: "", stdout: "done\n" };
       if (executable === "docker") {
         if (args.includes("version")) lifecycle.push("ready");
         return docker(args);

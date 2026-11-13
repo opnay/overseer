@@ -85,7 +85,7 @@ export function dockerDaemonConfigurationToForm(
 ): DockerDaemonConfigurationForm {
   const { configuration } = snapshot;
   return {
-    hostGatewayToMacOS: configuration.hostGatewayToMacOS ?? false,
+    hostGatewayToMacOS: configuration.hostGatewayToMacOS ?? true,
     additionalJson: snapshot.additionalJson,
     addressPools: configuration.defaultAddressPools
       .map(({ base, size }) => `${base},${size}`)

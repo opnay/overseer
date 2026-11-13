@@ -151,9 +151,9 @@ pnpm check
 
 ## 컨테이너에서 macOS 접근
 
-**엔진 > 네트워크 설정**의 **host-gateway를 macOS에 연결**을 켜면 `extra_hosts: ["host.docker.internal:host-gateway"]`를 사용하는 컨테이너도 macOS의 서비스에 접근할 수 있습니다. 새로 만드는 VM에서는 기본으로 켜집니다. 기존 VM은 현재 설정을 유지하며 직접 켤 수 있습니다.
+**엔진 > 네트워크 설정**의 **host-gateway를 macOS에 연결**을 켜면 `extra_hosts: ["host.docker.internal:host-gateway"]`를 사용하는 컨테이너도 macOS의 서비스에 접근할 수 있습니다. 새로 만드는 VM에서는 기본으로 켜집니다. 기존 Overseer 관리 VM도 최초 업그레이드 시 켜짐으로 전환합니다. 실행 중인 엔진은 작업 기록에 남는 마이그레이션에서 한 번 재시작하며, 중지된 VM은 다음 시작 때 전환합니다. 전환 완료 표시는 VM 안에 저장하므로 이후 직접 끈 설정은 앱을 다시 실행해도 유지됩니다.
 
-맥 접근 주소는 대상 VM의 `host.lima.internal`에서 조회합니다. 옵션을 끄면 Docker 기본 브리지 주소를 사용합니다. 기존 사용자 지정 주소는 옵션을 켜기 전까지 보존하며, 고급 JSON에서도 편집할 수 있습니다. 저장하면 Docker Engine이 재시작됩니다. 기존 Compose 컨테이너에도 적용하려면 `docker compose up -d --force-recreate`로 다시 만드십시오.
+맥 접근 주소는 대상 VM의 `host.lima.internal`에서 조회합니다. 옵션을 끄면 Docker 기본 브리지 주소를 사용합니다. 최초 마이그레이션은 기존 주소도 macOS 주소로 전환합니다. 이후에는 고급 JSON에서 지정한 주소와 직접 끈 설정을 보존합니다. 저장하면 Docker Engine이 재시작됩니다. 기존 Compose 컨테이너에도 적용하려면 `docker compose up -d --force-recreate`로 다시 만드십시오.
 
 ## URL Compose
 

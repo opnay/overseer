@@ -27,6 +27,7 @@ const MAX_ADDITIONAL_JSON_LENGTH = 64 * 1024;
 const MAX_LIST_ITEMS = 64;
 
 export const DEFAULT_DOCKER_DAEMON_CONFIGURATION: DockerDaemonConfiguration = {
+  hostGatewayToMacOS: true,
   debug: false,
   defaultAddressPools: [],
   dns: [],

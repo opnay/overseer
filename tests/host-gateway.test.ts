@@ -115,3 +115,115 @@ describe("macOS host-gateway mapping", () => {
     expect(JSON.parse(writes[0]!)["host-gateway-ip"]).toBe("10.0.0.4");
   });
 });
+
+describe("host-gateway migration", () => {
+  function migratableEngine(
+    addresses = "192.168.5.2 STREAM host.lima.internal\n",
+    initial: Record<string, unknown> = {},
+  ) {
+    let source = JSON.stringify(initial);
+    let migrated = false;
+    let failRestart = false;
+    let failMarker = false;
+    const writes: string[] = [];
+    const command: CommandRunner = vi.fn(async (executable, args, options) => {
+      if (executable === "docker") return { stdout: "29.9.0\n", stderr: "" };
+      if (args[0] === "list")
+        return {
+          stdout: args.includes("--json")
+            ? JSON.stringify({
+                name: "overseer",
+                dir: "/tmp/overseer",
+                status: "Running",
+                vmType: "vz",
+                cpus: 4,
+                memory: 4294967296,
+                disk: 107374182400,
+                config: {
+                  portForwards: [
+                    {
+                      guestSocket: "/run/user/501/docker.sock",
+                      hostSocket: "/tmp/overseer/sock/docker.sock",
+                    },
+                  ],
+                },
+              })
+            : "overseer\tRunning\t/tmp/overseer\n",
+          stderr: "",
+        };
+      if (args.includes("getent")) return { stdout: addresses, stderr: "" };
+      if (args.at(-1)?.includes("host-gateway-macos-v1")) {
+        if (args.at(-1)?.includes("mv ")) {
+          if (failMarker) {
+            failMarker = false;
+            throw Error("marker unavailable");
+          }
+          migrated = true;
+        }
+        return { stdout: migrated ? "done\n" : "pending\n", stderr: "" };
+      }
+      if (args.at(-1)?.includes("dockerd --validate")) {
+        source = options.input!;
+        writes.push(source);
+        return { stdout: "configuration OK\n", stderr: "" };
+      }
+      if (args.includes("systemctl")) {
+        if (failRestart) {
+          failRestart = false;
+          throw Error("restart failed");
+        }
+        return { stdout: "", stderr: "" };
+      }
+      return { stdout: `file\n${source}\n`, stderr: "" };
+    });
+    return {
+      command,
+      writes,
+      runtime: new LimaDockerRuntime(command),
+      get migrated() {
+        return migrated;
+      },
+      failNext(stage: string) {
+        if (stage === "restart") failRestart = true;
+        else failMarker = true;
+      },
+    };
+  }
+
+  it.each([{}, { "host-gateway-ip": "10.0.0.4" }])(
+    "enables an existing VM once and preserves explicit false across app restarts: %j",
+    async (initial) => {
+      const fixture = migratableEngine(undefined, initial);
+      expect(await fixture.runtime.pendingMacOSHostGatewayMigrations()).toEqual(["overseer"]);
+      await fixture.runtime.migrateMacOSHostGateway("overseer");
+      expect(JSON.parse(fixture.writes[0]!)["host-gateway-ip"]).toBe("192.168.5.2");
+      expect(fixture.migrated).toBe(true);
+      await fixture.runtime.applyDockerDaemonConfigurationSection({
+        section: "network",
+        configuration: { ...network, hostGatewayToMacOS: false },
+      });
+      const restarted = new LimaDockerRuntime(fixture.command);
+      expect(await restarted.pendingMacOSHostGatewayMigrations()).toEqual([]);
+      await restarted.migrateMacOSHostGateway("overseer");
+      expect(fixture.writes).toHaveLength(2);
+      expect(
+        (await restarted.getDockerDaemonConfiguration()).configuration.hostGatewayToMacOS,
+      ).toBe(false);
+    },
+  );
+
+  it.each(["restart", "marker"])(
+    "leaves a failed migration pending and retries without losing the original configuration: %s",
+    async (stage) => {
+      const fixture = migratableEngine();
+      fixture.failNext(stage);
+      await expect(fixture.runtime.migrateMacOSHostGateway("overseer")).rejects.toThrow(
+        "이전 설정으로 복구",
+      );
+      expect(fixture.migrated).toBe(false);
+      expect(JSON.parse(fixture.writes.at(-1)!)).toEqual({});
+      await fixture.runtime.migrateMacOSHostGateway("overseer");
+      expect(fixture.migrated).toBe(true);
+    },
+  );
+});

@@ -4,7 +4,8 @@ import type { ViteDevServer } from "vite";
 import { createPersistentApi } from "./app/api.ts";
 
 const app = new Hono<{ Bindings: { vite: ViteDevServer } }>();
-const api = createPersistentApi();
+// The native sidecar owns startup migration; Vite must not restart the same engine again.
+const api = createPersistentApi({ migrateHostGateway: false });
 
 app.route("/api", api);
 app.get("*", async (context) => {
