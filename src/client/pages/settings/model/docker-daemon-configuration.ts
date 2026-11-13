@@ -22,6 +22,7 @@ const MANAGED_KEYS = new Set([
 const MANAGED_LOG_OPTION_KEYS = new Set(["max-file", "max-size"]);
 
 export interface DockerDaemonConfigurationForm {
+  hostGatewayToMacOS: boolean;
   additionalJson: string;
   addressPools: string;
   debug: boolean;
@@ -51,6 +52,7 @@ const formSectionByKey: Record<
   keyof DockerDaemonConfigurationForm,
   DockerDaemonConfigurationSection
 > = {
+  hostGatewayToMacOS: "network",
   additionalJson: "advanced",
   addressPools: "network",
   debug: "stability",
@@ -83,6 +85,7 @@ export function dockerDaemonConfigurationToForm(
 ): DockerDaemonConfigurationForm {
   const { configuration } = snapshot;
   return {
+    hostGatewayToMacOS: configuration.hostGatewayToMacOS ?? false,
     additionalJson: snapshot.additionalJson,
     addressPools: configuration.defaultAddressPools
       .map(({ base, size }) => `${base},${size}`)
@@ -206,7 +209,11 @@ export function validateDockerDaemonConfigurationSection(
     return {
       errors: {},
       input: {
-        configuration: { defaultAddressPools: parsedAddressPools, dns: splitLines(form.dns) },
+        configuration: {
+          defaultAddressPools: parsedAddressPools,
+          dns: splitLines(form.dns),
+          hostGatewayToMacOS: form.hostGatewayToMacOS,
+        },
         section,
       },
     };
@@ -286,7 +293,12 @@ function copyDockerDaemonConfigurationSection(
         logMaxSize: source.logMaxSize,
       };
     case "network":
-      return { ...target, addressPools: source.addressPools, dns: source.dns };
+      return {
+        ...target,
+        addressPools: source.addressPools,
+        dns: source.dns,
+        hostGatewayToMacOS: source.hostGatewayToMacOS,
+      };
     case "proxy":
       return {
         ...target,
@@ -363,6 +375,7 @@ export function validateDockerDaemonConfiguration(form: DockerDaemonConfiguratio
       additionalJson: form.additionalJson,
       configuration: {
         debug: form.debug,
+        hostGatewayToMacOS: form.hostGatewayToMacOS,
         defaultAddressPools: parsedAddressPools,
         dns: splitLines(form.dns),
         insecureRegistries: splitLines(form.insecureRegistries),

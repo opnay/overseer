@@ -54,11 +54,13 @@ function isTimeoutError(error: unknown) {
 
 function SettingSwitch({
   checked,
+  disabled,
   description,
   label,
   onCheckedChange,
 }: {
   checked: boolean;
+  disabled?: boolean;
   description: string;
   label: string;
   onCheckedChange(checked: boolean): void;
@@ -75,6 +77,7 @@ function SettingSwitch({
         aria-describedby={descriptionId}
         aria-labelledby={labelId}
         checked={checked}
+        disabled={disabled}
         onCheckedChange={onCheckedChange}
         size="sm"
       />
@@ -372,6 +375,26 @@ export function DockerDaemonSettings({
                 <Fieldset.Description className="overseer-daemon-section-description">
                   DNS는 컨테이너 전체에, 주소 풀은 새 네트워크부터 적용됩니다.
                 </Fieldset.Description>
+                <Fieldset.Content>
+                  <SettingSwitch
+                    checked={form.hostGatewayToMacOS}
+                    disabled={controlsBusy}
+                    description="컨테이너에서 사용하는 host-gateway가 Linux VM 내부 대신 macOS를 가리키도록 설정합니다."
+                    label="host-gateway를 macOS에 연결"
+                    onCheckedChange={(checked) => update("hostGatewayToMacOS", checked)}
+                  />
+                  <p>
+                    설정을 적용하면 Docker Engine이 재시작됩니다. 기존 컨테이너에도 적용하려면
+                    컨테이너를 다시 만드십시오.
+                  </p>
+                  {/"host-gateway-ips?"\s*:/.test(snapshot.additionalJson) &&
+                  !snapshot.configuration.hostGatewayToMacOS ? (
+                    <p>
+                      사용자 지정 host-gateway 주소가 있습니다. 이 옵션을 켜면 macOS 주소로
+                      바뀝니다.
+                    </p>
+                  ) : null}
+                </Fieldset.Content>
                 <Fieldset.Content className="overseer-settings-grid">
                   <Field.Root>
                     <Field.Label>DNS 서버</Field.Label>
