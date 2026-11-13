@@ -99,6 +99,8 @@ export interface DockerDaemonProxyConfiguration {
 }
 
 export interface DockerDaemonConfiguration {
+  /** Omitted by older clients to preserve the existing daemon mapping. */
+  hostGatewayToMacOS?: boolean;
   debug: boolean;
   defaultAddressPools: DockerDaemonAddressPool[];
   dns: string[];
@@ -146,7 +148,10 @@ export type UpdateDockerDaemonConfigurationSectionInput =
       section: "logging";
     }
   | {
-      configuration: Pick<DockerDaemonConfiguration, "defaultAddressPools" | "dns">;
+      configuration: Pick<
+        DockerDaemonConfiguration,
+        "defaultAddressPools" | "dns" | "hostGatewayToMacOS"
+      >;
       section: "network";
     }
   | {

@@ -1577,6 +1577,10 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
           return { stderr: "", stdout: "" };
         }
         if (executable === "docker") return docker(args);
+        if (args.includes("getent"))
+          return { stderr: "", stdout: "192.168.5.2 STREAM host.lima.internal\n" };
+        if (args[0] === "shell" && args.at(-1)?.includes('printf "file'))
+          return { stderr: "", stdout: 'file\n{"features":{"cdi":true}}\n' };
         return { stderr: "", stdout: "" };
       });
       const runtime = new LimaDockerRuntime(command);
@@ -1584,6 +1588,13 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
       await expect(
         runtime.startRuntime(undefined, { ...dockerEngineConfiguration, vmType }),
       ).resolves.toMatchObject({ dockerVersion: "29.7.2", phase: "running" });
+      expect(command).toHaveBeenCalledWith(
+        "limactl",
+        expect.arrayContaining(["shell", "overseer"]),
+        expect.objectContaining({
+          input: expect.stringContaining('"host-gateway-ip": "192.168.5.2"'),
+        }),
+      );
       expect(commands).toContainEqual({
         args: [
           "start",
@@ -1599,6 +1610,68 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         ],
         executable: "limactl",
       });
+    },
+  );
+
+  it.each([true, false])(
+    "initializes the new named VM rather than the previous active VM (address available: %s)",
+    async (addressAvailable) => {
+      const store = new MemoryRuntimeInstanceStore();
+      store.markManaged("overseer");
+      store.setActiveInstanceName("overseer");
+      let created = false;
+      const writes: Array<{ name: string; value: Record<string, unknown> }> = [];
+      const docker = dockerContextResponder();
+      const command: CommandRunner = vi.fn(async (executable, args, options) => {
+        if (executable === "docker") return docker(args);
+        if (args[0] === "start") {
+          created = true;
+          return { stderr: "", stdout: "" };
+        }
+        if (args[0] === "list") {
+          if (!created) return { stderr: "", stdout: "" };
+          return {
+            stderr: "",
+            stdout: args.includes("--json")
+              ? limaDetails({ name: "dev", dir: "/tmp/dev" })
+              : "dev\tRunning\t/tmp/dev\n",
+          };
+        }
+        if (args.includes("getent"))
+          return {
+            stderr: "",
+            stdout: addressAvailable ? "192.168.104.2 STREAM host.lima.internal\n" : "",
+          };
+        if (args.at(-1)?.includes("dockerd --validate")) {
+          writes.push({ name: args[1]!, value: JSON.parse(options.input!) });
+          return { stderr: "", stdout: "configuration OK\n" };
+        }
+        if (args.includes("systemctl")) return { stderr: "", stdout: "" };
+        return { stderr: "", stdout: 'file\n{"features":{"cdi":true}}\n' };
+      });
+      const runtime = new LimaDockerRuntime(command, undefined, undefined, undefined, store);
+      const creation = runtime.createRuntimeInstance({
+        name: "dev",
+        configuration: dockerEngineConfiguration,
+      });
+      if (addressAvailable) {
+        await creation;
+        expect(writes).toEqual([
+          {
+            name: "dev",
+            value: expect.objectContaining({
+              "host-gateway-ip": "192.168.104.2",
+              features: { cdi: true },
+            }),
+          },
+        ]);
+        expect(store.getActiveInstanceName()).toBe("dev");
+      } else {
+        await expect(creation).rejects.toThrow("macOS");
+        expect(writes).toEqual([]);
+        expect(store.getActiveInstanceName()).toBe("overseer");
+      }
+      expect(store.isManaged("dev")).toBe(true);
     },
   );
 
@@ -1621,6 +1694,10 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         exists = true;
       }
       if (executable === "docker") return docker(args);
+      if (args.includes("getent"))
+        return { stderr: "", stdout: "192.168.5.2 STREAM host.lima.internal\n" };
+      if (args[0] === "shell" && args.at(-1)?.includes('printf "file'))
+        return { stderr: "", stdout: 'file\n{"features":{"cdi":true}}\n' };
       return { stderr: "", stdout: "" };
     });
     const runtime = new LimaDockerRuntime(command);
@@ -1653,6 +1730,7 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         lifecycle.push("start");
         status = "Running";
       }
+      if (args.at(-1)?.includes("host-gateway-macos-v1")) return { stderr: "", stdout: "done\n" };
       if (executable === "docker") return docker(args);
       return { stderr: "", stdout: "" };
     });
@@ -1709,6 +1787,7 @@ describe("LimaDockerRuntime Docker Engine configuration", () => {
         lifecycle.push("start");
         status = "Running";
       }
+      if (args.at(-1)?.includes("host-gateway-macos-v1")) return { stderr: "", stdout: "done\n" };
       if (executable === "docker") {
         if (args.includes("version")) lifecycle.push("ready");
         return docker(args);

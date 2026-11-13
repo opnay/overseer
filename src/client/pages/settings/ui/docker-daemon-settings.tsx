@@ -54,11 +54,13 @@ function isTimeoutError(error: unknown) {
 
 function SettingSwitch({
   checked,
+  disabled,
   description,
   label,
   onCheckedChange,
 }: {
   checked: boolean;
+  disabled?: boolean;
   description: string;
   label: string;
   onCheckedChange(checked: boolean): void;
@@ -75,6 +77,7 @@ function SettingSwitch({
         aria-describedby={descriptionId}
         aria-labelledby={labelId}
         checked={checked}
+        disabled={disabled}
         onCheckedChange={onCheckedChange}
         size="sm"
       />
@@ -398,6 +401,22 @@ export function DockerDaemonSettings({
                     <Field.Description>CIDR과 네트워크 크기를 쉼표로 구분합니다.</Field.Description>
                     <Field.Error match>{errors.addressPools}</Field.Error>
                   </Field.Root>
+                </Fieldset.Content>
+                <Fieldset.Content>
+                  <SettingSwitch
+                    checked={form.hostGatewayToMacOS}
+                    disabled={controlsBusy}
+                    description="컨테이너에서 사용하는 host-gateway가 Linux VM 내부 대신 macOS를 가리키도록 설정합니다."
+                    label="host-gateway를 macOS에 연결"
+                    onCheckedChange={(checked) => update("hostGatewayToMacOS", checked)}
+                  />
+                  {/"host-gateway-ips?"\s*:/.test(snapshot.additionalJson) &&
+                  !snapshot.configuration.hostGatewayToMacOS ? (
+                    <p>
+                      사용자 지정 host-gateway 주소가 있습니다. 이 옵션을 켜면 macOS 주소로
+                      바뀝니다.
+                    </p>
+                  ) : null}
                 </Fieldset.Content>
                 <SectionActions
                   busy={controlsBusy}

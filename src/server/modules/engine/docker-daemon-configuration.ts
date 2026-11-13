@@ -27,6 +27,7 @@ const MAX_ADDITIONAL_JSON_LENGTH = 64 * 1024;
 const MAX_LIST_ITEMS = 64;
 
 export const DEFAULT_DOCKER_DAEMON_CONFIGURATION: DockerDaemonConfiguration = {
+  hostGatewayToMacOS: true,
   debug: false,
   defaultAddressPools: [],
   dns: [],
@@ -264,7 +265,7 @@ function parseLoggingConfiguration(
 
 function parseNetworkConfiguration(
   value: unknown,
-): Pick<DockerDaemonConfiguration, "defaultAddressPools" | "dns"> {
+): Pick<DockerDaemonConfiguration, "defaultAddressPools" | "dns" | "hostGatewayToMacOS"> {
   const input = record(value, "네트워크 설정을 확인하십시오.");
   const dns = strings(input.dns, "DNS");
   if (dns.some((entry) => !isIP(entry))) {
@@ -274,7 +275,13 @@ function parseNetworkConfiguration(
       400,
     );
   }
-  return { defaultAddressPools: addressPools(input.defaultAddressPools), dns };
+  return {
+    defaultAddressPools: addressPools(input.defaultAddressPools),
+    dns,
+    ...(input.hostGatewayToMacOS === undefined
+      ? {}
+      : { hostGatewayToMacOS: boolean(input.hostGatewayToMacOS, "host-gateway macOS 연결") }),
+  };
 }
 
 function parseRegistryConfiguration(
@@ -380,7 +387,7 @@ export function parseUpdateDockerDaemonConfigurationSectionInput(
       onlyKeys(input, ["configuration"], "네트워크 설정 요청");
       const configuration = onlyKeys(
         record(input.configuration, "네트워크 설정을 확인하십시오."),
-        ["defaultAddressPools", "dns"],
+        ["defaultAddressPools", "dns", "hostGatewayToMacOS"],
         "네트워크 설정",
       );
       return { configuration: parseNetworkConfiguration(configuration), section };
@@ -552,7 +559,9 @@ export function mergeDockerDaemonConfigurationSection(
   snapshot: DockerDaemonConfigurationSnapshot,
   input: UpdateDockerDaemonConfigurationSectionInput,
 ): UpdateDockerDaemonConfigurationInput {
-  const current = structuredClone(snapshot.configuration);
+  const { hostGatewayToMacOS: _hostGatewayToMacOS, ...current } = structuredClone(
+    snapshot.configuration,
+  );
   if (input.section === "advanced") {
     return { additionalJson: input.additionalJson, configuration: current };
   }

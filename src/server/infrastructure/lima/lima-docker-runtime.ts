@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { isIPv4 } from "node:net";
 import { stripVTControlCharacters } from "node:util";
 import type {
   ComposeProjectAction,
@@ -131,6 +132,11 @@ const WRITE_DOCKER_DAEMON_CONFIGURATION =
   'set -eu; target="$HOME/.config/docker/daemon.json"; temp="$target.overseer.tmp"; mkdir -p "$(dirname "$target")"; trap \'rm -f "$temp"\' EXIT; cat > "$temp"; dockerd --validate --config-file="$temp"; mv "$temp" "$target"; trap - EXIT';
 const REMOVE_DOCKER_DAEMON_CONFIGURATION =
   'rm -f "$HOME/.config/docker/daemon.json" "$HOME/.config/docker/daemon.json.overseer.tmp"';
+
+const READ_HOST_GATEWAY_MIGRATION =
+  'if [ -f "$HOME/.config/overseer/migrations/host-gateway-macos-v1" ]; then printf "done\\n"; else printf "pending\\n"; fi';
+const MARK_HOST_GATEWAY_MIGRATION =
+  'set -eu; target="$HOME/.config/overseer/migrations/host-gateway-macos-v1"; mkdir -p "$(dirname "$target")"; temp="$target.$$"; trap \'rm -f "$temp"\' EXIT; printf "1\\n" > "$temp"; mv "$temp" "$target"; trap - EXIT';
 
 export class LimaDockerRuntime implements OverseerController {
   private readonly builderCompose: BuilderComposeRegistry;
@@ -478,6 +484,7 @@ export class LimaDockerRuntime implements OverseerController {
       });
     }
     await this.waitForDockerReady(progress, name);
+    await this.migrateMacOSHostGatewayOnce(name, progress);
     if (name === this.instanceName) {
       await this.configureDockerContext(await this.requireInstanceDetails(name), progress);
     }
@@ -505,6 +512,37 @@ export class LimaDockerRuntime implements OverseerController {
     });
   }
 
+  async pendingMacOSHostGatewayMigrations(): Promise<string[]> {
+    let instances: LimaInstanceDetails[];
+    try {
+      instances = await this.listInstanceDetails();
+    } catch (error) {
+      if (error instanceof ExpectedError && error.code === "lima_unavailable") return [];
+      throw error;
+    }
+    const pending: string[] = [];
+    for (const instance of instances) {
+      if (
+        (instance.name === DEFAULT_LIMA_INSTANCE || this.instanceStore.isManaged(instance.name)) &&
+        (!CONFIGURED_LIMA_INSTANCE || instance.name === CONFIGURED_LIMA_INSTANCE) &&
+        instance.status.toLowerCase() === "running" &&
+        this.dockerSocketConfigured(instance) &&
+        !(await this.hasMacOSHostGatewayMigration(instance.name))
+      )
+        pending.push(instance.name);
+    }
+    return pending;
+  }
+
+  migrateMacOSHostGateway(name: string, progress?: OperationProgress): Promise<void> {
+    this.requireRuntimeIdle();
+    const migration = this.migrateMacOSHostGatewayOnce(name, progress);
+    this.daemonTransition = migration.finally(() => {
+      this.daemonTransition = undefined;
+    });
+    return this.daemonTransition;
+  }
+
   async getDockerDaemonConfiguration(): Promise<DockerDaemonConfigurationSnapshot> {
     const instance = await this.getInstance();
     if (!instance) {
@@ -524,7 +562,7 @@ export class LimaDockerRuntime implements OverseerController {
       );
     }
     const current = await this.readDockerDaemonConfiguration();
-    return dockerDaemonSnapshot(
+    return this.dockerDaemonSnapshotForInstance(
       current.source,
       current.exists,
       true,
@@ -851,6 +889,7 @@ export class LimaDockerRuntime implements OverseerController {
       });
     }
     await this.waitForDockerReady(progress);
+    await this.migrateMacOSHostGatewayOnce(this.instanceName, progress);
     await this.connectDockerCli(progress);
     return this.getRuntimeSnapshot();
   }
@@ -874,6 +913,7 @@ export class LimaDockerRuntime implements OverseerController {
       timeoutMs: 10 * 60_000,
     });
     await this.waitForDockerReady(progress);
+    await this.migrateMacOSHostGatewayOnce(this.instanceName, progress);
     await this.connectDockerCli(progress);
     return this.getRuntimeSnapshot();
   }
@@ -918,15 +958,144 @@ export class LimaDockerRuntime implements OverseerController {
     return this.readDockerDaemonConfiguration();
   }
 
+  private async hasMacOSHostGatewayMigration(name: string): Promise<boolean> {
+    const result = await this.command(
+      "limactl",
+      ["shell", name, "sh", "-lc", READ_HOST_GATEWAY_MIGRATION],
+      { timeoutMs: 10_000 },
+    );
+    return result.stdout.trim() === "done";
+  }
+
+  private async markMacOSHostGatewayMigration(
+    name: string,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    await this.command("limactl", ["shell", name, "sh", "-lc", MARK_HOST_GATEWAY_MIGRATION], {
+      timeoutMs: 10_000,
+      onOutput: progress?.output,
+    });
+  }
+
+  private async migrateMacOSHostGatewayOnce(
+    name: string,
+    progress?: OperationProgress,
+  ): Promise<void> {
+    if (name !== DEFAULT_LIMA_INSTANCE && !this.instanceStore.isManaged(name)) return;
+    if (await this.hasMacOSHostGatewayMigration(name)) return;
+    const instance = await this.getInstance(name);
+    if (!instance || instance.status.toLowerCase() !== "running") return;
+    const original = await this.readDockerDaemonConfiguration(name);
+    const snapshot = dockerDaemonSnapshot(original.source, original.exists, true, "");
+    const raw = JSON.parse(original.source) as Record<string, unknown>;
+    if (this.isMacOSHostGateway(raw, await this.resolveMacOSHostAddress(name))) {
+      await this.markMacOSHostGatewayMigration(name, progress);
+      return;
+    }
+    progress?.step("기존 VM의 host-gateway를 macOS로 전환하는 중");
+    await this.replaceDockerDaemonConfiguration(
+      {
+        additionalJson: snapshot.additionalJson,
+        configuration: { ...snapshot.configuration, hostGatewayToMacOS: true },
+      },
+      original,
+      progress,
+      name,
+    );
+  }
+
+  private isMacOSHostGateway(configuration: Record<string, unknown>, address: string): boolean {
+    const ips = configuration["host-gateway-ips"];
+    return (
+      (configuration["host-gateway-ip"] === address && ips === undefined) ||
+      (configuration["host-gateway-ip"] === undefined &&
+        Array.isArray(ips) &&
+        ips.length === 1 &&
+        ips[0] === address)
+    );
+  }
+
+  private async resolveMacOSHostAddress(instanceName = this.instanceName): Promise<string> {
+    try {
+      const result = await this.command(
+        "limactl",
+        ["shell", instanceName, "getent", "ahostsv4", "host.lima.internal"],
+        { timeoutMs: 10_000 },
+      );
+      const addresses = [
+        ...new Set(
+          result.stdout
+            .trim()
+            .split(/\r?\n/)
+            .map((line) => line.trim().split(/\s+/)[0])
+            .filter((address): address is string => Boolean(address)),
+        ),
+      ];
+      const address = addresses[0];
+      if (
+        addresses.length === 1 &&
+        address &&
+        isIPv4(address) &&
+        !address.startsWith("127.") &&
+        !address.startsWith("0.") &&
+        Number(address.split(".")[0]) < 224
+      )
+        return address;
+    } catch {
+      // Keep the current daemon file intact if Lima cannot resolve its macOS endpoint.
+    }
+    throw new ExpectedError(
+      "macos_host_address_unavailable",
+      "macOS 접근 주소를 확인하지 못했습니다. VM의 host.lima.internal 설정을 확인하십시오.",
+      503,
+    );
+  }
+
+  private async dockerDaemonSnapshotForInstance(
+    source: string,
+    exists: boolean,
+    available: boolean,
+    message: string,
+  ): Promise<DockerDaemonConfigurationSnapshot> {
+    const snapshot = dockerDaemonSnapshot(source, exists, available, message);
+    const raw = JSON.parse(source) as Record<string, unknown>;
+    snapshot.configuration.hostGatewayToMacOS = false;
+    if (raw["host-gateway-ip"] !== undefined || raw["host-gateway-ips"] !== undefined) {
+      snapshot.configuration.hostGatewayToMacOS = this.isMacOSHostGateway(
+        raw,
+        await this.resolveMacOSHostAddress(),
+      );
+    }
+    return snapshot;
+  }
+
   private async replaceDockerDaemonConfiguration(
     input: UpdateDockerDaemonConfigurationInput,
     original: { exists: boolean; source: string },
     progress?: OperationProgress,
+    instanceName = this.instanceName,
   ): Promise<void> {
-    const next = dockerDaemonJson(input);
+    let next = dockerDaemonJson(input);
+    const previous = JSON.parse(original.source) as Record<string, unknown>;
+    if (
+      input.configuration.hostGatewayToMacOS === true ||
+      (input.configuration.hostGatewayToMacOS === false &&
+        (previous["host-gateway-ip"] !== undefined || previous["host-gateway-ips"] !== undefined))
+    ) {
+      const address = await this.resolveMacOSHostAddress(instanceName);
+      const output = JSON.parse(next) as Record<string, unknown>;
+      if (input.configuration.hostGatewayToMacOS) {
+        delete output["host-gateway-ips"];
+        output["host-gateway-ip"] = address;
+      } else if (this.isMacOSHostGateway(previous, address)) {
+        delete output["host-gateway-ip"];
+        delete output["host-gateway-ips"];
+      }
+      next = `${JSON.stringify(output, null, 2)}\n`;
+    }
     progress?.step("daemon.json 검증 중");
     try {
-      await this.writeDockerDaemonConfiguration(next, progress);
+      await this.writeDockerDaemonConfiguration(next, progress, instanceName);
     } catch (error) {
       progress?.output(error instanceof Error ? error.message : String(error));
       throw new ExpectedError(
@@ -937,19 +1106,21 @@ export class LimaDockerRuntime implements OverseerController {
     }
 
     try {
-      await this.restartDockerDaemon(progress);
-      await this.waitForDockerReady(progress);
+      await this.restartDockerDaemon(progress, instanceName);
+      await this.waitForDockerReady(progress, instanceName);
+      if (input.configuration.hostGatewayToMacOS !== undefined)
+        await this.markMacOSHostGatewayMigration(instanceName, progress);
     } catch (error) {
       progress?.output(error instanceof Error ? error.message : String(error));
       progress?.step("이전 daemon.json 복구 중");
       try {
         if (original.exists) {
-          await this.writeDockerDaemonConfiguration(original.source, progress);
+          await this.writeDockerDaemonConfiguration(original.source, progress, instanceName);
         } else {
-          await this.removeDockerDaemonConfiguration(progress);
+          await this.removeDockerDaemonConfiguration(progress, instanceName);
         }
-        await this.restartDockerDaemon(progress);
-        await this.waitForDockerReady(progress);
+        await this.restartDockerDaemon(progress, instanceName);
+        await this.waitForDockerReady(progress, instanceName);
       } catch (rollbackError) {
         progress?.output(
           rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
@@ -968,10 +1139,12 @@ export class LimaDockerRuntime implements OverseerController {
     }
   }
 
-  private async readDockerDaemonConfiguration(): Promise<{ exists: boolean; source: string }> {
+  private async readDockerDaemonConfiguration(
+    instanceName = this.instanceName,
+  ): Promise<{ exists: boolean; source: string }> {
     const result = await this.command("limactl", [
       "shell",
-      this.instanceName,
+      instanceName,
       "sh",
       "-lc",
       READ_DOCKER_DAEMON_CONFIGURATION,
@@ -992,10 +1165,11 @@ export class LimaDockerRuntime implements OverseerController {
   private async writeDockerDaemonConfiguration(
     source: string,
     progress?: OperationProgress,
+    instanceName = this.instanceName,
   ): Promise<void> {
     await this.command(
       "limactl",
-      ["shell", this.instanceName, "sh", "-lc", WRITE_DOCKER_DAEMON_CONFIGURATION],
+      ["shell", instanceName, "sh", "-lc", WRITE_DOCKER_DAEMON_CONFIGURATION],
       {
         input: source,
         onOutput: progress?.output,
@@ -1004,19 +1178,25 @@ export class LimaDockerRuntime implements OverseerController {
     );
   }
 
-  private async removeDockerDaemonConfiguration(progress?: OperationProgress): Promise<void> {
+  private async removeDockerDaemonConfiguration(
+    progress?: OperationProgress,
+    instanceName = this.instanceName,
+  ): Promise<void> {
     await this.command(
       "limactl",
-      ["shell", this.instanceName, "sh", "-lc", REMOVE_DOCKER_DAEMON_CONFIGURATION],
+      ["shell", instanceName, "sh", "-lc", REMOVE_DOCKER_DAEMON_CONFIGURATION],
       { onOutput: progress?.output, timeoutMs: 30_000 },
     );
   }
 
-  private async restartDockerDaemon(progress?: OperationProgress): Promise<void> {
+  private async restartDockerDaemon(
+    progress?: OperationProgress,
+    instanceName = this.instanceName,
+  ): Promise<void> {
     progress?.step("Docker Engine 다시 시작 중");
     await this.command(
       "limactl",
-      ["shell", this.instanceName, "systemctl", "--user", "restart", "docker"],
+      ["shell", instanceName, "systemctl", "--user", "restart", "docker"],
       { onOutput: progress?.output, timeoutMs: 120_000 },
     );
   }
@@ -1285,6 +1465,9 @@ export class LimaDockerRuntime implements OverseerController {
         timeoutMs: 20 * 60_000,
       },
     );
+    this.instanceStore.markManaged(name);
+    await this.waitForDockerReady(progress, name);
+    await this.migrateMacOSHostGatewayOnce(name, progress);
   }
 
   private async getRuntimeSnapshot(instanceName = this.instanceName): Promise<RuntimeSnapshot> {

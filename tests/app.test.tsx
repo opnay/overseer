@@ -106,6 +106,7 @@ function dockerDaemonSnapshot(available = true): DockerDaemonConfigurationSnapsh
     available,
     configuration: {
       debug: false,
+      hostGatewayToMacOS: true,
       defaultAddressPools: [],
       dns: [],
       insecureRegistries: [],
@@ -1689,6 +1690,9 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "네트워크 설정 저장" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "레지스트리 설정 저장" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "프록시 설정 저장" })).toBeInTheDocument();
+    const hostGatewaySwitch = screen.getByRole("switch", { name: "host-gateway를 macOS에 연결" });
+    expect(hostGatewaySwitch).toBeChecked();
+    await user.click(hostGatewaySwitch);
     await user.type(screen.getByLabelText("DNS 서버"), "1.1.1.1");
     await user.type(screen.getByLabelText("네트워크 주소 풀"), "172.30.0.0/16,24");
     await user.type(screen.getByLabelText("레지스트리 미러"), "https://mirror.gcr.io");
@@ -1696,6 +1700,8 @@ describe("App", () => {
     await user.type(screen.getByLabelText("프록시 제외"), "localhost");
     await user.click(screen.getByRole("button", { name: "네트워크 설정 초기화" }));
     expect(screen.getByLabelText("DNS 서버")).toHaveValue("");
+    expect(hostGatewaySwitch).toBeChecked();
+    await user.click(hostGatewaySwitch);
     expect(screen.getByLabelText("네트워크 주소 풀")).toHaveValue("");
     expect(screen.getByLabelText("레지스트리 미러")).toHaveValue("https://mirror.gcr.io");
     expect(screen.getByLabelText("HTTP 프록시")).toHaveValue("http://proxy.example.com:3128");
@@ -1721,6 +1727,7 @@ describe("App", () => {
       configuration: {
         defaultAddressPools: [{ base: "172.30.0.0/16", size: 24 }],
         dns: ["1.1.1.1"],
+        hostGatewayToMacOS: false,
       },
     });
   });
