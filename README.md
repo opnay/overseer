@@ -9,8 +9,9 @@ Lima의 공식 Docker 템플릿으로 만든 전용 VM을 Docker Desktop처럼 m
 - Lima 2.0 이상
 - Docker CLI
 - Docker Compose 플러그인(Compose 기능 사용 시 선택)
-- Node.js 24 이상
-- pnpm 11
+- Node.js 26.13.1 이상
+- pnpm 12.18.0
+- Bun 1.4.4(macOS 앱 빌드 시)
 
 QEMU VM 드라이버를 사용하려면 QEMU도 설치하십시오. 기본 VZ 드라이버에는 필요하지 않습니다.
 
