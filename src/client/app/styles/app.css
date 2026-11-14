@@ -2301,7 +2301,7 @@
   }
 
   .overseer-log-code-line:hover {
-    background: var(--city-palette-neutral-900);
+    background: var(--city-palette-neutral-800);
   }
 
   .overseer-log-viewer-code[data-wrap="true"] .overseer-log-code-line {
