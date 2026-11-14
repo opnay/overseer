@@ -419,7 +419,19 @@ export function OperationsPage({
             <Dialog.Popup size="lg">
               <Dialog.Header>
                 <div>
-                  <Dialog.Title>{selected?.title}</Dialog.Title>
+                  <div className="flex items-center gap-2">
+                    {selected ? (
+                      <Badge
+                        appearance="subtle"
+                        className="shrink-0"
+                        size="lg"
+                        tone={operationStatusPresentation[selected.status].tone}
+                      >
+                        {operationStatusPresentation[selected.status].label}
+                      </Badge>
+                    ) : null}
+                    <Dialog.Title>{selected?.title}</Dialog.Title>
+                  </div>
                   <Dialog.Description className="sr-only">
                     작업 정보와 명령 출력을 확인합니다.
                   </Dialog.Description>
@@ -445,19 +457,13 @@ export function OperationsPage({
                       </DataList.Item>
                       <DataList.Item>
                         <DataList.Label>요청 시각</DataList.Label>
-                        <DataList.Value>{operationTime(selected.createdAt)}</DataList.Value>
-                      </DataList.Item>
-                      <DataList.Item>
-                        <DataList.Label>상태</DataList.Label>
-                        <DataList.Value className="flex items-center gap-2">
-                          <span>{operationElapsed(selected)}</span>
-                          <Badge
-                            appearance="subtle"
-                            size="lg"
-                            tone={operationStatusPresentation[selected.status].tone}
-                          >
-                            {operationStatusPresentation[selected.status].label}
-                          </Badge>
+                        <DataList.Value className="flex flex-wrap items-center gap-2">
+                          <time dateTime={selected.createdAt}>
+                            {operationTime(selected.createdAt)}
+                          </time>
+                          <span className="text-city-muted-foreground">
+                            · {operationElapsed(selected)} 소요
+                          </span>
                         </DataList.Value>
                       </DataList.Item>
                     </DataList.Root>
