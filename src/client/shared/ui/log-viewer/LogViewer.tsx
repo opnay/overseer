@@ -2,7 +2,7 @@ import { Button } from "@opnay/city-ds-react/button";
 import { Dialog } from "@opnay/city-ds-react/dialog";
 import { Menu } from "@opnay/city-ds-react/menu";
 import { Tooltip } from "@opnay/city-ds-react/tooltip";
-import { Maximize2, SlidersHorizontal } from "lucide-react";
+import { Maximize2, SlidersHorizontal, X } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 
 export type LogFontSize = "large" | "medium" | "small";
@@ -39,7 +39,7 @@ export function LogDisplayOptions({
         <SlidersHorizontal aria-hidden="true" size={14} />
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner align="end" sideOffset={6}>
+        <Menu.Positioner align="end" className="overseer-log-options-positioner" sideOffset={6}>
           <Menu.Popup>
             <Menu.Group>
               <Menu.GroupLabel>표시</Menu.GroupLabel>
@@ -125,7 +125,19 @@ export function LogViewer({
       data-height={height}
     >
       <div className="overseer-log-viewer-toolbar">
-        {context ? <div className="overseer-log-viewer-context">{context}</div> : null}
+        {fullscreen || context ? (
+          <div
+            className="overseer-log-viewer-context"
+            data-tauri-drag-region={fullscreen ? "deep" : undefined}
+          >
+            {fullscreen ? (
+              <span className="overseer-log-viewer-title" title={ariaLabel}>
+                {ariaLabel}
+              </span>
+            ) : null}
+            {context}
+          </div>
+        ) : null}
         <div className="overseer-log-viewer-actions">
           {actions}
           <LogDisplayOptions
@@ -137,6 +149,29 @@ export function LogViewer({
             showLineNumbers={showLineNumbers}
             wrapped={wrapped}
           />
+          {fullscreen ? (
+            <Tooltip.Root>
+              <Tooltip.Trigger
+                render={
+                  <Dialog.Close
+                    render={<Button aria-label="최대화 닫기" iconOnly size="sm" variant="ghost" />}
+                  >
+                    <X aria-hidden="true" size={14} />
+                  </Dialog.Close>
+                }
+              />
+              <Tooltip.Portal>
+                <Tooltip.Positioner
+                  align="end"
+                  className="overseer-log-tooltip-positioner"
+                  side="bottom"
+                  sideOffset={6}
+                >
+                  <Tooltip.Popup>최대화 닫기</Tooltip.Popup>
+                </Tooltip.Positioner>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          ) : null}
           {!fullscreen ? (
             <Tooltip.Root>
               <Tooltip.Trigger
@@ -187,23 +222,58 @@ export function LogViewer({
         <Dialog.Backdrop className="overseer-log-viewer-fullscreen-backdrop" />
         <Dialog.Viewport className="overseer-log-viewer-fullscreen-viewport">
           <Dialog.Popup className="overseer-log-viewer-fullscreen-dialog" scroll="body" size="full">
-            <Dialog.Header>
-              <div>
-                <Dialog.Title>{ariaLabel}</Dialog.Title>
-                <Dialog.Description>로그를 창 전체에서 확인합니다.</Dialog.Description>
-              </div>
-            </Dialog.Header>
+            <Dialog.Title className="sr-only">{ariaLabel}</Dialog.Title>
+            <Dialog.Description className="sr-only">
+              로그를 창 전체에서 확인합니다.
+            </Dialog.Description>
             <Dialog.Body className="overseer-log-viewer-fullscreen-body">
               {renderViewer(true)}
             </Dialog.Body>
-            <Dialog.Footer>
-              <Dialog.Close render={<Button variant="outline" />}>닫기</Dialog.Close>
-            </Dialog.Footer>
           </Dialog.Popup>
         </Dialog.Viewport>
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+function LogLineContent({ value }: { value: string }) {
+  const content: ReactNode[] = [];
+  let cursor = 0;
+
+  for (const match of value.matchAll(/https:\/\/[^\s<>"'`\\]+/gi)) {
+    let address = match[0].replace(/[.,;:!?]+$/, "");
+    for (const [open, close] of [
+      ["(", ")"],
+      ["[", "]"],
+      ["{", "}"],
+    ] as const) {
+      while (address.endsWith(close) && address.split(close).length > address.split(open).length) {
+        address = address.slice(0, -1).replace(/[.,;:!?]+$/, "");
+      }
+    }
+    try {
+      const url = new URL(address);
+      if (url.protocol !== "https:" || !url.hostname) continue;
+    } catch {
+      continue;
+    }
+    content.push(value.slice(cursor, match.index));
+    content.push(
+      <a
+        className="overseer-log-link"
+        href={address}
+        key={match.index}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {address}
+      </a>,
+    );
+    cursor = match.index + address.length;
+  }
+
+  content.push(value.slice(cursor));
+  return <>{content}</>;
 }
 
 export function LogCodeContent({
@@ -213,15 +283,34 @@ export function LogCodeContent({
   showLineNumbers: boolean;
   value: string;
 }) {
-  if (!showLineNumbers) return <code>{value}</code>;
+  // Command separators should not create an empty first line in the viewer.
+  const lines = value.replace(/^\r?\n(?=\$ )/, "").split(/\r?\n/);
 
-  const lines = value.split(/\r?\n/);
+  if (!showLineNumbers) {
+    return (
+      <code>
+        {lines.map((line, index) => (
+          <Fragment key={index}>
+            {index > 0 ? "\n" : null}
+            <span className={line.startsWith("$ ") ? "overseer-log-command" : undefined}>
+              <LogLineContent value={line} />
+            </span>
+          </Fragment>
+        ))}
+      </code>
+    );
+  }
+
   return (
     <code className="overseer-log-code-lines">
       {lines.map((line, index) => (
         <Fragment key={`${index}-${line.slice(0, 24)}`}>
           <span className="overseer-log-code-line">
-            <span className="overseer-log-code-line-content">{line || " "}</span>
+            <span
+              className={`overseer-log-code-line-content${line.startsWith("$ ") ? " overseer-log-command" : ""}`}
+            >
+              <LogLineContent value={line || " "} />
+            </span>
           </span>
           {index < lines.length - 1 ? "\n" : null}
         </Fragment>

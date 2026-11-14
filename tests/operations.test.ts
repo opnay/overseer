@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { runCommand } from "../src/server/infrastructure/process.ts";
 import {
   OperationQueue,
   SqliteOperationHistoryStore,
@@ -121,6 +122,26 @@ describe("OperationQueue", () => {
     expect(failed?.output).toHaveLength(120);
     expect(failed?.output[0]).toBe("line 0");
     expect(failed?.error?.code).toBe("operation_failed");
+  });
+
+  it("persists actual streamed command identities in order with their output", async () => {
+    const history = await historyStore();
+    const queue = new OperationQueue(1, history);
+    const snapshot = queue.enqueue(
+      operation(async (progress) => {
+        await runCommand(process.execPath, ["--version"], { onOutput: progress.output });
+        await runCommand(process.execPath, ["--version"], { onOutput: progress.output });
+      }),
+    );
+    await vi.waitFor(() => expect(queue.get(snapshot.id)?.status).toBe("succeeded"));
+    const output = queue.get(snapshot.id)!.output;
+    expect(output.filter((line) => line.startsWith("$ "))).toHaveLength(2);
+    expect(output.filter((line) => line.startsWith("v"))).toHaveLength(2);
+    expect(output.findIndex((line) => line.startsWith("$ "))).toBeLessThan(
+      output.findIndex((line) => line.startsWith("v")),
+    );
+    expect(new OperationQueue(1, history).get(snapshot.id)?.output).toEqual(output);
+    history.close();
   });
 
   it("preserves partial and blank output lines across chunks", async () => {

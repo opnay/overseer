@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { commandDisplay } from "./command-display.ts";
 
 export interface RunCommandOptions {
   input?: string;
@@ -40,7 +41,8 @@ export function runCommand(
   options: RunCommandOptions = {},
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
-    const command = [executable, ...args].join(" ");
+    const command = commandDisplay(executable, args);
+    options.onOutput?.(`\n$ ${command}\n`);
     const child = spawn(executable, [...args], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
