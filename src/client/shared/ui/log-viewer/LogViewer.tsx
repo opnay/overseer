@@ -223,10 +223,13 @@ export function LogCodeContent({
   showLineNumbers: boolean;
   value: string;
 }) {
+  // Command separators should not create an empty first line in the viewer.
+  const lines = value.replace(/^\r?\n(?=\$ )/, "").split(/\r?\n/);
+
   if (!showLineNumbers) {
     return (
       <code>
-        {value.split(/\r?\n/).map((line, index) => (
+        {lines.map((line, index) => (
           <Fragment key={index}>
             {index > 0 ? "\n" : null}
             <span className={line.startsWith("$ ") ? "overseer-log-command" : undefined}>
@@ -238,7 +241,6 @@ export function LogCodeContent({
     );
   }
 
-  const lines = value.split(/\r?\n/);
   return (
     <code className="overseer-log-code-lines">
       {lines.map((line, index) => (

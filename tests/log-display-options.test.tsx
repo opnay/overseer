@@ -25,6 +25,20 @@ describe("LogViewer", () => {
     );
   });
 
+  it("starts at the first command while preserving spacing between commands", async () => {
+    const user = userEvent.setup();
+    const output = "$ brew update\nupdated\n\n$ brew outdated\n";
+    render(<LogViewer ariaLabel="명령 출력" value={`\n${output}`} />);
+    const viewer = screen.getByRole("region", { name: "명령 출력" });
+    expect(viewer.querySelector("code")?.textContent).toBe(output);
+
+    await user.click(within(viewer).getByRole("button", { name: "로그 옵션" }));
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "줄 번호" }));
+    expect(viewer.querySelector(".overseer-log-code-line-content")).toHaveTextContent(
+      "$ brew update",
+    );
+  });
+
   it("opens a full-window dialog above an existing dialog and preserves display options", async () => {
     const user = userEvent.setup();
 
