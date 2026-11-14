@@ -4,6 +4,7 @@ import { Tooltip } from "@opnay/city-ds-react/tooltip";
 import {
   ArrowLeft,
   Boxes,
+  Hammer,
   Cloud,
   Container,
   Database,
@@ -36,6 +37,7 @@ import { useAppSession } from "../runtime/AppSession.tsx";
 type NavigationItem = { href: string; label: string; icon: LucideIcon; disabledReason?: string };
 
 const routeIcons = {
+  "/builds": Hammer,
   "/compose": Layers3,
   "/containers": Boxes,
   "/docker-plugins": Puzzle,

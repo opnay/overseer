@@ -1,3 +1,4 @@
+import { isBuildIdentifier } from "@contracts/builds.ts";
 export const APP_ROUTE_GROUPS = [
   { id: "docker", label: "도커" },
   { id: "engine", label: "엔진" },
@@ -74,6 +75,13 @@ export const APP_ROUTES = [
     path: "/images",
   },
   {
+    description: "활성 엔진의 기본 빌더에서 수행한 빌드 결과와 기록을 확인합니다.",
+    eyebrow: "도커",
+    group: "docker",
+    label: "빌드",
+    path: "/builds",
+  },
+  {
     description: "컨테이너와 독립적으로 유지되는 로컬 데이터를 관리합니다.",
     eyebrow: "도커",
     group: "docker",
@@ -122,6 +130,7 @@ export type AppPath = (typeof APP_ROUTES)[number]["path"];
 
 export type AppLocationPath =
   | AppPath
+  | `/builds/${string}`
   | `/compose/${string}`
   | `/containers/${string}`
   | `/images/${string}`
@@ -131,6 +140,7 @@ export type AppLocationPath =
   | `/volumes/${string}`;
 
 export type AppDetailLocation =
+  | { identifier: string; parentPath: "/builds"; path: `/builds/${string}`; type: "build" }
   | { identifier: string; parentPath: "/compose"; path: `/compose/${string}`; type: "compose" }
   | {
       identifier: string;
@@ -205,6 +215,14 @@ export function getAppDetailLocation(pathname: string): AppDetailLocation | unde
     identifier = decodeURIComponent(encodedIdentifier);
   } catch {
     return undefined;
+  }
+  if (resource === "builds" && isBuildIdentifier(identifier)) {
+    return {
+      identifier,
+      parentPath: "/builds",
+      path: `/builds/${encodeURIComponent(identifier)}`,
+      type: "build",
+    };
   }
   if (resource === "compose" && isComposeProjectName(identifier)) {
     return {

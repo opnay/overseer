@@ -85,6 +85,7 @@ export function RuntimeFeedback() {
       {dashboard &&
       !runtimeRunning &&
       !isOperationsPage &&
+      !resourcePath.startsWith("/builds") &&
       resourcePath !== "/settings" &&
       resourcePath !== "/docker-plugins" &&
       !resourcePath.startsWith("/image-repositories") &&
