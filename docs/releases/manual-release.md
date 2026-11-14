@@ -13,7 +13,7 @@ git push origin v0.0.2
 
 위 태그는 예시이며 이미 공개된 버전은 재사용하거나 옮기지 않습니다. 다음 배포에는 새 버전을 사용하십시오.
 
-검사·테스트·프런트엔드 빌드는 Ubuntu의 재사용 Check job에서 수행하고 macOS release job은 `needs: checks`로 통과를 기다립니다. 두 job은 `pnpm/setup@v3.1.2`로 pnpm·Node를 함께 설치합니다. Bun은 기존 `scripts/build-sidecar.ts`의 단일 서버 실행 파일 컴파일에 필요하므로 macOS job에서만 설치합니다. 레지스트리 주소는 `.npmrc`, CI 인증 토큰의 환경변수 참조는 `.npmrc.ci`에서 관리합니다. Actions는 `NODE_AUTH_TOKEN`만 주입하며 파일에 실제 토큰을 저장하지 않습니다.
+검사·테스트·프런트엔드 빌드는 Ubuntu의 재사용 Check job에서 수행하고 macOS release job은 `needs: checks`로 통과를 기다립니다. 두 job은 `pnpm/setup@v3.2.0`로 pnpm·Node를 함께 설치합니다. Bun은 기존 `scripts/build-sidecar.ts`의 단일 서버 실행 파일 컴파일에 필요하므로 macOS job에서만 설치합니다. 레지스트리 주소는 `.npmrc`, CI 인증 토큰의 환경변수 참조는 `.npmrc.ci`에서 관리합니다. Actions는 `NODE_AUTH_TOKEN`만 주입하며 파일에 실제 토큰을 저장하지 않습니다.
 
 필요한 저장소 Actions Secrets는 `APPLE_CERTIFICATE`(Base64 p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`(앱 전용 암호), `APPLE_TEAM_ID`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`입니다. 인증서는 runner의 임시 키체인에 복원하고 종료 시 제거합니다. 공증 인증은 공식 액션의 Tauri 빌드에 전달합니다.
 
