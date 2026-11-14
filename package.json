@@ -30,7 +30,7 @@
   "dependencies": {
     "@hono/node-server": "2.1.8",
     "@opnay/city-ds-react": "0.3.0",
-    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/api": "2.12.4",
     "hono": "4.13.18",
     "lucide-react": "1.72.0",
     "react": "19.3.1",
@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@hono/vite-dev-server": "0.26.1",
-    "@tauri-apps/cli": "2.11.4",
+    "@tauri-apps/cli": "2.12.4",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.10",
