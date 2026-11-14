@@ -2138,6 +2138,10 @@
     gap: var(--city-space-1);
   }
 
+  .overseer-log-options-positioner {
+    z-index: 70;
+  }
+
   .overseer-log-viewer-fullscreen-backdrop,
   .overseer-log-viewer-fullscreen-viewport {
     position: fixed;

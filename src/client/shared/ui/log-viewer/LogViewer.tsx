@@ -39,7 +39,7 @@ export function LogDisplayOptions({
         <SlidersHorizontal aria-hidden="true" size={14} />
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner align="end" sideOffset={6}>
+        <Menu.Positioner align="end" className="overseer-log-options-positioner" sideOffset={6}>
           <Menu.Popup>
             <Menu.Group>
               <Menu.GroupLabel>표시</Menu.GroupLabel>
