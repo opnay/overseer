@@ -1,6 +1,8 @@
 minimumReleaseAgeExclude:
-  - "@testing-library/user-event@14.6.6"
+  - "@testing-library/user-event@14.6.10"
   - "@opnay/city-ds-react@0.3.0"
+  - "@hono/node-server@2.1.8"
+  - lucide-react@1.73.0
 
 overrides:
   # 9.2.0 calls a tokenizer method absent from its parse5 8 dependency.
