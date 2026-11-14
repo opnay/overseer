@@ -70,11 +70,11 @@ jobs:
           echo "$DELIMITER" >> "$GITHUB_OUTPUT"
       - name: Set up signing keychain
         id: signing
-        uses: opnay/setup-keychain@v1.0.0
+        uses: opnay/setup-keychain@v1
         with:
           set-default: "true"
       - name: Import signing certificate
-        uses: opnay/setup-keychain/import@v1.0.0
+        uses: opnay/setup-keychain/import@v1
         with:
           keychain-path: ${{ steps.signing.outputs.keychain-path }}
           certificate-base64: ${{ secrets.APPLE_CERTIFICATE }}
