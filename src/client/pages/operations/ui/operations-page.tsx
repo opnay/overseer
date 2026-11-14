@@ -1,6 +1,7 @@
 import { Alert } from "@opnay/city-ds-react/alert";
 import { Badge } from "@opnay/city-ds-react/badge";
 import { Button } from "@opnay/city-ds-react/button";
+import { DataList } from "@opnay/city-ds-react/data-list";
 import { DataTableRegion } from "@opnay/city-ds-react/data-table-region";
 import { Dialog } from "@opnay/city-ds-react/dialog";
 import { EmptyState } from "@opnay/city-ds-react/empty-state";
@@ -419,20 +420,37 @@ export function OperationsPage({
               <Dialog.Header>
                 <div>
                   <Dialog.Title>{selected?.title}</Dialog.Title>
-                  <Dialog.Description>
-                    {selected
-                      ? `${operationResourceLabel[selected.target.resource]} · ${selected.target.name}`
-                      : "작업 상세"}
+                  <Dialog.Description className="sr-only">
+                    작업 정보와 명령 출력을 확인합니다.
                   </Dialog.Description>
                 </div>
               </Dialog.Header>
               <Dialog.Body className="overseer-operation-detail">
                 {selected ? (
                   <>
-                    <dl className="overseer-operation-detail-meta">
-                      <div>
-                        <dt>상태</dt>
-                        <dd>
+                    <DataList.Root
+                      aria-label="작업 정보"
+                      density="compact"
+                      orientation="horizontal"
+                    >
+                      <DataList.Item>
+                        <DataList.Label>종류</DataList.Label>
+                        <DataList.Value>
+                          {operationResourceLabel[selected.target.resource]}
+                        </DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>대상</DataList.Label>
+                        <DataList.Value>{selected.target.name}</DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>요청 시각</DataList.Label>
+                        <DataList.Value>{operationTime(selected.createdAt)}</DataList.Value>
+                      </DataList.Item>
+                      <DataList.Item>
+                        <DataList.Label>상태</DataList.Label>
+                        <DataList.Value className="flex items-center gap-2">
+                          <span>{operationElapsed(selected)}</span>
                           <Badge
                             appearance="subtle"
                             size="lg"
@@ -440,17 +458,9 @@ export function OperationsPage({
                           >
                             {operationStatusPresentation[selected.status].label}
                           </Badge>
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>요청 시각</dt>
-                        <dd>{operationTime(selected.createdAt)}</dd>
-                      </div>
-                      <div>
-                        <dt>소요 시간</dt>
-                        <dd>{operationElapsed(selected)}</dd>
-                      </div>
-                    </dl>
+                        </DataList.Value>
+                      </DataList.Item>
+                    </DataList.Root>
                     {selected.error ? (
                       <Alert.Root tone="destructive">
                         <Alert.Title level={3}>작업이 실패했습니다.</Alert.Title>

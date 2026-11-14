@@ -1860,29 +1860,6 @@
     gap: var(--city-space-4);
   }
 
-  .overseer-operation-detail-meta {
-    display: grid;
-    margin: 0;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--city-space-3);
-  }
-
-  .overseer-operation-detail-meta > div {
-    display: grid;
-    gap: var(--city-space-1);
-  }
-
-  .overseer-operation-detail-meta dt {
-    color: var(--city-color-muted-foreground);
-    font-size: var(--city-font-size-xs);
-  }
-
-  .overseer-operation-detail-meta dd {
-    margin: 0;
-    font-size: var(--city-font-size-sm);
-    font-weight: var(--city-font-weight-medium);
-  }
-
   .overseer-loading-brand {
     width: 9rem;
     height: var(--city-control-md);
@@ -2977,7 +2954,6 @@
     .overseer-detail-summary,
     .overseer-detail-definitions,
     .overseer-detail-definitions--wide,
-    .overseer-operation-detail-meta,
     .overseer-repeatable-row,
     .overseer-port-row,
     .overseer-volume-row {
