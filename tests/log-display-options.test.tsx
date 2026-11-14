@@ -110,7 +110,14 @@ describe("LogViewer", () => {
     expect(within(fullscreenDialog).getByRole("heading", { name: "테스트 로그" })).toHaveClass(
       "sr-only",
     );
-    expect(within(fullscreenDialog).getByRole("button", { name: "닫기" })).toBeInTheDocument();
+    const closeButton = within(fullscreenDialog).getByRole("button", { name: "최대화 닫기" });
+    expect(closeButton).toHaveAttribute("data-city-icon-only");
+    expect(fullscreenDialog.querySelector(".overseer-log-viewer-toolbar")).toContainElement(
+      closeButton,
+    );
+    expect(
+      within(fullscreenDialog).queryByRole("button", { name: /^닫기$/ }),
+    ).not.toBeInTheDocument();
     expect(fullscreenDialog.querySelector(".overseer-log-viewer-toolbar")).toHaveTextContent(
       "테스트 로그",
     );
@@ -130,7 +137,9 @@ describe("LogViewer", () => {
     await user.keyboard("{Escape}");
     expect(fullscreenCode).toHaveAttribute("data-font-size", "large");
 
-    await user.keyboard("{Escape}");
+    await user.hover(closeButton);
+    expect(await screen.findByRole("tooltip", { name: "최대화 닫기" })).toBeInTheDocument();
+    await user.click(closeButton);
     await waitFor(() =>
       expect(
         screen.queryByRole("region", { name: "테스트 로그 전체 화면" }),
@@ -142,5 +151,11 @@ describe("LogViewer", () => {
       "large",
     );
     expect(maximizeButton).toHaveFocus();
+    await user.click(maximizeButton);
+    await screen.findByRole("dialog", { name: "테스트 로그" });
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "테스트 로그" })).not.toBeInTheDocument(),
+    );
   });
 });

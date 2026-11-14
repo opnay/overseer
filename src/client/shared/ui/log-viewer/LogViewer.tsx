@@ -2,7 +2,7 @@ import { Button } from "@opnay/city-ds-react/button";
 import { Dialog } from "@opnay/city-ds-react/dialog";
 import { Menu } from "@opnay/city-ds-react/menu";
 import { Tooltip } from "@opnay/city-ds-react/tooltip";
-import { Maximize2, SlidersHorizontal } from "lucide-react";
+import { Maximize2, SlidersHorizontal, X } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 
 export type LogFontSize = "large" | "medium" | "small";
@@ -149,6 +149,29 @@ export function LogViewer({
             showLineNumbers={showLineNumbers}
             wrapped={wrapped}
           />
+          {fullscreen ? (
+            <Tooltip.Root>
+              <Tooltip.Trigger
+                render={
+                  <Dialog.Close
+                    render={<Button aria-label="최대화 닫기" iconOnly size="sm" variant="ghost" />}
+                  >
+                    <X aria-hidden="true" size={14} />
+                  </Dialog.Close>
+                }
+              />
+              <Tooltip.Portal>
+                <Tooltip.Positioner
+                  align="end"
+                  className="overseer-log-tooltip-positioner"
+                  side="bottom"
+                  sideOffset={6}
+                >
+                  <Tooltip.Popup>최대화 닫기</Tooltip.Popup>
+                </Tooltip.Positioner>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          ) : null}
           {!fullscreen ? (
             <Tooltip.Root>
               <Tooltip.Trigger
@@ -206,9 +229,6 @@ export function LogViewer({
             <Dialog.Body className="overseer-log-viewer-fullscreen-body">
               {renderViewer(true)}
             </Dialog.Body>
-            <Dialog.Footer>
-              <Dialog.Close render={<Button variant="outline" />}>닫기</Dialog.Close>
-            </Dialog.Footer>
           </Dialog.Popup>
         </Dialog.Viewport>
       </Dialog.Portal>

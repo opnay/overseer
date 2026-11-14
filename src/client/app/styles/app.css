@@ -2138,7 +2138,8 @@
     gap: var(--city-space-1);
   }
 
-  .overseer-log-options-positioner {
+  .overseer-log-options-positioner,
+  .overseer-log-tooltip-positioner {
     z-index: 70;
   }
 
@@ -2155,7 +2156,7 @@
 
   .overseer-log-viewer-fullscreen-dialog {
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
     width: 100vw;
     height: 100dvh;
     max-width: none;
