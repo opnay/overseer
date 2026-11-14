@@ -216,6 +216,46 @@ export function LogViewer({
   );
 }
 
+function LogLineContent({ value }: { value: string }) {
+  const content: ReactNode[] = [];
+  let cursor = 0;
+
+  for (const match of value.matchAll(/https:\/\/[^\s<>"'`\\]+/gi)) {
+    let address = match[0].replace(/[.,;:!?]+$/, "");
+    for (const [open, close] of [
+      ["(", ")"],
+      ["[", "]"],
+      ["{", "}"],
+    ] as const) {
+      while (address.endsWith(close) && address.split(close).length > address.split(open).length) {
+        address = address.slice(0, -1).replace(/[.,;:!?]+$/, "");
+      }
+    }
+    try {
+      const url = new URL(address);
+      if (url.protocol !== "https:" || !url.hostname) continue;
+    } catch {
+      continue;
+    }
+    content.push(value.slice(cursor, match.index));
+    content.push(
+      <a
+        className="overseer-log-link"
+        href={address}
+        key={match.index}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {address}
+      </a>,
+    );
+    cursor = match.index + address.length;
+  }
+
+  content.push(value.slice(cursor));
+  return <>{content}</>;
+}
+
 export function LogCodeContent({
   showLineNumbers,
   value,
@@ -233,7 +273,7 @@ export function LogCodeContent({
           <Fragment key={index}>
             {index > 0 ? "\n" : null}
             <span className={line.startsWith("$ ") ? "overseer-log-command" : undefined}>
-              {line}
+              <LogLineContent value={line} />
             </span>
           </Fragment>
         ))}
@@ -249,7 +289,7 @@ export function LogCodeContent({
             <span
               className={`overseer-log-code-line-content${line.startsWith("$ ") ? " overseer-log-command" : ""}`}
             >
-              {line || " "}
+              <LogLineContent value={line || " "} />
             </span>
           </span>
           {index < lines.length - 1 ? "\n" : null}

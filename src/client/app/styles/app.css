@@ -2192,6 +2192,17 @@
     flex: none;
   }
 
+  .overseer-log-link {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .overseer-log-link:hover,
+  .overseer-log-link:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
   .overseer-log-command {
     color: var(--city-palette-neutral-200);
     font-weight: var(--city-font-weight-semibold);

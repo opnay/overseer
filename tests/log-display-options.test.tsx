@@ -39,6 +39,34 @@ describe("LogViewer", () => {
     );
   });
 
+  it("links only HTTPS addresses and preserves the log text and display modes", async () => {
+    const user = userEvent.setup();
+    const value =
+      '$ curl "https://example.com/a?q=1&b=2"\nSee (https://example.com/docs_(cli)).\nhttp://example.com /tmp/file file:///tmp/file https://';
+    render(<LogViewer ariaLabel="링크 로그" value={value} />);
+    const viewer = screen.getByRole("region", { name: "링크 로그" });
+    const expected = ["https://example.com/a?q=1&b=2", "https://example.com/docs_(cli)"];
+    const verifyLinks = (region: HTMLElement) => {
+      const links = within(region).getAllByRole("link");
+      expect(links.map((link) => link.textContent)).toEqual(expected);
+      for (const [index, link] of links.entries()) {
+        expect(link).toHaveAttribute("href", expected[index]);
+        expect(link).toHaveAttribute("target", "_blank");
+        expect(link).toHaveAttribute("rel", "noreferrer");
+      }
+      expect(region.querySelector("code")?.textContent).toBe(value);
+    };
+    verifyLinks(viewer);
+    expect(viewer.querySelector(".overseer-log-command a")).toBeInTheDocument();
+
+    await user.click(within(viewer).getByRole("button", { name: "로그 옵션" }));
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "줄 번호" }));
+    await user.keyboard("{Escape}");
+    verifyLinks(viewer);
+    await user.click(within(viewer).getByRole("button", { name: "크게 보기" }));
+    verifyLinks(await screen.findByRole("region", { name: "링크 로그 전체 화면" }));
+  });
+
   it("opens a full-window dialog above an existing dialog and preserves display options", async () => {
     const user = userEvent.setup();
 
