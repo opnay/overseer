@@ -1,5 +1,5 @@
 use crate::single_instance::BACKGROUND_ARGUMENT;
-use auto_launch::AutoLaunch;
+use auto_launch::{AutoLaunch, MacOSLaunchMode};
 use std::env;
 
 const LEGACY_AUTOSTART_NAME: &str = "OverseerHelper";
@@ -13,7 +13,14 @@ pub(crate) fn configure_app_autostart() -> Result<(), String> {
     let executable = executable
         .to_str()
         .ok_or("Overseer 실행 경로를 해석하지 못했습니다.")?;
-    let autostart = AutoLaunch::new("Overseer", executable, true, &[BACKGROUND_ARGUMENT]);
+    let autostart = AutoLaunch::new(
+        "Overseer",
+        executable,
+        MacOSLaunchMode::LaunchAgent,
+        &[BACKGROUND_ARGUMENT],
+        &[] as &[&str],
+        "",
+    );
     autostart
         .enable()
         .map_err(|error| format!("Overseer 로그인 자동 시작을 등록하지 못했습니다: {error}"))?;
@@ -24,7 +31,14 @@ pub(crate) fn configure_app_autostart() -> Result<(), String> {
         return Err("Overseer 로그인 자동 시작을 등록하지 못했습니다.".into());
     }
 
-    let legacy = AutoLaunch::new(LEGACY_AUTOSTART_NAME, executable, true, &[] as &[&str]);
+    let legacy = AutoLaunch::new(
+        LEGACY_AUTOSTART_NAME,
+        executable,
+        MacOSLaunchMode::LaunchAgent,
+        &[] as &[&str],
+        &[] as &[&str],
+        "",
+    );
     legacy
         .disable()
         .map_err(|error| format!("이전 OverseerHelper 자동 시작을 제거하지 못했습니다: {error}"))?;
