@@ -156,8 +156,8 @@ export class DockerHubTags {
           if (loaded) return loaded;
           let pending = this.favorites.get(name);
           if (!pending) {
-            pending = this.request(`${this.base}/${encodeURIComponent(name)}`, true).then(
-              (value) => (value === undefined ? undefined : parseTag(value)),
+            pending = this.request(`${this.base}/${encodeURIComponent(name)}`, true).then((value) =>
+              value === undefined ? undefined : parseTag(value),
             );
             this.favorites.set(name, pending);
             void pending.catch(() => this.favorites.delete(name));
