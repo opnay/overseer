@@ -16,6 +16,7 @@ import {
 describe("application routes", () => {
   it("uses navigation categories as collection page eyebrows", () => {
     expect(Object.fromEntries(APP_ROUTES.map(({ eyebrow, path }) => [path, eyebrow]))).toEqual({
+      "/builds": "도커",
       "/compose": "도커",
       "/containers": "도커",
       "/docker-plugins": "CLI",
@@ -32,6 +33,14 @@ describe("application routes", () => {
   });
 
   it("recognizes direct resource detail URLs", () => {
+    expect(getAppDetailLocation("/builds/build123")).toEqual({
+      identifier: "build123",
+      parentPath: "/builds",
+      path: "/builds/build123",
+      type: "build",
+    });
+    expect(getAppDetailLocation("/builds/-flag")).toBeUndefined();
+
     expect(getAppDetailLocation("/compose/demo-stack")).toEqual({
       identifier: "demo-stack",
       parentPath: "/compose",

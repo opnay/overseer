@@ -25,6 +25,7 @@ import {
 } from "../modules/startup/index.ts";
 import { type EnqueueApiOperation } from "./http.ts";
 import { registerComposeRoutes } from "./routes/compose-routes.ts";
+import { registerBuildRoutes } from "./routes/build-routes.ts";
 import { registerContainerRoutes } from "./routes/container-routes.ts";
 import { registerDockerPluginRoutes } from "./routes/docker-plugin-routes.ts";
 import { registerImageRoutes } from "./routes/image-routes.ts";
@@ -85,6 +86,7 @@ export function createApi(
   registerRuntimeRoutes(app, controller, enqueue);
   registerOperationRoutes(app, operations);
   registerComposeRoutes(app, controller, enqueue);
+  registerBuildRoutes(app, controller);
   registerContainerRoutes(app, controller, enqueue);
   registerDockerPluginRoutes(app, dockerPlugins, enqueue);
   registerImageRepositoryRoutes(app, imageRepositories, enqueue);
