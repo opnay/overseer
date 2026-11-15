@@ -3,6 +3,8 @@ import {
   type BuildDetail,
   type BuildListQuery,
   type BuildRecord,
+  type BuildStep,
+  type RelatedBuilds,
   type BuildStatus,
 } from "../../../shared/builds.ts";
 import { ExpectedError } from "../../core/errors.ts";
@@ -10,10 +12,28 @@ import type { DockerCommand } from "../docker/index.ts";
 
 const COMMAND_TIMEOUT_MS = 15_000;
 const MAX_LOG_CHARACTERS = 250_000;
+const MAX_STEP_LOG_BYTES = MAX_LOG_CHARACTERS * 4 + 3;
 const LOG_TRUNCATION_MARKER = "\n\n[로그 길이 제한으로 나머지 내용이 생략되었습니다.]";
+const MAX_RELATED_CANDIDATES = 20;
+const RELATED_INSPECTION_CONCURRENCY = 4;
 
 type JsonRecord = Record<string, unknown>;
 type BuildOperation = "list" | "get" | "logs";
+
+interface BuildVertex {
+  id: string;
+  name: string;
+  cached: boolean;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
+interface StepLog {
+  chunks: Buffer[];
+  byteLength: number;
+  truncated: boolean;
+}
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -153,12 +173,20 @@ function normalizeMaterials(value: unknown): BuildDetail["materials"] {
     const uri = readOptionalString(material.URI);
     if (!uri) return [];
 
-    const digests = isRecord(material.Digests) ? material.Digests : undefined;
-    const sha256 = readOptionalString(digests?.sha256);
-    const digest = sha256
-      ? sha256.startsWith("sha256:")
-        ? sha256
-        : `sha256:${sha256}`
+    const rawDigests = material.Digests;
+    const digestValues = Array.isArray(rawDigests)
+      ? rawDigests.filter((digest): digest is string => typeof digest === "string")
+      : isRecord(rawDigests)
+        ? [readOptionalString(rawDigests.sha256)].filter(
+            (digest): digest is string => digest !== undefined,
+          )
+        : [];
+    const rawDigest =
+      digestValues.find((digest) => digest.startsWith("sha256:")) ?? digestValues[0];
+    const digest = rawDigest
+      ? /^[a-z][a-z0-9_+.-]*:/i.test(rawDigest)
+        ? rawDigest
+        : `sha256:${rawDigest}`
       : undefined;
     return [{ uri, digest }];
   });
@@ -193,8 +221,9 @@ function parseDetail(value: JsonRecord, requestedId: string): BuildDetail {
   const ref = value.Ref;
   if (ref !== undefined && readBuildId(ref) !== requestedId) throw unavailableError();
 
-  const name = value.Name;
-  if (typeof name !== "string") throw unavailableError();
+  const nameValue = value.Name;
+  if (nameValue !== undefined && typeof nameValue !== "string") throw unavailableError();
+  const name = typeof nameValue === "string" && nameValue.trim() ? nameValue : requestedId;
 
   return {
     id: requestedId,
@@ -233,14 +262,181 @@ function stripTerminalControls(value: string): string {
   /* eslint-enable no-control-regex */
 }
 
-function normalizeLogs(value: string): string {
+function normalizeLogs(value: string, outputTruncated = false): string {
   const sanitized = stripTerminalControls(value);
-  if (sanitized.length <= MAX_LOG_CHARACTERS) return sanitized;
+  if (sanitized.length <= MAX_LOG_CHARACTERS) {
+    return outputTruncated ? `${sanitized}${LOG_TRUNCATION_MARKER}` : sanitized;
+  }
 
   let text = sanitized.slice(0, MAX_LOG_CHARACTERS);
   const lastCodeUnit = text.charCodeAt(text.length - 1);
   if (lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff) text = text.slice(0, -1);
   return `${text}${LOG_TRUNCATION_MARKER}`;
+}
+
+function readStepTimestamp(value: unknown): string | undefined {
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) return undefined;
+  return value;
+}
+
+function decodeBase64(value: string): Buffer {
+  const padded = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
+  const unpadded = /^[A-Za-z0-9+/]*$/.test(value) && value.length % 4 !== 1;
+  if (!padded && !unpadded) throw unavailableError();
+
+  const bytes = Buffer.from(value, "base64");
+  const canonical = bytes.toString("base64").replace(/=+$/, "");
+  if (canonical !== value.replace(/=+$/, "")) throw unavailableError();
+  return bytes;
+}
+
+function appendStepLog(log: StepLog, encodedChunk: string): void {
+  const chunk = decodeBase64(encodedChunk);
+  const remainingBytes = Math.max(0, MAX_STEP_LOG_BYTES - log.byteLength);
+  const acceptedBytes = Math.min(chunk.byteLength, remainingBytes);
+
+  if (acceptedBytes > 0) {
+    log.chunks.push(chunk.subarray(0, acceptedBytes));
+    log.byteLength += acceptedBytes;
+  }
+  if (acceptedBytes < chunk.byteLength) log.truncated = true;
+}
+
+function normalizeStepLog(log: StepLog | undefined): { text: string; truncated: boolean } {
+  if (!log) return { text: "", truncated: false };
+
+  const decoded = Buffer.concat(log.chunks, log.byteLength).toString("utf8");
+  const sanitized = stripTerminalControls(decoded);
+  const truncated = log.truncated || sanitized.length > MAX_LOG_CHARACTERS;
+  if (sanitized.length <= MAX_LOG_CHARACTERS) return { text: sanitized, truncated };
+
+  let text = sanitized.slice(0, MAX_LOG_CHARACTERS);
+  const lastCodeUnit = text.charCodeAt(text.length - 1);
+  if (lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff) text = text.slice(0, -1);
+  return { text, truncated };
+}
+
+function parseBuildSteps(rawJson: string): BuildStep[] {
+  const vertices = new Map<string, BuildVertex>();
+  const vertexOrder: string[] = [];
+  const logs = new Map<string, StepLog>();
+
+  for (const line of rawJson.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw unavailableError();
+    }
+    if (!isRecord(parsed)) throw unavailableError();
+
+    if (parsed.vertexes !== undefined) {
+      if (!Array.isArray(parsed.vertexes)) throw unavailableError();
+
+      for (const value of parsed.vertexes) {
+        if (!isRecord(value) || typeof value.digest !== "string" || !value.digest) {
+          throw unavailableError();
+        }
+
+        let vertex = vertices.get(value.digest);
+        if (!vertex) {
+          vertex = { id: value.digest, name: value.digest, cached: false };
+          vertices.set(value.digest, vertex);
+          vertexOrder.push(value.digest);
+        }
+
+        const name = readOptionalString(value.name);
+        if (name) vertex.name = name;
+        if (typeof value.cached === "boolean") vertex.cached = value.cached;
+
+        const startedAt = readStepTimestamp(value.started);
+        if (startedAt) vertex.startedAt = startedAt;
+        const completedAt = readStepTimestamp(value.completed);
+        if (completedAt) vertex.completedAt = completedAt;
+
+        const error = readStructuredError(value.error);
+        if (error) vertex.error = error;
+      }
+    }
+
+    if (parsed.logs !== undefined) {
+      if (!Array.isArray(parsed.logs)) throw unavailableError();
+
+      for (const value of parsed.logs) {
+        if (
+          !isRecord(value) ||
+          typeof value.vertex !== "string" ||
+          typeof value.data !== "string"
+        ) {
+          throw unavailableError();
+        }
+
+        let stepLog = logs.get(value.vertex);
+        if (!stepLog) {
+          stepLog = { chunks: [], byteLength: 0, truncated: false };
+          logs.set(value.vertex, stepLog);
+        }
+        appendStepLog(stepLog, value.data);
+      }
+    }
+  }
+
+  return vertexOrder.map((id) => {
+    const vertex = vertices.get(id)!;
+    const stepLog = normalizeStepLog(logs.get(id));
+    const durationMs =
+      vertex.startedAt && vertex.completedAt
+        ? Date.parse(vertex.completedAt) - Date.parse(vertex.startedAt)
+        : undefined;
+
+    return {
+      id,
+      name: vertex.name,
+      status: vertex.error
+        ? "failed"
+        : vertex.completedAt
+          ? "succeeded"
+          : vertex.startedAt
+            ? "running"
+            : "pending",
+      cached: vertex.cached,
+      startedAt: vertex.startedAt,
+      completedAt: vertex.completedAt,
+      durationMs:
+        durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0
+          ? durationMs
+          : undefined,
+      error: vertex.error,
+      log: stepLog.text,
+      logTruncated: stepLog.truncated,
+    };
+  });
+}
+
+function hasRelatedSource(build: BuildDetail): boolean {
+  return Boolean(build.repository || build.context) && Boolean(build.dockerfile);
+}
+
+function sameRelatedSource(current: BuildDetail, candidate: BuildDetail): boolean {
+  const samePlatforms = (left: string[], right: string[]) => {
+    const sortedLeft = [...left].sort();
+    const sortedRight = [...right].sort();
+    return (
+      sortedLeft.length === sortedRight.length &&
+      sortedLeft.every((platform, index) => platform === sortedRight[index])
+    );
+  };
+
+  return (
+    (current.repository ?? "") === (candidate.repository ?? "") &&
+    (current.context ?? "") === (candidate.context ?? "") &&
+    (current.dockerfile ?? "") === (candidate.dockerfile ?? "") &&
+    (current.target ?? "") === (candidate.target ?? "") &&
+    samePlatforms(current.platforms, candidate.platforms)
+  );
 }
 
 function errorText(error: unknown): string {
@@ -252,6 +448,10 @@ function errorText(error: unknown): string {
   if (cause instanceof Error) values.push(cause.message);
   else if (isRecord(cause)) values.push(cause.message);
   return values.filter((value): value is string => typeof value === "string").join("\n");
+}
+
+function isOutputLimitError(error: unknown): error is JsonRecord {
+  return isRecord(error) && error.code === "OUTPUT_LIMIT_EXCEEDED";
 }
 
 function unavailableError(): ExpectedError {
@@ -301,12 +501,7 @@ export class DockerBuildService {
     this.docker = docker;
   }
 
-  async list(query: BuildListQuery): Promise<{
-    records: BuildRecord[];
-    count: number;
-    page: number;
-    pageSize: number;
-  }> {
+  private async readAll(): Promise<BuildRecord[]> {
     let result;
     try {
       result = await this.docker(
@@ -317,14 +512,21 @@ export class DockerBuildService {
       throw commandFailure(error, "list");
     }
 
-    let records: BuildRecord[];
     try {
-      records = parseList(result.stdout);
+      return parseList(result.stdout);
     } catch (error) {
       if (error instanceof ExpectedError) throw error;
       throw unavailableError();
     }
+  }
 
+  async list(query: BuildListQuery): Promise<{
+    records: BuildRecord[];
+    count: number;
+    page: number;
+    pageSize: number;
+  }> {
+    const records = await this.readAll();
     const search = query.name?.toLowerCase();
     const filtered = records
       .filter((record) => !search || record.name.toLowerCase().includes(search))
@@ -379,9 +581,107 @@ export class DockerBuildService {
         COMMAND_TIMEOUT_MS,
       );
     } catch (error) {
+      if (isOutputLimitError(error)) {
+        const partial = readOptionalString(error.stderr) ?? readOptionalString(error.stdout) ?? "";
+        return { text: normalizeLogs(partial, true) };
+      }
       throw commandFailure(error, "logs");
     }
 
     return { text: normalizeLogs(result.stderr || result.stdout) };
+  }
+
+  async steps(id: string): Promise<BuildStep[]> {
+    const build = await this.get(id);
+    if (build.status === "running") {
+      throw new ExpectedError(
+        "build_running",
+        "진행 중인 빌드 로그는 아직 조회할 수 없습니다.",
+        409,
+      );
+    }
+
+    let result;
+    try {
+      result = await this.docker(
+        ["buildx", "--builder", "default", "history", "logs", "--progress", "rawjson", id],
+        COMMAND_TIMEOUT_MS,
+      );
+    } catch (error) {
+      if (isOutputLimitError(error)) {
+        throw new ExpectedError(
+          "build_steps_too_large",
+          "단계 기록이 조회 용량을 초과했습니다. 로그 탭에서 보관 출력의 앞부분을 확인하십시오.",
+          413,
+        );
+      }
+      throw commandFailure(error, "logs");
+    }
+
+    try {
+      const rawJson = result.stderr.trim() ? result.stderr : result.stdout;
+      return parseBuildSteps(rawJson);
+    } catch (error) {
+      if (error instanceof ExpectedError) throw error;
+      throw unavailableError();
+    }
+  }
+
+  async related(id: string): Promise<RelatedBuilds> {
+    const current = await this.get(id);
+    const records = await this.readAll();
+    const older = records
+      .filter(
+        (record) =>
+          record.id !== current.id && Date.parse(record.startedAt) < Date.parse(current.startedAt),
+      )
+      .sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+    const candidateCount = older.length;
+    const limited = candidateCount > MAX_RELATED_CANDIDATES;
+
+    if (!hasRelatedSource(current)) {
+      return {
+        records: [],
+        scannedCount: 0,
+        candidateCount,
+        failedCount: 0,
+        limited,
+        matchAvailable: false,
+      };
+    }
+
+    const candidates = older.slice(0, MAX_RELATED_CANDIDATES);
+    const matches: (BuildRecord | undefined)[] = new Array(candidates.length);
+    let nextIndex = 0;
+    let scannedCount = 0;
+    let failedCount = 0;
+
+    const inspectCandidates = async () => {
+      while (nextIndex < candidates.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const candidate = candidates[index]!;
+        scannedCount += 1;
+
+        try {
+          const detail = await this.get(candidate.id);
+          if (sameRelatedSource(current, detail)) matches[index] = candidate;
+        } catch {
+          failedCount += 1;
+        }
+      }
+    };
+
+    const workerCount = Math.min(RELATED_INSPECTION_CONCURRENCY, candidates.length);
+    await Promise.all(Array.from({ length: workerCount }, () => inspectCandidates()));
+
+    return {
+      records: matches.filter((record): record is BuildRecord => record !== undefined).slice(0, 5),
+      scannedCount,
+      candidateCount,
+      failedCount,
+      limited,
+      matchAvailable: true,
+    };
   }
 }

@@ -236,6 +236,37 @@ describe("DockerBuildService.get", () => {
     expect(build.durationMs).toBeUndefined();
   });
 
+  it("accepts omitted names and Buildx material digest arrays", async () => {
+    const inspect = {
+      ...makeInspect(),
+      Materials: [
+        {
+          URI: "https://example.test/source",
+          Digests: ["sha512:secondary", "sha256:preferred"],
+        },
+      ],
+    };
+    delete (inspect as { Name?: string }).Name;
+    const { service } = serviceWith(async () => ({ stdout: JSON.stringify(inspect), stderr: "" }));
+
+    const build = await service.get("build-123");
+
+    expect(build.name).toBe("build-123");
+    expect(build.materials).toEqual([
+      { uri: "https://example.test/source", digest: "sha256:preferred" },
+    ]);
+  });
+
+  it.each([null, 42, {}])("rejects a non-string inspect name: %s", async (name) => {
+    const inspect = { ...makeInspect(), Name: name };
+    const { service } = serviceWith(async () => ({ stdout: JSON.stringify(inspect), stderr: "" }));
+
+    await expect(service.get("build-123")).rejects.toMatchObject({
+      code: "build_history_unavailable",
+      status: 503,
+    });
+  });
+
   it("returns stable not-found and invalid-ID errors", async () => {
     const missing = new CommandError(
       "docker buildx history inspect",

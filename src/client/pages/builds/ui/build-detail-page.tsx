@@ -5,26 +5,39 @@ import { Skeleton } from "@opnay/city-ds-react/skeleton";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import type { BuildDetailResponse, BuildLogsResponse } from "@contracts/builds.ts";
+import type {
+  BuildDetailResponse,
+  BuildLogsResponse,
+  BuildStepsResponse,
+  RelatedBuildsResponse,
+} from "@contracts/builds.ts";
 import { apiRequest } from "@/shared/api";
 import { formatDateTime } from "@/shared/lib/date-time";
 import { LogViewer } from "@/shared/ui/log-viewer";
 import { SectionedWorkspace } from "@/shared/ui/sectioned-workspace";
 import { useUrlSection } from "@/shared/lib/url-section";
+import { BuildAnalysisSection } from "./build-analysis-section.tsx";
+import { RelatedBuildsSection } from "./related-builds-section.tsx";
 import {
   buildDetailRequestPath,
   buildsListPath,
   buildLogsRequestPath,
+  buildStepsRequestPath,
   buildRequestFailure,
   buildStatusPresentation,
   formatBuildDuration,
   isAbortError,
+  relatedBuildsRequestPath,
   type BuildRequestState,
 } from "../model/build-history.ts";
 
-type BuildDetailSection = "inputs" | "logs" | "overview";
+type BuildDetailSection = "analysis" | "inputs" | "logs" | "overview" | "related";
 
 const sectionPresentation: Record<BuildDetailSection, { description: string; label: string }> = {
+  analysis: {
+    description: "실패한 단계와 캐시, 단계별 소요 시간과 출력을 확인합니다.",
+    label: "단계·분석",
+  },
   inputs: {
     description: "빌드에 사용된 입력, 재료와 첨부물 메타데이터를 확인합니다.",
     label: "입력",
@@ -37,9 +50,13 @@ const sectionPresentation: Record<BuildDetailSection, { description: string; lab
     description: "빌드 결과, 시각과 단계 요약을 확인합니다.",
     label: "개요",
   },
+  related: {
+    description: "기록된 입력이 비슷한 이전 빌드를 확인합니다.",
+    label: "이전 빌드",
+  },
 };
 
-const sectionOrder: BuildDetailSection[] = ["overview", "logs", "inputs"];
+const sectionOrder: BuildDetailSection[] = ["overview", "analysis", "related", "logs", "inputs"];
 const detailNavigation = [
   {
     items: sectionOrder.map((value) => ({ label: sectionPresentation[value].label, value })),
@@ -80,22 +97,24 @@ function BuildErrorAlert({
     <Alert.Root tone="destructive">
       <Alert.Title level={2}>{title}</Alert.Title>
       <Alert.Description>{message}</Alert.Description>
-      <Alert.Action>
-        {code === "buildx_unavailable" ? (
-          <Button
-            nativeButton={false}
-            render={<Link to="/docker-plugins" />}
-            size="sm"
-            variant="outline"
-          >
-            CLI 도구 열기
-          </Button>
-        ) : (
-          <Button onClick={onRetry} size="sm" variant="outline">
-            다시 시도
-          </Button>
-        )}
-      </Alert.Action>
+      {code === "build_instance_changed" || code === "build_not_found" ? null : (
+        <Alert.Action>
+          {code === "buildx_unavailable" ? (
+            <Button
+              nativeButton={false}
+              render={<Link to="/docker-plugins" />}
+              size="sm"
+              variant="outline"
+            >
+              CLI 도구 열기
+            </Button>
+          ) : (
+            <Button onClick={onRetry} size="sm" variant="outline">
+              다시 시도
+            </Button>
+          )}
+        </Alert.Action>
+      )}
     </Alert.Root>
   );
 }
@@ -143,6 +162,12 @@ export function BuildDetailPage({
   const buildStatus = detail?.build.status;
   const logRequestKey = JSON.stringify([scopeKey, buildStatus ?? "unavailable"]);
   const visibleLogsState = logsState?.key === logRequestKey ? logsState : undefined;
+  const [stepsState, setStepsState] = useState<BuildRequestState<BuildStepsResponse>>();
+  const stepsRequestKey = JSON.stringify([scopeKey, "steps"]);
+  const visibleStepsState = stepsState?.key === stepsRequestKey ? stepsState : undefined;
+  const [relatedState, setRelatedState] = useState<BuildRequestState<RelatedBuildsResponse>>();
+  const relatedRequestKey = JSON.stringify([scopeKey, "related"]);
+  const visibleRelatedState = relatedState?.key === relatedRequestKey ? relatedState : undefined;
 
   useEffect(() => {
     if (!instance) {
@@ -228,6 +253,74 @@ export function BuildDetailPage({
     return () => controller.abort();
   }, [buildStatus, id, instance, logRequestKey, refreshToken, requestRevision, section]);
 
+  useEffect(() => {
+    if (section !== "analysis" || !instance) return;
+
+    const controller = new AbortController();
+    setStepsState((previous) => {
+      const current = previous?.key === stepsRequestKey ? previous : undefined;
+      return { data: current?.data, key: stepsRequestKey, loading: true };
+    });
+    void apiRequest<BuildStepsResponse>(buildStepsRequestPath(id, instance), {
+      signal: controller.signal,
+    })
+      .then((next) => {
+        if (controller.signal.aborted) return;
+        if (next.instance !== instance || next.buildId !== id) {
+          throw new Error("응답한 단계 기록이 요청한 엔진 또는 빌드와 다릅니다.");
+        }
+        setStepsState({ data: next, key: stepsRequestKey, loading: false });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || isAbortError(error)) return;
+        setStepsState((previous) => {
+          const current = previous?.key === stepsRequestKey ? previous : undefined;
+          return {
+            data: current?.data,
+            error: buildRequestFailure(error, "빌드 단계 정보를 불러오지 못했습니다."),
+            key: stepsRequestKey,
+            loading: false,
+          };
+        });
+      });
+
+    return () => controller.abort();
+  }, [id, instance, refreshToken, requestRevision, section, stepsRequestKey]);
+
+  useEffect(() => {
+    if (section !== "related" || !instance) return;
+
+    const controller = new AbortController();
+    setRelatedState((previous) => {
+      const current = previous?.key === relatedRequestKey ? previous : undefined;
+      return { data: current?.data, key: relatedRequestKey, loading: true };
+    });
+    void apiRequest<RelatedBuildsResponse>(relatedBuildsRequestPath(id, instance), {
+      signal: controller.signal,
+    })
+      .then((next) => {
+        if (controller.signal.aborted) return;
+        if (next.instance !== instance || next.buildId !== id) {
+          throw new Error("응답한 이전 빌드가 요청한 엔진 또는 빌드와 다릅니다.");
+        }
+        setRelatedState({ data: next, key: relatedRequestKey, loading: false });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || isAbortError(error)) return;
+        setRelatedState((previous) => {
+          const current = previous?.key === relatedRequestKey ? previous : undefined;
+          return {
+            data: current?.data,
+            error: buildRequestFailure(error, "이전 빌드 분석을 불러오지 못했습니다."),
+            key: relatedRequestKey,
+            loading: false,
+          };
+        });
+      });
+
+    return () => controller.abort();
+  }, [id, instance, refreshToken, requestRevision, relatedRequestKey, section]);
+
   const retry = () => setRequestRevision((revision) => revision + 1);
   const presentation = sectionPresentation[section];
   const logUnsupported =
@@ -236,7 +329,7 @@ export function BuildDetailPage({
   return (
     <article className="overseer-detail-page">
       <Button
-        className="self-start"
+        className="overseer-build-back"
         nativeButton={false}
         render={<Link to={buildsListPath(searchParams)} />}
         size="sm"
@@ -348,22 +441,45 @@ export function BuildDetailPage({
                     />
                   </dl>
                 </section>
-                {detail.build.error ? (
+                {detail.build.error || detail.build.status === "failed" ? (
                   <section className="overseer-detail-section">
                     <header>
                       <div>
                         <h3 className="city-text-subsection-title">빌드 오류</h3>
                       </div>
                     </header>
-                    <LogViewer
-                      ariaLabel="빌드 오류 출력"
-                      emptyMessage="오류 출력이 없습니다."
-                      height="compact"
-                      value={detail.build.error}
-                    />
+                    {detail.build.error ? (
+                      <LogViewer
+                        ariaLabel="빌드 오류 출력"
+                        emptyMessage="오류 출력이 없습니다."
+                        height="compact"
+                        value={detail.build.error}
+                      />
+                    ) : (
+                      <p className="overseer-detail-empty-copy">
+                        저장된 빌드 오류 출력이 없습니다.
+                      </p>
+                    )}
+                    <Button onClick={() => setSection("analysis")} size="sm" variant="outline">
+                      실패 단계 확인
+                    </Button>
                   </section>
                 ) : null}
               </>
+            ) : section === "analysis" ? (
+              <BuildAnalysisSection
+                onOpenLogs={() => setSection("logs")}
+                onRetry={retry}
+                state={visibleStepsState}
+              />
+            ) : section === "related" ? (
+              <RelatedBuildsSection
+                buildId={id}
+                instance={instance}
+                onRetry={retry}
+                searchParams={searchParams}
+                state={visibleRelatedState}
+              />
             ) : section === "logs" ? (
               logUnsupported ? (
                 <Alert.Root tone="info">

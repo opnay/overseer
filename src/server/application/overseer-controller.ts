@@ -41,12 +41,16 @@ import type {
   BuildHistory,
   BuildListQuery,
   BuildLogsResponse,
+  BuildStepsResponse,
+  RelatedBuildsResponse,
 } from "../../shared/builds.ts";
 
 export interface BuildController {
   getBuildHistory(query: BuildListQuery, instance?: string): Promise<BuildHistory>;
   getBuild(id: string, instance: string): Promise<BuildDetailResponse>;
   getBuildLogs(id: string, instance: string): Promise<BuildLogsResponse>;
+  getBuildSteps(id: string, instance: string): Promise<BuildStepsResponse>;
+  getRelatedBuilds(id: string, instance: string): Promise<RelatedBuildsResponse>;
 }
 
 export interface DashboardController {
