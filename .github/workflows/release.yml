@@ -24,10 +24,10 @@ jobs:
       contents: write
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: pnpm/setup@v3.1.2
+      - uses: pnpm/setup@v3
         with:
           version: 12.18.0
           runtime: node@26.13.1
@@ -81,7 +81,7 @@ jobs:
           certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       - name: Build, notarize and upload draft with Tauri
         id: tauri
-        uses: tauri-apps/tauri-action@v1.0.0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
